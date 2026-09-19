@@ -1,0 +1,111 @@
+import "server-only";
+
+import type { RowDataPacket } from "mysql2";
+import { getDbPool } from "./db";
+
+export type AuditAction =
+  | "auth.register"
+  | "auth.login"
+  | "auth.login_failed"
+  | "auth.logout"
+  | "auth.password_changed"
+  | "auth.security_reset"
+  | "order.created"
+  | "order.cancelled"
+  | "order.paid"
+  | "order.fulfilled"
+  | "wallet.recharged"
+  | "ticket.created"
+  | "ticket.replied"
+  | "ticket.closed"
+  | "admin.user_updated"
+  | "admin.plan_saved"
+  | "admin.plan_deleted"
+  | "admin.coupon_saved"
+  | "admin.coupon_deleted"
+  | "admin.payment_saved"
+  | "admin.node_saved"
+  | "admin.ticket_updated"
+  | "admin.ticket_replied"
+  | "admin.order_status_changed"
+  | "admin.order_updated"
+  | "admin.order_manually_fulfilled"
+  | "admin.order_remark_saved"
+  | "admin.recharge_cards_created"
+  | "admin.recharge_batch_cleared"
+  | "admin.recharge_card_disabled"
+  | "admin.recharge_card_enabled"
+  | "admin.notice_saved"
+  | "admin.notice_deleted"
+  | "admin.knowledge_saved"
+  | "admin.knowledge_deleted";
+
+export type AuditInput = {
+  action: AuditAction;
+  userId?: number | null;
+  resourceType?: string;
+  resourceId?: string | number;
+  request?: Request;
+  context?: Record<string, unknown>;
+};
+
+/** 客户端 IP：优先取反向代理透传头，其次取 x-real-ip。 */
+function resolveIp(request?: Request): string | null {
+  if (!request) return null;
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first.slice(0, 45);
+  }
+  return request.headers.get("x-real-ip")?.slice(0, 45) ?? null;
+}
+
+/**
+ * 写入审计日志。
+ * 审计失败绝不能影响主业务，因此这里吞掉异常并只记录日志。
+ */
+export async function recordAudit(input: AuditInput): Promise<void> {
+  try {
+    const url = input.request ? new URL(input.request.url) : null;
+    await getDbPool().execute(
+      `INSERT INTO audit_logs
+        (user_id, action, resource_type, resource_id, request_method, request_path, ip_address, user_agent, context)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.userId ?? null,
+        input.action,
+        input.resourceType ?? null,
+        input.resourceId === undefined ? null : String(input.resourceId).slice(0, 128),
+        input.request?.method ?? null,
+        url ? `${url.pathname}${url.search}`.slice(0, 255) : null,
+        resolveIp(input.request),
+        input.request?.headers.get("user-agent")?.slice(0, 500) ?? null,
+        input.context ? JSON.stringify(input.context) : null,
+      ],
+    );
+  } catch (error) {
+    console.error("[aeranexa] audit log write failed", error);
+  }
+}
+
+/** 统计窗口内匹配某个 context 字段值的审计条数，用于登录防爆破与限流。 */
+export async function countRecentAuditsByContext(
+  action: AuditAction,
+  contextKey: string,
+  contextValue: string,
+  windowMinutes: number,
+): Promise<number> {
+  try {
+    const [rows] = await getDbPool().execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total FROM audit_logs
+        WHERE action = ?
+          AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? MINUTE)
+          AND JSON_UNQUOTE(JSON_EXTRACT(context, ?)) = ?`,
+      [action, windowMinutes, `$.${contextKey}`, contextValue],
+    );
+    return Number(rows[0]?.total ?? 0);
+  } catch {
+    // 审计表不可用时不应阻断登录，退化为"不限流"。
+    return 0;
+  }
+}

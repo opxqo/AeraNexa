@@ -162,6 +162,9 @@ CREATE TABLE IF NOT EXISTS orders (
   commission_status TINYINT UNSIGNED NOT NULL DEFAULT 0,
   commission_amount BIGINT UNSIGNED NOT NULL DEFAULT 0,
   actual_commission_amount BIGINT UNSIGNED NULL,
+  fulfillment_source VARCHAR(16) NULL COMMENT '履约来源：gateway 网关回调，admin 后台人工补单；NULL 表示尚未履约',
+  fulfilled_by_admin_id BIGINT UNSIGNED NULL COMMENT '人工补单时操作的管理员',
+  admin_remark VARCHAR(500) NULL COMMENT '后台内部备注（补单原因等），仅后台可见',
   paid_at DATETIME NULL,
   cancelled_at DATETIME NULL,
   completed_at DATETIME NULL,
@@ -328,6 +331,44 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 卡密充值：批次只保存运营信息；单张卡仅保存不可逆 HMAC 与末四位，避免明文泄露。
+CREATE TABLE IF NOT EXISTS recharge_card_batches (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  batch_no CHAR(24) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  amount BIGINT UNSIGNED NOT NULL COMMENT '面额，单位：分',
+  quantity INT UNSIGNED NOT NULL,
+  expires_at DATETIME NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY recharge_card_batches_batch_no_unique (batch_no),
+  KEY recharge_card_batches_created_at_index (created_at),
+  CONSTRAINT recharge_card_batches_created_by_foreign
+    FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS recharge_cards (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  batch_id BIGINT UNSIGNED NOT NULL,
+  code_hash CHAR(64) NOT NULL,
+  code_tail CHAR(4) NOT NULL,
+  amount BIGINT UNSIGNED NOT NULL COMMENT '面额快照，单位：分',
+  status VARCHAR(16) NOT NULL DEFAULT 'unused' COMMENT 'unused, redeemed, disabled',
+  redeemed_by BIGINT UNSIGNED NULL,
+  redeemed_at DATETIME NULL,
+  disabled_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY recharge_cards_code_hash_unique (code_hash),
+  KEY recharge_cards_batch_status_index (batch_id, status),
+  KEY recharge_cards_redeemed_by_index (redeemed_by),
+  CONSTRAINT recharge_cards_batch_id_foreign
+    FOREIGN KEY (batch_id) REFERENCES recharge_card_batches (id) ON DELETE RESTRICT,
+  CONSTRAINT recharge_cards_redeemed_by_foreign
+    FOREIGN KEY (redeemed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 公告、知识库与工单
 CREATE TABLE IF NOT EXISTS notices (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -377,6 +418,9 @@ CREATE TABLE IF NOT EXISTS tickets (
   PRIMARY KEY (id),
   KEY tickets_user_status_updated_index (user_id, status, updated_at),
   KEY tickets_assigned_to_index (assigned_to),
+  -- 后台工单列表按 updated_at 全局倒序分页，前面的复合索引以 user_id 打头无法支撑该排序，
+  -- 缺此索引会退化为全表扫描 + filesort。
+  KEY tickets_updated_at_index (updated_at),
   CONSTRAINT tickets_user_id_foreign
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT tickets_assigned_to_foreign
@@ -562,5 +606,55 @@ PREPARE users_plan_fk_statement FROM @users_plan_fk_sql;
 EXECUTE users_plan_fk_statement;
 DEALLOCATE PREPARE users_plan_fk_statement;
 
+-- 20260919_002：订单履约来源与后台备注。
+-- 三列同时引入，因此只需以第一列为探针做一次幂等判断；MySQL 8 不支持 ADD COLUMN IF NOT EXISTS。
+SET @orders_fulfillment_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'orders'
+    AND COLUMN_NAME = 'fulfillment_source'
+);
+SET @orders_fulfillment_sql = IF(
+  @orders_fulfillment_exists = 0,
+  'ALTER TABLE orders
+     ADD COLUMN fulfillment_source VARCHAR(16) NULL COMMENT ''履约来源：gateway 网关回调，admin 后台人工补单；NULL 表示尚未履约'' AFTER actual_commission_amount,
+     ADD COLUMN fulfilled_by_admin_id BIGINT UNSIGNED NULL COMMENT ''人工补单时操作的管理员'' AFTER fulfillment_source,
+     ADD COLUMN admin_remark VARCHAR(500) NULL COMMENT ''后台内部备注（补单原因等），仅后台可见'' AFTER fulfilled_by_admin_id',
+  'SELECT 1'
+);
+PREPARE orders_fulfillment_statement FROM @orders_fulfillment_sql;
+EXECUTE orders_fulfillment_statement;
+DEALLOCATE PREPARE orders_fulfillment_statement;
+
+-- 20260919_004：补齐后台列表查询缺失的索引。
+-- tickets 的后台列表按 updated_at 全局倒序分页，而既有索引 tickets_user_status_updated_index
+-- 以 user_id 打头，无法支撑该排序，实测退化为全表扫描 + filesort（1.5 万行时约 3.3ms，
+-- 深分页约 13.7ms，且随工单量线性恶化）。补一个单列索引让排序走索引扫描。
+SET @tickets_updated_index_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'tickets'
+    AND INDEX_NAME = 'tickets_updated_at_index'
+);
+SET @tickets_updated_index_sql = IF(
+  @tickets_updated_index_exists = 0,
+  'ALTER TABLE tickets ADD KEY tickets_updated_at_index (updated_at)',
+  'SELECT 1'
+);
+PREPARE tickets_updated_index_statement FROM @tickets_updated_index_sql;
+EXECUTE tickets_updated_index_statement;
+DEALLOCATE PREPARE tickets_updated_index_statement;
+
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260919_001', 'AeraNexa core business tables');
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260919_002', 'orders: fulfillment source, manual fulfillment admin, admin remark');
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260919_003', 'recharge card batches and card redemption ledger');
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260919_004', 'indexes: tickets updated_at for admin list ordering');
