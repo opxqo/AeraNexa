@@ -17,7 +17,7 @@
 | --- | --- |
 | TypeScript 类型检查（`tsc --noEmit`） | 通过，0 错误 |
 | ESLint（`eslint src` / `eslint tests`） | 通过，0 错误 0 警告 |
-| 集成测试（88 项） | 通过，88/88 |
+| 集成测试（89 项） | 通过，89/89 |
 | 生产构建（`next build`） | 通过，34 条路由全部编译成功（构建方法见第十七节附注） |
 | 端到端业务链路 | 通过（见第四节） |
 | 浏览器端到端（真实 UI 点击） | 通过，17/17（见第四节 4.3.1）＋ 公告/文档专项 33/33（见第十二节） |
@@ -32,11 +32,11 @@
 
 1. **静态校验** — 类型与代码规范，确认无编译期隐患。
 2. **生产构建** — 确认可部署，且所有路由可被 Next.js 正确收集。
-3. **接口级回归** — 88 项自动化测试，覆盖正常流、异常流、越权、限流、上限与边界值，另含 6 项 schema 读写路径静态守卫（见第十七节）。
+3. **接口级回归** — 89 项自动化测试，覆盖正常流、异常流、越权、限流、上限与边界值，另含 6 项 schema 读写路径静态守卫（见第十七节）。
 4. **端到端实测** — 对运行中的开发服务器 + MySQL 真实发起请求，验证数据落库结果。
 5. **浏览器端到端** — 用真实浏览器点击后台 UI，验证 Server Actions 的表单提交链路（这是第 3 层无法覆盖的部分，见 4.3.1）。
 
-验收脚本位于 `tests/acceptance/delivery-acceptance.test.mjs`（64 项），与既有 `tests/user-system/`（18 项）及 `tests/schema/`（6 项）共同构成 88 项回归集。测试数据带可识别前缀——交付验收用 `anx-accept-`，用户系统用 `codex-user-system-` / `codex-missing-code-` / `wallet-`——收尾按外键顺序清理，不污染业务库。收尾后 `users` 表仅剩真实账号 1 个，**本轮测试自身产生的**孤儿会话、孤儿订单与测试审计均为 0。
+验收脚本位于 `tests/acceptance/delivery-acceptance.test.mjs`（65 项），与既有 `tests/user-system/`（18 项）及 `tests/schema/`（6 项）共同构成 89 项回归集。测试数据带可识别前缀——交付验收用 `anx-accept-`，用户系统用 `codex-user-system-` / `codex-missing-code-` / `wallet-`——收尾按外键顺序清理，不污染业务库。收尾后 `users` 表仅剩真实账号 1 个，**本轮测试自身产生的**孤儿会话、孤儿订单与测试审计均为 0。
 
 > **复跑提示**：`node --test` 默认并发跑测试文件，多个文件同时打同一个 MySQL 实例时偶发 `结算下单：期望 200，实际 500`（6 次全量跑中出现约 2 次，且集中在同一处下单调用）。加 `--test-concurrency=1` 串行复跑可稳定通过，已连续多次全绿（最新 76/76）。判定为测试运行器的并发伪影，非业务回归。
 
@@ -290,13 +290,13 @@ eslint tests         → 0 问题
 # 代码规范
 ./node_modules/.bin/eslint src tests
 
-# 全量回归（88 项）
+# 全量回归（89 项）
 # 并发跑偶发下单 500，串行更稳（见第二节「复跑提示」）
 node --test-concurrency=1 --env-file=.env.local --test tests/schema/*.test.mjs tests/user-system/*.test.mjs tests/acceptance/*.test.mjs
 # 或
 pnpm test
 
-# 仅交付验收集（64 项）
+# 仅交付验收集（65 项）
 pnpm test:acceptance
 
 # 仅用户系统集（18 项）
@@ -347,7 +347,7 @@ pnpm test:schema
 | 新增文件 | 12：`errors.ts`、`subscription.ts`、`audit.ts`、`recharge-cards.ts`、`sanitize.ts`、`api-ui.tsx`、`admin-pagination.tsx`、`api/wallet.ts`、`tests/user-system/helpers.mjs`、`tests/user-system/wallet-api.test.mjs`、`tests/acceptance/delivery-acceptance.test.mjs`、本报告 |
 | `src` 代码量 | 17,455 行 |
 | 路由 | 33 条 |
-| 自动化测试 | 88 项（6 schema 读写守卫 + 18 用户系统 + 64 交付验收） |
+| 自动化测试 | 89 项（6 schema 读写守卫 + 18 用户系统 + 65 交付验收） |
 | 浏览器端到端 | 17 项（订单编辑三条链路）+ 33 项（公告与文档，见第十二节） |
 | 数据库迁移 | `20260919_001` 核心表、`20260919_002` 订单履约来源与备注、`20260919_003` 充值卡批次与兑换流水、`20260919_004` 工单列表排序索引 |
 
@@ -835,6 +835,14 @@ COMMISSION_AVAILABLE_AFTER_DAYS=0  # 冷静期天数，默认 0（立即可结�
 新增 4 条用例（写入与金额、无邀请人不计佣、结算后可划转、重放回调不重复计佣），
 全量 **80/80**（该轮完成时的回归规模，后续轮次见第十六、十七节），tsc / eslint 均为 0。
 
+**补充：冷静期（COMMISSION_AVAILABLE_AFTER_DAYS）分支的验证。**
+该分支最初没被任何用例覆盖。补测时没有去改服务端环境变量（那要跟 dev server 配置联动，太脆），
+而是直接把 `commission_logs.available_at` 推到未来再拉回过去——测的是结算条件本身
+（`available_at <= CURRENT_TIMESTAMP`），与配置无关，因此在任何配置下都成立。
+
+用例写完后做了**变异验证**：把结算条件临时改成 `AND 1 = 1`，确认用例确实失败在
+「冷静期内不应结算进余额」而不是碰巧通过——否则它就只是一个永远为绿的空壳。
+
 ---
 
 ## 十六、附：后台「流量统计」板块
@@ -987,7 +995,7 @@ assert.deepEqual(stale, [], `以下表已修好，请从清单删除：${stale.j
 ### 验证
 
 - 新增 6 条守卫用例，两个失败方向均实测确认；
-- 全量 **88/88**，tsc / eslint 均为 0；
+- 全量 **89/89**，tsc / eslint 均为 0；
 - 收尾核对：`users` 1、`orders` 5、`plans` 2、`coupons` 6（均为真实业务数据），
   `nodes` / 两张流量表 / `commission_logs` / `user_referrals` 等测试产物全部归零。
 

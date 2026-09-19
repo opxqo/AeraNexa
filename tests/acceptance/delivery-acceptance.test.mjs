@@ -1518,3 +1518,59 @@ test("[流量] 后台汇总按统计粒度分开，混合上报不会重复相�
   assert.equal(Number(totals[0].up), BYTES_PER_GB * 2, "本节点上行合计应为 2 GB");
   assert.ok(!html.includes("2.00 GB"), "两种粒度各 1 GB，不应出现合并后的 2.00 GB");
 });
+
+test("[返佣] 未到期的佣金不会被结算，到期后才进余额", async () => {
+  assert.ok(COMMISSION_RATE_PERCENT > 0, "本用例需要 COMMISSION_RATE_PERCENT > 0");
+
+  const planId = await createPlan({ monthPrice: 9900 });
+  const { email, cookie: inviterCookie } = await register();
+  const inviteCode = (await expectStatus(
+    await post("/api/client/invites", inviterCookie, {}),
+    201,
+    "生成邀请码",
+  )).data;
+
+  const { cookie: buyerCookie } = await registerWithInvite(inviteCode);
+  const { tradeNo } = await placeAndPayOrder(buyerCookie, planId);
+
+  const connection = await getDb();
+  const [logRows] = await connection.query(
+    `SELECT c.id FROM commission_logs c JOIN orders o ON o.id = c.order_id WHERE o.trade_no = ?`,
+    [tradeNo],
+  );
+  assert.equal(logRows.length, 1, "应先记一条佣金");
+  const logId = Number(logRows[0].id);
+
+  const [inviterRows] = await connection.query("SELECT id FROM users WHERE email = ?", [email]);
+  const inviterId = Number(inviterRows[0].id);
+
+  // 直接把可结算时间推到未来来模拟冷静期，而不是去改服务端的
+  // COMMISSION_AVAILABLE_AFTER_DAYS —— 后者要跟 dev server 的配置联动，太脆。
+  // 这样测的是结算条件本身（available_at <= CURRENT_TIMESTAMP），与配置无关。
+  await connection.query(
+    "UPDATE commission_logs SET available_at = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 3 DAY) WHERE id = ?",
+    [logId],
+  );
+
+  await expectStatus(await get("/api/client/invites", inviterCookie), 200, "邀请概览");
+  const [future] = await connection.query("SELECT commission_balance FROM users WHERE id = ?", [inviterId]);
+  assert.equal(Number(future[0].commission_balance), 0, "冷静期内不应结算进余额");
+  const [pendingRow] = await connection.query("SELECT status FROM commission_logs WHERE id = ?", [logId]);
+  assert.equal(pendingRow[0].status, "pending", "冷静期内应保持 pending");
+
+  // 冷静期结束后应自动结算（懒结算：读邀请概览时触发）。
+  await connection.query(
+    "UPDATE commission_logs SET available_at = DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 MINUTE) WHERE id = ?",
+    [logId],
+  );
+  await expectStatus(await get("/api/client/invites", inviterCookie), 200, "邀请概览");
+  const [past] = await connection.query("SELECT commission_balance FROM users WHERE id = ?", [inviterId]);
+  assert.equal(Number(past[0].commission_balance), expectedCommission(9900), "到期后应结算进余额");
+  const [settledRow] = await connection.query("SELECT status FROM commission_logs WHERE id = ?", [logId]);
+  assert.equal(settledRow[0].status, "settled", "到期后应变为 settled");
+
+  // 再次读取不应重复入账——结算是幂等的（FOR UPDATE + 状态已变为 settled）。
+  await expectStatus(await get("/api/client/invites", inviterCookie), 200, "再次读取邀请概览");
+  const [again] = await connection.query("SELECT commission_balance FROM users WHERE id = ?", [inviterId]);
+  assert.equal(Number(again[0].commission_balance), expectedCommission(9900), "重复结算不应让余额翻倍");
+});
