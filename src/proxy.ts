@@ -56,7 +56,6 @@ export const config = {
     "/profile/:path*",
     "/ticket/:path*",
     "/traffic/:path*",
-    "/payment-test/:path*",
     "/admin/:path*",
   ],
 };

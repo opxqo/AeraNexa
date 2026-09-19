@@ -32,17 +32,15 @@ const repoRoot = new URL("../../", import.meta.url);
 const srcDir = fileURLToPath(new URL("src", repoRoot));
 
 /** 有读取方但没有写入方。这些功能对用户而言是死的。 */
-const WRITE_GAP_ALLOWLIST = {
-  proxy_accounts: "3x-ui 开通未接线。后台节点列表只 SELECT COUNT(*) 显示账号数，从不写入 —— 付费用户拿不到节点账号。",
-};
+const WRITE_GAP_ALLOWLIST = {};
 
 /** 全项目零引用：连读都没有，等于没实现。 */
 const UNUSED_ALLOWLIST = {
-  access_groups: "节点分组访问控制未实现。",
-  node_access_groups: "节点分组访问控制未实现（本该是「用户能访问哪些节点」的关联表）。",
-  email_verification_codes: "卡在 SMTP：注册目前靠固定验证码 666666 通过，从不真正发信。",
-  password_reset_tokens: "卡在 SMTP：找回密码接口直接返回 501。",
-  schema_migrations: "迁移脚本是整体重放 schema.sql（全 IF NOT EXISTS），没有做版本跟踪，这张表因此没人用。",
+  password_reset_tokens: "验证码式找回密码已落地；此表只为未来链接式重置预留，当前没有读取方。",
+  // 注意：schema.sql 末尾确实会往这张表 INSERT 版本记录，但守卫只扫 src/，
+  // 因此这里指的是**应用侧**零引用——没有任何地方读取它，
+  // 运行时无法知道当前库处于哪个迁移版本。
+  schema_migrations: "应用侧零引用：schema.sql 会写入版本记录，但没有任何代码读取它，运行时查不到当前迁移状态。",
 };
 
 /** 只写不读。审计流水暂时没有读取方，属于可接受但需留痕。 */

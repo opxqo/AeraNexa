@@ -10,6 +10,8 @@ export type AuditAction =
   | "auth.logout"
   | "auth.password_changed"
   | "auth.security_reset"
+  | "auth.email_verification_sent"
+  | "auth.email_verification_failed"
   | "order.created"
   | "order.cancelled"
   | "order.paid"
@@ -25,6 +27,11 @@ export type AuditAction =
   | "admin.coupon_deleted"
   | "admin.payment_saved"
   | "admin.node_saved"
+  | "admin.nodes_imported"
+  | "admin.access_group_saved"
+  | "admin.access_group_deleted"
+  | "admin.user_devices_cleared"
+  | "admin.settings_saved"
   | "admin.ticket_updated"
   | "admin.ticket_replied"
   | "admin.order_status_changed"
@@ -38,7 +45,14 @@ export type AuditAction =
   | "admin.notice_saved"
   | "admin.notice_deleted"
   | "admin.knowledge_saved"
-  | "admin.knowledge_deleted";
+  | "admin.knowledge_deleted"
+  | "admin.smtp_saved"
+  | "admin.smtp_toggled"
+  | "admin.smtp_tested"
+  | "admin.payment_refunded"
+  | "admin.payment_sandbox_callback"
+  | "admin.reconciliation_imported"
+  | "admin.reconciliation_resolved";
 
 export type AuditInput = {
   action: AuditAction;

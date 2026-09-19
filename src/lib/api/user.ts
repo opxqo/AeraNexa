@@ -8,7 +8,36 @@ export interface ResetSecurityResult {
   subscribe_url: string;
 }
 
+/** 订阅层登记的设备（HWID）。 */
+export interface UserDevice {
+  id: number;
+  user_agent: string | null;
+  device_os: string | null;
+  os_version: string | null;
+  device_model: string | null;
+  first_seen_at: number;
+  last_seen_at: number;
+}
+
+export interface UserDevices {
+  /** 设备数上限，0 表示不限。 */
+  limit: number;
+  items: UserDevice[];
+}
+
 export const userApi = {
+  async fetchDevices(): Promise<UserDevices> {
+    return localApiRequest<UserDevices>("user/devices");
+  },
+
+  /** 移除单台设备；不传 id 时移除全部。 */
+  async removeDevices(id?: number): Promise<{ removed: number }> {
+    return localApiRequest<{ removed: number }>("user/devices", {
+      method: "POST",
+      body: id === undefined ? { all: true } : { id },
+    });
+  },
+
   // 获取个人资料与基础配置
   async fetchInfo(): Promise<UserInfo> {
     return localApiRequest<UserInfo>("user/info", { silentUnauthorized: true });

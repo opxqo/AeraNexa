@@ -18,6 +18,7 @@ export interface ForgetParams {
   email: string;
   email_code: string;
   password: string;
+  password_confirmation?: string;
 }
 
 export const authApi = {
@@ -38,10 +39,10 @@ export const authApi = {
   },
 
   // 发送邮箱验证码
-  async sendEmailVerify(email: string): Promise<string> {
-    return localApiRequest<string>("auth/send-email-verify", {
+  async sendEmailVerify(email: string, purpose: "register" | "reset-password" = "register"): Promise<{ message: string }> {
+    return localApiRequest<{ message: string }>("auth/send-email-verify", {
       method: "POST",
-      body: { email },
+      body: { email, purpose },
     });
   },
 

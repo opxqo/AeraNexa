@@ -12,21 +12,26 @@ interface ClientApp {
   scheme: (url: string) => string;
 }
 
+/** 显式指定订阅格式：Clash 系客户端导入时带上 flag，服务端据此返回 Clash YAML（不依赖 User-Agent）。 */
+function withFlag(url: string, flag: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}flag=${flag}`;
+}
+
 const clients: ClientApp[] = [
   {
     name: "Clash For Windows",
     icon: "/assets/icon/Clash For Windows.png",
-    scheme: (url) => `clash://install-config?url=${encodeURIComponent(url)}&name=AeraNexa`,
+    scheme: (url) => `clash://install-config?url=${encodeURIComponent(withFlag(url, "clash"))}&name=AeraNexa`,
   },
   {
     name: "Clash For Android",
     icon: "/assets/icon/Clash For Android.png",
-    scheme: (url) => `clash://install-config?url=${encodeURIComponent(url)}&name=AeraNexa`,
+    scheme: (url) => `clash://install-config?url=${encodeURIComponent(withFlag(url, "clash"))}&name=AeraNexa`,
   },
   {
     name: "ClashX",
     icon: "/assets/icon/ClashX.png",
-    scheme: (url) => `clash://install-config?url=${encodeURIComponent(url)}&name=AeraNexa`,
+    scheme: (url) => `clash://install-config?url=${encodeURIComponent(withFlag(url, "clash"))}&name=AeraNexa`,
   },
   {
     name: "Shadowrocket",
@@ -55,7 +60,7 @@ const clients: ClientApp[] = [
   {
     name: "Stash",
     icon: "/assets/icon/Stash.png",
-    scheme: (url) => `stash://install-config?url=${encodeURIComponent(url)}`,
+    scheme: (url) => `stash://install-config?url=${encodeURIComponent(withFlag(url, "clash"))}`,
   },
   {
     name: "Surfboard",

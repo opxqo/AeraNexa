@@ -30,7 +30,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
   const current = adminSections.find(
     ({ href }) => pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`)),
   );
-  const groups = [undefined, "业务管理", "资源与支持"] as const;
+  const groups = [undefined, "业务管理", "资源与支持", "系统"] as const;
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {

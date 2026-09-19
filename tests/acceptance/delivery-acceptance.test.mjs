@@ -8,8 +8,10 @@
  * 所有测试数据均带时间戳前缀，并在收尾时按外键顺序清理，不会污染业务库。
  */
 import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { readFile } from "node:fs/promises";
+import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 import { enableMockPaymentForTests, restoreMockPaymentMethod } from "../user-system/helpers.mjs";
 
@@ -240,14 +242,21 @@ async function createNode() {
 async function register() {
   const email = `anx-accept-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`;
   created.emails.push(email);
-  const response = await fetch(`${baseUrl}/api/auth/register`, {
+  // 验收用例覆盖的是账户后的业务能力，夹具直接建已验证账户，避免依赖外部 SMTP。
+  const connection = await getDb();
+  await connection.execute(
+    `INSERT INTO users (email, password_hash, nickname, uuid, subscription_token, email_verified_at)
+     VALUES (?, ?, 'acceptance-user', ?, ?, CURRENT_TIMESTAMP)`,
+    [email, await bcrypt.hash(PASSWORD, 12), randomUUID(), randomBytes(16).toString("hex")],
+  );
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, password_confirmation: PASSWORD, email_code: "666666" }),
+    body: JSON.stringify({ email, password: PASSWORD }),
   });
-  if (response.status !== 201) assert.fail(`注册失败：${await response.text()}`);
+  if (response.status !== 200) assert.fail(`登录测试账户失败：${await response.text()}`);
   const cookie = response.headers.getSetCookie()[0]?.split(";", 1)[0];
-  assert.ok(cookie, "注册应下发会话 Cookie");
+  assert.ok(cookie, "登录应下发会话 Cookie");
   return { email, cookie };
 }
 
@@ -336,7 +345,7 @@ test("[用户] 订阅信息包含服务端时间、剩余天数与私有订阅�
   assert.equal(typeof body.data.server_time, "number");
   const url = new URL(body.data.subscribe_url);
   assert.equal(url.origin, new URL(baseUrl).origin);
-  assert.equal(url.pathname, "/api/v1/client/subscribe");
+  assert.equal(url.pathname, "/api/client/subscribe");
   assert.equal(url.searchParams.get("token"), body.data.token);
 });
 
@@ -1312,22 +1321,29 @@ test("[流量] 带偏移量的 ISO 时间与东八区简写落在同一个桶", 
 const COMMISSION_RATE_PERCENT = Number(process.env.COMMISSION_RATE_PERCENT ?? 0);
 const expectedCommission = (amountCents) => Math.floor((amountCents * COMMISSION_RATE_PERCENT) / 100);
 
-/** 用邀请码注册，建立真实的推荐关系（而不是手工插 user_referrals）。 */
+/** 为返佣验收建立已验证的受邀测试账户；SMTP 流程由认证用例独立覆盖。 */
 async function registerWithInvite(inviteCode) {
   const email = `anx-accept-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`;
   created.emails.push(email);
-  const response = await fetch(`${baseUrl}/api/auth/register`, {
+  const connection = await getDb();
+  const [codes] = await connection.execute("SELECT id, user_id FROM invite_codes WHERE code = ? AND status = 0 LIMIT 1", [inviteCode]);
+  assert.ok(codes[0], "邀请码应存在且可用");
+  const [user] = await connection.execute(
+    `INSERT INTO users (email, password_hash, nickname, uuid, subscription_token, email_verified_at)
+     VALUES (?, ?, 'acceptance-invite-user', ?, ?, CURRENT_TIMESTAMP)`,
+    [email, await bcrypt.hash(PASSWORD, 12), randomUUID(), randomBytes(16).toString("hex")],
+  );
+  await connection.execute(
+    "INSERT INTO user_referrals (inviter_user_id, invited_user_id, invite_code_id) VALUES (?, ?, ?)",
+    [codes[0].user_id, user.insertId, codes[0].id],
+  );
+  await connection.execute("UPDATE invite_codes SET used_count = used_count + 1 WHERE id = ?", [codes[0].id]);
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      email,
-      password: PASSWORD,
-      password_confirmation: PASSWORD,
-      email_code: "666666",
-      invite_code: inviteCode,
-    }),
+    body: JSON.stringify({ email, password: PASSWORD }),
   });
-  if (response.status !== 201) assert.fail(`带邀请码注册失败：${await response.text()}`);
+  if (response.status !== 200) assert.fail(`受邀测试账户登录失败：${await response.text()}`);
   const cookie = response.headers.getSetCookie()[0]?.split(";", 1)[0];
   assert.ok(cookie, "注册应下发会话 Cookie");
   return { email, cookie };

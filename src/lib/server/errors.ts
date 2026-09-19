@@ -63,6 +63,10 @@ export function tooManyRequests(message: string): BusinessError {
   return new BusinessError("too_many_requests", message);
 }
 
+export function unavailable(message: string): BusinessError {
+  return new BusinessError("unavailable", message);
+}
+
 export type ApiErrorPayload = {
   message: string;
   code: ErrorCode;

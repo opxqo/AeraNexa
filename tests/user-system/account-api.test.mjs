@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
+import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 import { assertApiError, enableMockPaymentForTests, restoreMockPaymentMethod } from "./helpers.mjs";
 
@@ -61,17 +63,22 @@ async function registerTestUser() {
   const email = `codex-user-system-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`;
   testEmails.push(email);
 
-  const response = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      email,
-      password: "test-password-123",
-      password_confirmation: "test-password-123",
-      email_code: "666666",
-    }),
+  // 这些账户夹具用于用户、订单和会话回归，不应依赖生产 SMTP 或任何固定验证码。
+  const connection = await mysql.createConnection({
+    host: process.env.DB_HOST ?? "127.0.0.1", port: Number(process.env.DB_PORT ?? 3306),
+    database: process.env.DB_NAME ?? "aeranexa", user: process.env.DB_USER ?? "root", password: process.env.DB_PASSWORD,
   });
-  assert.equal(response.status, 201, await response.text());
+  try {
+    await connection.execute(
+      `INSERT INTO users (email, password_hash, nickname, uuid, subscription_token, email_verified_at)
+       VALUES (?, ?, 'test-user', ?, ?, CURRENT_TIMESTAMP)`,
+      [email, await bcrypt.hash("test-password-123", 12), randomUUID(), randomBytes(16).toString("hex")],
+    );
+  } finally {
+    await connection.end();
+  }
+  const response = await login(email, "test-password-123");
+  assert.equal(response.status, 200, await response.text());
 
   const sessionCookie = response.headers.getSetCookie()[0]?.split(";", 1)[0];
   assert.ok(sessionCookie, "注册成功后应设置会话 Cookie");
@@ -166,7 +173,7 @@ test("订阅信息返回当前用户可用的私有订阅地址", async () => {
   assert.match(data.token, /^[a-f0-9]{32}$/);
   const subscribeUrl = new URL(data.subscribe_url);
   assert.equal(subscribeUrl.origin, new URL(baseUrl).origin);
-  assert.equal(subscribeUrl.pathname, "/api/v1/client/subscribe");
+  assert.equal(subscribeUrl.pathname, "/api/client/subscribe");
   assert.equal(subscribeUrl.searchParams.get("token"), data.token);
 });
 
@@ -229,7 +236,7 @@ test("修改密码拒绝继续使用原密码", async () => {
   await assertApiError(response, { message: "新密码不能与旧密码相同", code: "invalid_request" });
 });
 
-test("注册必须提交默认邮箱验证码", async () => {
+test("注册必须提交邮箱验证码", async () => {
   const email = `codex-missing-code-${Date.now()}@example.test`;
   testEmails.push(email);
   const response = await fetch(`${baseUrl}/api/auth/register`, {
@@ -243,7 +250,7 @@ test("注册必须提交默认邮箱验证码", async () => {
   });
 
   assert.equal(response.status, 400);
-  await assertApiError(response, { message: "邮箱验证码错误", code: "invalid_request" });
+  await assertApiError(response, { message: "请输入邮箱验证码", code: "invalid_request" });
 });
 
 test("客户面板通过本地接口完成模拟支付并开通套餐", async () => {

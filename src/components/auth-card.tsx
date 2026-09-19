@@ -72,9 +72,9 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
     }
 
     try {
-      const code = await authApi.sendEmailVerify(email);
+      const result = await authApi.sendEmailVerify(email, isForget ? "reset-password" : "register");
       setCountdown(60);
-      setSuccessMessage(`SMTP 尚未配置，当前验证码：${code}`);
+      setSuccessMessage(result.message || "验证码已发送，请查收邮箱");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error, "验证码发送失败，请稍后重试"));
     }
@@ -118,6 +118,16 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
         return;
       }
     }
+    if (isForget) {
+      if (!emailCode.trim()) {
+        setErrorMessage("请输入邮箱验证码");
+        return;
+      }
+      if (password !== rePassword) {
+        setErrorMessage("两次输入的密码不一致");
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -138,6 +148,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
           email,
           email_code: emailCode,
           password,
+          password_confirmation: rePassword,
         });
         setSuccessMessage("密码重置成功，请使用新密码登入");
         setTimeout(() => router.push("/login"), 1500);

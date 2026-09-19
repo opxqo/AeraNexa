@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCheck, ChevronDown, ChevronUp, Download, Loader2, Pencil, Plus, RotateCcw, Save, Send, Trash2, XCircle } from "lucide-react";
-import type { AdminEditorData, AdminKnowledgeArticle, AdminTicketMessage } from "@/lib/server/admin-editor";
+import Link from "next/link";
+import { CheckCheck, ChevronDown, ChevronUp, Download, Loader2, Network, Pencil, Plus, RefreshCw, RotateCcw, Save, Send, Trash2, Upload, XCircle } from "lucide-react";
+import type { AdminEditorData, AdminKnowledgeArticle, AdminTicketMessage, EditorAccessGroup } from "@/lib/server/admin-editor";
 import {
+  deleteAccessGroupAction,
   deleteCouponAction,
   deleteKnowledgeAction,
   deleteNoticeAction,
@@ -16,7 +18,11 @@ import {
   fulfillOrderAction,
   getKnowledgeArticleAction,
   getTicketMessagesAction,
+  importInboundsAction,
   replyTicketAction,
+  saveSystemSettingsAction,
+  testPanelConnectionAction,
+  saveAccessGroupAction,
   saveCouponAction,
   saveKnowledgeAction,
   saveNodeAction,
@@ -27,9 +33,16 @@ import {
   savePlanAction,
   saveTicketAction,
   saveUserAction,
+  saveSmtpSettingsAction,
+  testSmtpSettingsAction,
+  clearUserDevicesAction,
   createRechargeCardsAction,
   getRechargeCardBatchDetailsAction,
   updateOrderStatusAction,
+  refundBalanceOrderAction,
+  importReconciliationCsvAction,
+  resolveReconciliationRowAction,
+  sendSandboxPaymentCallbackAction,
 } from "@/app/admin/actions";
 import { ConfirmModal, Modal, useToast } from "@/components/v2-modal";
 import { AdminListPager, AdminListToolbar } from "@/components/admin-pagination";
@@ -139,6 +152,86 @@ function RoleBadge({ role }: { role: "admin" | "user" }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 邮件服务
+// ---------------------------------------------------------------------------
+
+function MailEditor({ settings }: { settings: Extract<AdminEditorData, { section: "mail" }>['page']['rows'][number] }) {
+  const [editing, setEditing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const { pending, submit } = useSubmit();
+  const { showToast } = useToast();
+  const close = () => setEditing(false);
+
+  const runTest = () => {
+    if (!testEmail.trim()) {
+      showToast("请先输入测试收件邮箱", "error");
+      return;
+    }
+    setTesting(true);
+    const form = new FormData();
+    form.set("to", testEmail.trim());
+    void testSmtpSettingsAction(form).then((result) => showToast(result.message, result.ok ? "success" : "error")).catch(() => showToast("SMTP 测试失败", "error")).finally(() => setTesting(false));
+  };
+
+  return (
+    <>
+      <section className="v2-block">
+        <header className="v2-block-header">
+          <div>
+            <h2>SMTP 邮件验证码</h2>
+            <p className="admin-audit-note">服务关闭时，注册与找回密码都会安全拒绝，不会降级为固定验证码。</p>
+          </div>
+          <div className="admin-inline-actions">
+            <span className={`v2-badge ${settings.enabled ? "badge-success" : "badge-warning"}`}>{settings.enabled ? "服务已启用" : "服务已停用"}</span>
+            <EditButton label="配置服务" onClick={() => setEditing(true)} />
+          </div>
+        </header>
+        <div className="table-wrap">
+          <table className="v2-table">
+            <tbody>
+              <tr><th>配置状态</th><td><span className={`v2-badge ${settings.configured ? "badge-success" : "badge-warning"}`}>{settings.configured ? "配置完整" : "待补充"}</span></td><th>加密密钥</th><td><span className={`v2-badge ${settings.encryptionReady ? "badge-success" : "badge-danger"}`}>{settings.encryptionReady ? "就绪" : "服务器缺失"}</span></td></tr>
+              <tr><th>SMTP 主机</th><td className="mono">{settings.host || "—"}</td><th>端口 / TLS</th><td>{settings.port || "—"}{settings.port ? ` / ${settings.secure ? "SSL/TLS" : "STARTTLS/明文"}` : ""}</td></tr>
+              <tr><th>登录账号</th><td>{settings.username || "—"}</td><th>密码</th><td>{settings.hasPassword ? "已安全保存" : "未配置"}</td></tr>
+              <tr><th>发件人</th><td>{settings.fromName || "—"}{settings.fromEmail ? ` <${settings.fromEmail}>` : ""}</td><th>最后更新</th><td>{settings.updatedAt}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="v2-block">
+        <header className="v2-block-header"><h2>发送测试邮件</h2></header>
+        <div className="admin-inline-form">
+          <input type="email" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} placeholder="测试收件邮箱" aria-label="测试收件邮箱" />
+          <button type="button" className="button button-secondary" disabled={testing || !settings.configured || !settings.encryptionReady} onClick={runTest}>
+            {testing ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} {testing ? "发送中…" : "发送测试邮件"}
+          </button>
+        </div>
+        <p className="admin-audit-note">测试不要求先启用客户服务；配置密码不会显示、返回或写入审计日志。</p>
+      </section>
+
+      <EditorModal open={editing} title="配置 SMTP 邮件服务" onClose={close} width={680}>
+        <form className="admin-editor-form" onSubmit={(event) => { event.preventDefault(); submit(saveSmtpSettingsAction, event.currentTarget, close); }}>
+          <label className="v2-field checkbox-field"><input name="enabled" type="checkbox" defaultChecked={settings.enabled} /><span>启用客户邮件验证码服务</span><small>启用前必须填写全部 SMTP 字段，且服务器已配置加密主密钥。</small></label>
+          <div className="admin-form-grid">
+            <label className="v2-field"><span>SMTP 主机</span><input name="host" defaultValue={settings.host} placeholder="smtp.example.com" maxLength={255} /></label>
+            <label className="v2-field"><span>端口</span><input name="port" type="number" min={1} max={65535} defaultValue={settings.port || ""} placeholder="587" /></label>
+          </div>
+          <label className="v2-field checkbox-field"><input name="secure" type="checkbox" defaultChecked={settings.secure} /><span>使用 SSL/TLS（通常为 465 端口）</span></label>
+          <label className="v2-field"><span>SMTP 登录账号</span><input name="username" defaultValue={settings.username} autoComplete="off" maxLength={255} /></label>
+          <label className="v2-field"><span>SMTP 密码 / 应用专用密码</span><input name="password" type="password" autoComplete="new-password" placeholder={settings.hasPassword ? "留空则保留当前密码" : "首次配置必填"} maxLength={1000} /><small>仅保存 AES-256-GCM 密文，后台不会再次显示明文。</small></label>
+          <div className="admin-form-grid">
+            <label className="v2-field"><span>发件人名称</span><input name="fromName" defaultValue={settings.fromName} placeholder="AeraNexa" maxLength={100} /></label>
+            <label className="v2-field"><span>发件邮箱</span><input name="fromEmail" type="email" defaultValue={settings.fromEmail} placeholder="no-reply@example.com" maxLength={255} /></label>
+          </div>
+          <FormFooter pending={pending} onClose={close} submitLabel="保存 SMTP 配置" />
+        </form>
+      </EditorModal>
+    </>
+  );
+}
+
 /** 危险操作统一走二次确认，避免误删。 */
 function DeleteButton({ label, onConfirm, pending, disabled }: {
   label: string; onConfirm: () => void; pending: boolean; disabled?: boolean;
@@ -179,7 +272,7 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
             <thead>
               <tr>
                 <th>用户</th><th>身份</th><th>套餐</th><th>到期时间</th>
-                <th>剩余额度</th><th>余额</th><th>状态</th><th>操作</th>
+                <th>已用 / 额度</th><th>余额</th><th>状态</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -189,7 +282,7 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
                   <td><RoleBadge role={row.role} /></td>
                   <td>{row.planName}</td>
                   <td>{row.expiredAt}</td>
-                  <td>{row.transferEnableGb} GB</td>
+                  <td>{row.usedGb} / {row.transferEnableGb} GB</td>
                   <td>{money(row.balance)}</td>
                   <td>
                     <span className={`v2-badge ${row.isActive ? "badge-success" : "badge-danger"}`}>
@@ -238,6 +331,27 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
                 <input name="commissionBalance" type="number" min="0" step="0.01" defaultValue={(selected.commissionBalance / 100).toFixed(2)} required />
               </label>
             </div>
+            <div className="admin-form-grid">
+              <label className="v2-field">
+                <span>设备数（留空跟随套餐，0 不限）</span>
+                <input name="deviceLimitOverride" type="number" min="0" max="1000" step="1" defaultValue={selected.deviceLimitOverride ?? ""} placeholder="跟随套餐" />
+              </label>
+              <div className="v2-field">
+                <span>已登记设备（订阅层 HWID）</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <strong>{selected.deviceCount} 台</strong>
+                  <button
+                    type="button"
+                    className="admin-action-button"
+                    disabled={pending || selected.deviceCount === 0}
+                    onClick={() => submit(clearUserDevicesAction, buildForm({ id: selected.id }), close)}
+                  >
+                    清空设备
+                  </button>
+                </div>
+              </div>
+            </div>
+            <small className="admin-hint">已用流量 {selected.usedGb} GB，由节点 worker 每分钟从 3x-ui 采集累加。</small>
             <label className="admin-check-row">
               <input name="isActive" type="checkbox" defaultChecked={selected.isActive} />
               <span>账户正常启用（取消勾选将禁止登录）</span>
@@ -272,7 +386,7 @@ const PLAN_PRICE_INPUTS = [
   { name: "resetPrice", label: "流量重置" },
 ] as const;
 
-function PlansEditor({ page }: { page: Extract<AdminEditorData, { section: "plans" }>["page"] }) {
+function PlansEditor({ page, groups }: { page: Extract<AdminEditorData, { section: "plans" }>["page"]; groups: EditorAccessGroup[] }) {
   const [selected, setSelected] = useState<(typeof page.rows)[number] | null | "new">(null);
   const { pending, submit } = useSubmit();
   const close = () => setSelected(null);
@@ -301,9 +415,15 @@ function PlansEditor({ page }: { page: Extract<AdminEditorData, { section: "plan
                   .map((input) => input.label);
                 return (
                   <tr key={row.id}>
-                    <td>{row.name}<small>排序 {row.sortOrder}</small></td>
+                    <td>
+                      {row.name}
+                      <small>排序 {row.sortOrder} · {row.groupId === null ? "未分配节点" : `权限组：${groups.find((group) => group.id === row.groupId)?.name ?? row.groupId}`}</small>
+                    </td>
                     <td>{row.transferEnable} GB</td>
-                    <td>{row.speedLimit === null ? "不限速" : `${row.speedLimit} Mbps`}</td>
+                    <td>
+                      {row.speedLimit === null ? "不限速" : `${row.speedLimit} Mbps`}
+                      <small>{row.deviceLimit ? `${row.deviceLimit} 台设备` : "设备不限"}</small>
+                    </td>
                     <td>{money(row.monthPrice)}</td>
                     <td>{periods.length ? periods.join(" / ") : <span className="admin-muted">未配置</span>}</td>
                     <td>
@@ -331,13 +451,25 @@ function PlansEditor({ page }: { page: Extract<AdminEditorData, { section: "plan
       <EditorModal open={selected !== null} title={item ? "编辑套餐" : "新建套餐"} onClose={close} width={640}>
         <form className="admin-editor-form" onSubmit={(event) => { event.preventDefault(); submit(savePlanAction, event.currentTarget, close); }}>
           <input name="id" type="hidden" value={item?.id ?? ""} />
-          <label className="v2-field"><span>套餐名称</span><input name="name" defaultValue={item?.name ?? ""} required maxLength={255} /></label>
+          <div className="admin-form-grid">
+            <label className="v2-field"><span>套餐名称</span><input name="name" defaultValue={item?.name ?? ""} required maxLength={255} /></label>
+            <label className="v2-field">
+              <span>节点权限组（决定可用节点）</span>
+              <select name="groupId" defaultValue={item?.groupId ?? ""}>
+                <option value="">不分配节点</option>
+                {groups.map((group) => <option key={group.id} value={group.id}>{group.name}（{group.nodeCount} 个节点）</option>)}
+              </select>
+            </label>
+          </div>
           <div className="admin-form-grid">
             <label className="v2-field"><span>流量（GB）</span><input name="transferEnable" type="number" min="0" step="1" defaultValue={item?.transferEnable ?? 100} required /></label>
             <label className="v2-field"><span>限速（Mbps，留空不限速）</span><input name="speedLimit" type="number" min="0" step="1" defaultValue={item?.speedLimit ?? ""} /></label>
           </div>
           <div className="admin-form-grid">
             <label className="v2-field"><span>人数上限（留空不限）</span><input name="capacityLimit" type="number" min="0" step="1" defaultValue={item?.capacityLimit ?? ""} /></label>
+            <label className="v2-field"><span>设备数上限（留空或 0 不限）</span><input name="deviceLimit" type="number" min="0" max="1000" step="1" defaultValue={item?.deviceLimit ?? ""} /></label>
+          </div>
+          <div className="admin-form-grid">
             <label className="v2-field"><span>排序（越小越靠前）</span><input name="sortOrder" type="number" min="0" step="1" defaultValue={item?.sortOrder ?? 0} required /></label>
           </div>
 
@@ -464,10 +596,19 @@ function PaymentsEditor({ page }: { page: Extract<AdminEditorData, { section: "p
             <label className="v2-field"><span>回调域名（可选）</span><input name="notifyDomain" type="url" defaultValue={item?.notifyDomain ?? ""} placeholder="https://example.com" /></label>
             <label className="v2-field"><span>排序</span><input name="sortOrder" type="number" min="0" step="1" defaultValue={item?.sortOrder ?? 0} required /></label>
           </div>
+          <label className="v2-field"><span>回调签名密钥（可选）</span><input name="callbackSecret" type="password" autoComplete="new-password" placeholder="留空则保持当前密钥" maxLength={1000} /><small>使用 PAYMENT_CONFIG_ENCRYPTION_KEY 加密保存，后台不会回显。</small></label>
           <label className="admin-check-row"><input name="isEnabled" type="checkbox" defaultChecked={item?.isEnabled ?? true} /><span>启用该渠道</span></label>
           <FormFooter pending={pending} onClose={close} />
         </form>
       </EditorModal>
+
+      <section className="v2-block">
+        <header className="v2-block-header"><div><h2>签名回调沙箱</h2><p className="admin-audit-note">仅处理待支付的 mock 交易；会通过与真实网关相同的 HMAC 回调链路履约。</p></div></header>
+        <form className="admin-inline-form" onSubmit={(event) => { event.preventDefault(); submit(sendSandboxPaymentCallbackAction, event.currentTarget, () => {}); }}>
+          <input name="transactionId" type="number" min="1" required placeholder="待支付 mock 交易编号" aria-label="待支付 mock 交易编号" />
+          <button type="submit" className="button button-secondary" disabled={pending}><Send size={15} />投递签名回调</button>
+        </form>
+      </section>
     </>
   );
 }
@@ -476,32 +617,114 @@ function PaymentsEditor({ page }: { page: Extract<AdminEditorData, { section: "p
 // 节点
 // ---------------------------------------------------------------------------
 
-function NodesEditor({ page }: { page: Extract<AdminEditorData, { section: "nodes" }>["page"] }) {
-  const [selected, setSelected] = useState<(typeof page.rows)[number] | null | "new">(null);
+/** 节点权限组管理：新建、重命名、删除。套餐选一个权限组，节点可属于多个权限组。 */
+function AccessGroupsModal({ open, onClose, groups }: { open: boolean; onClose: () => void; groups: EditorAccessGroup[] }) {
   const { pending, submit } = useSubmit();
+  const keepOpen = () => {};
+  return (
+    <EditorModal open={open} title="节点权限组" onClose={onClose} width={560}>
+      <div className="admin-editor-form">
+        <p className="admin-hint">用户能用的节点 = 其套餐所选权限组内、已启用的节点。一个节点可以同时属于多个权限组。</p>
+        {groups.length ? groups.map((group) => (
+          <form
+            key={group.id}
+            className="admin-form-grid"
+            onSubmit={(event) => { event.preventDefault(); submit(saveAccessGroupAction, event.currentTarget, keepOpen); }}
+          >
+            <input name="id" type="hidden" value={group.id} />
+            <label className="v2-field">
+              <span>{group.nodeCount} 个节点 · {group.planCount} 个套餐</span>
+              <input name="name" defaultValue={group.name} required maxLength={100} />
+            </label>
+            <div className="admin-row-actions" style={{ alignSelf: "end" }}>
+              <button type="submit" className="admin-action-button" disabled={pending}><Save size={14} />重命名</button>
+              <DeleteButton
+                label={`权限组「${group.name}」`}
+                pending={pending}
+                disabled={group.planCount > 0}
+                onConfirm={() => submit(deleteAccessGroupAction, buildForm({ id: group.id }), keepOpen)}
+              />
+            </div>
+          </form>
+        )) : <p className="admin-muted">还没有权限组。</p>}
+        <form
+          className="admin-form-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            submit(saveAccessGroupAction, form, () => form.reset());
+          }}
+        >
+          <label className="v2-field"><span>新建权限组</span><input name="name" required maxLength={100} placeholder="例如：标准线路" /></label>
+          <div style={{ alignSelf: "end" }}>
+            <button type="submit" className="button button-primary" disabled={pending}><Plus size={15} />新建</button>
+          </div>
+        </form>
+      </div>
+    </EditorModal>
+  );
+}
+
+function NodesEditor({ page, groups }: { page: Extract<AdminEditorData, { section: "nodes" }>["page"]; groups: EditorAccessGroup[] }) {
+  const [selected, setSelected] = useState<(typeof page.rows)[number] | null | "new">(null);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const { pending, submit } = useSubmit();
+  const [importing, startImport] = useTransition();
+  const { showToast } = useToast();
+  const router = useRouter();
   const close = () => setSelected(null);
   const item = selected === "new" ? null : selected;
+  const locked = Boolean(item?.imported);
+
+  const importFromPanel = () => {
+    startImport(async () => {
+      try {
+        const result = await importInboundsAction();
+        showToast(result.message, result.ok ? "success" : "error");
+        if (result.ok) router.refresh();
+      } catch {
+        showToast("同步失败，请稍后重试", "error");
+      }
+    });
+  };
 
   return (
     <>
       <div className="admin-section-actions">
-        <button type="button" className="button button-primary" onClick={() => setSelected("new")}>
-          <Plus size={15} />新建节点
+        <button type="button" className="button button-primary" onClick={importFromPanel} disabled={importing}>
+          {importing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+          {importing ? "同步中…" : "从 3x-ui 同步入站"}
+        </button>
+        <button type="button" className="button button-secondary" onClick={() => setGroupsOpen(true)}>
+          <Network size={15} />权限组（{groups.length}）
+        </button>
+        <button type="button" className="button button-secondary" onClick={() => setSelected("new")}>
+          <Plus size={15} />手动新建
         </button>
       </div>
+      <AccessGroupsModal open={groupsOpen} onClose={() => setGroupsOpen(false)} groups={groups} />
       <section className="v2-block">
         <div className="table-wrap">
           <table className="v2-table">
             <thead>
               <tr>
-                <th>节点</th><th>协议</th><th>地址</th><th>倍率</th>
+                <th>节点</th><th>协议</th><th>地址</th><th title="节点倍率暂未参与计费">倍率（未生效）</th>
                 <th>账号数</th><th>状态</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
               {page.rows.length ? page.rows.map((row) => (
                 <tr key={row.id}>
-                  <td>{row.name}<small>{row.externalPanel}{row.externalInboundId ? ` · ${row.externalInboundId}` : ""}</small></td>
+                  <td>
+                    {row.name}
+                    <small>
+                      {row.externalPanel}{row.externalInboundId ? ` · 入站 ${row.externalInboundId}` : ""}
+                      {" · "}
+                      {row.groupIds.length
+                        ? groups.filter((group) => row.groupIds.includes(group.id)).map((group) => group.name).join("、")
+                        : "未加入权限组"}
+                    </small>
+                  </td>
                   <td>{row.protocol.toUpperCase()}</td>
                   <td className="mono">{row.host}:{row.port}</td>
                   <td>{row.rate.toFixed(2)}x</td>
@@ -510,6 +733,8 @@ function NodesEditor({ page }: { page: Extract<AdminEditorData, { section: "node
                     <span className={`v2-badge ${row.isOnline ? "badge-success" : "badge-danger"}`}>
                       {row.isOnline ? "在线" : "离线"}
                     </span>
+                    {row.missingSince ? <span className="v2-badge badge-danger" title={`自 ${row.missingSince} 起`}>3x-ui 中已不存在</span> : null}
+                    {!row.isEnabled ? <span className="v2-badge">未启用</span> : null}
                     {!row.isVisible ? <span className="v2-badge">已隐藏</span> : null}
                   </td>
                   <td className="admin-row-actions">
@@ -521,12 +746,12 @@ function NodesEditor({ page }: { page: Extract<AdminEditorData, { section: "node
                     />
                   </td>
                 </tr>
-              )) : <tr><td colSpan={7} className="admin-empty">暂无节点，可先添加 3x-ui 映射节点</td></tr>}
+              )) : <tr><td colSpan={7} className="admin-empty">暂无节点，请先在 3x-ui 建好入站，再点「从 3x-ui 同步入站」</td></tr>}
             </tbody>
           </table>
         </div>
         <p className="admin-audit-note">
-          后台仅维护节点映射元数据，不会直接调用 3x-ui 管理接口；节点账号下发属于后端编排范围。
+          入站在 3x-ui 中创建，同步后以「未启用、隐藏」导入；填好对外地址并启用后才会分配给用户。同步只读取 3x-ui，不会修改面板。
         </p>
       </section>
 
@@ -535,25 +760,39 @@ function NodesEditor({ page }: { page: Extract<AdminEditorData, { section: "node
           <input name="id" type="hidden" value={item?.id ?? ""} />
           <div className="admin-form-grid">
             <label className="v2-field"><span>节点名称</span><input name="name" defaultValue={item?.name ?? ""} required maxLength={255} /></label>
-            <label className="v2-field"><span>协议</span><input name="protocol" defaultValue={item?.protocol ?? "vless"} required pattern="[a-z0-9_-]{2,32}" /></label>
+            <label className="v2-field"><span>协议{locked ? "（以 3x-ui 为准）" : ""}</span><input name="protocol" defaultValue={item?.protocol ?? "vless"} required pattern="[a-z0-9_-]{2,32}" readOnly={locked} /></label>
           </div>
           <div className="admin-form-grid">
-            <label className="v2-field"><span>主机 / 域名</span><input name="host" defaultValue={item?.host ?? ""} required maxLength={255} /></label>
-            <label className="v2-field"><span>端口</span><input name="port" type="number" min="1" max="65535" defaultValue={item?.port ?? 443} required /></label>
+            <label className="v2-field"><span>对外主机 / 域名</span><input name="host" defaultValue={item?.host ?? ""} required maxLength={255} /></label>
+            <label className="v2-field"><span>对外端口</span><input name="port" type="number" min="1" max="65535" defaultValue={item?.port ?? 443} required /></label>
           </div>
           <div className="admin-form-grid">
-            <label className="v2-field"><span>服务端口（留空同端口）</span><input name="serverPort" type="number" min="1" max="65535" defaultValue={item?.serverPort ?? ""} /></label>
-            <label className="v2-field"><span>倍率</span><input name="rate" type="number" min="0.01" max="100" step="0.01" defaultValue={item?.rate ?? 1} required /></label>
+            <label className="v2-field"><span>服务端口{locked ? "（以 3x-ui 为准）" : "（留空同端口）"}</span><input name="serverPort" type="number" min="1" max="65535" defaultValue={item?.serverPort ?? ""} readOnly={locked} /></label>
+            <label className="v2-field"><span>倍率（暂未参与计费）</span><input name="rate" type="number" min="0.01" max="100" step="0.01" defaultValue={item?.rate ?? 1} required /></label>
           </div>
           <div className="admin-form-grid">
-            <label className="v2-field"><span>来源面板</span><input name="externalPanel" defaultValue={item?.externalPanel ?? "3x-ui"} maxLength={50} /></label>
-            <label className="v2-field"><span>入站 ID（可选）</span><input name="externalInboundId" defaultValue={item?.externalInboundId ?? ""} maxLength={128} /></label>
+            <label className="v2-field"><span>来源面板</span><input name="externalPanel" defaultValue={item?.externalPanel ?? "3x-ui"} maxLength={50} readOnly={locked} /></label>
+            <label className="v2-field"><span>入站 ID{locked ? "" : "（可选）"}</span><input name="externalInboundId" defaultValue={item?.externalInboundId ?? ""} maxLength={128} readOnly={locked} /></label>
           </div>
           <div className="admin-form-grid">
             <label className="v2-field"><span>标签（逗号分隔）</span><input name="tags" defaultValue="" placeholder="香港, 流媒体" maxLength={255} /></label>
             <label className="v2-field"><span>排序</span><input name="sortOrder" type="number" min="0" step="1" defaultValue={item?.sortOrder ?? 0} required /></label>
           </div>
+          <fieldset className="admin-fieldset">
+            <legend>所属权限组</legend>
+            {groups.length ? (
+              <div className="admin-check-list">
+                {groups.map((group) => (
+                  <label className="admin-check-row" key={group.id}>
+                    <input name="groupIds" type="checkbox" value={group.id} defaultChecked={item?.groupIds.includes(group.id) ?? false} />
+                    <span>{group.name}</span>
+                  </label>
+                ))}
+              </div>
+            ) : <small className="admin-hint">还没有权限组，请先在「权限组」中新建。</small>}
+          </fieldset>
           <div className="admin-check-list">
+            <label className="admin-check-row"><input name="isEnabled" type="checkbox" defaultChecked={item?.isEnabled ?? true} /><span>启用（分配给有权限的用户）</span></label>
             <label className="admin-check-row"><input name="isVisible" type="checkbox" defaultChecked={item?.isVisible ?? true} /><span>前台展示</span></label>
             <label className="admin-check-row"><input name="isOnline" type="checkbox" defaultChecked={item?.isOnline ?? true} /><span>标记为在线</span></label>
           </div>
@@ -769,7 +1008,7 @@ function OrdersEditor({ page, plans }: {
   plans: OrderPlanOption[];
 }) {
   const { pending, submit } = useSubmit();
-  const [mode, setMode] = useState<null | "edit" | "fulfill" | "remark">(null);
+  const [mode, setMode] = useState<null | "edit" | "fulfill" | "remark" | "refund">(null);
   const [selected, setSelected] = useState<OrderRow | null>(null);
   const [planId, setPlanId] = useState(0);
   const [period, setPeriod] = useState("");
@@ -795,6 +1034,7 @@ function OrdersEditor({ page, plans }: {
     setSelected(row);
     setMode("remark");
   };
+  const openRefund = (row: OrderRow) => { setSelected(row); setMode("refund"); };
 
   const activePlan = plans.find((plan) => plan.id === planId);
   const periodOptions = activePlan?.periods ?? [];
@@ -837,6 +1077,7 @@ function OrdersEditor({ page, plans }: {
                   <span className={`v2-badge ${row.status === 3 ? "badge-success" : row.status === 0 ? "badge-warning" : ""}`}>
                     {ORDER_STATUS_LABELS[row.status] ?? "未知"}
                   </span>
+                  {row.refunded ? <small><span className="v2-badge badge-warning">已退款</span></small> : null}
                 </td>
                 <td><FulfillmentBadge source={row.fulfillmentSource} fulfilled={FULFILLED_ORDER_STATUSES.has(row.status)} /></td>
                 <td>
@@ -875,9 +1116,12 @@ function OrdersEditor({ page, plans }: {
                     ) : null}
 
                     {row.status !== 0 && row.status !== 2 ? (
-                      <button type="button" className="admin-action-button" onClick={() => openRemark(row)} disabled={pending}>
-                        <Pencil size={14} />备注
-                      </button>
+                      <>
+                        <button type="button" className="admin-action-button" onClick={() => openRemark(row)} disabled={pending}>
+                          <Pencil size={14} />备注
+                        </button>
+                        {row.status === 3 && row.paymentProvider === "balance" && !row.refunded ? <button type="button" className="admin-action-button" onClick={() => openRefund(row)} disabled={pending}><RotateCcw size={14} />退款</button> : null}
+                      </>
                     ) : null}
                   </div>
                 </td>
@@ -978,6 +1222,16 @@ function OrdersEditor({ page, plans }: {
             <FormFooter pending={pending} onClose={close} submitLabel="保存备注" />
           </form>
         ) : null}
+      </EditorModal>
+      <EditorModal open={mode === "refund"} title="余额退款" onClose={close} width={560}>
+        {selected ? <form key={selected.id} className="admin-editor-form" onSubmit={(event) => { event.preventDefault(); submit(refundBalanceOrderAction, event.currentTarget, close); }}>
+          <input name="orderId" type="hidden" value={selected.id} />
+          <div className="admin-readonly-row"><span>订单号 <code>{selected.tradeNo}</code></span><span>退款金额 <code>{money(selected.totalAmount)}</code></span></div>
+          <p className="admin-warn-note">退款将全额退回用户站内余额，已开通订阅权益保持不变。每笔余额交易只能退款一次。</p>
+          <label className="v2-field"><span>退款原因（必填）</span><textarea name="reason" required rows={4} maxLength={500} placeholder="例如：重复付款，已核实" /></label>
+          <label className="admin-check-row"><input name="confirmed" type="checkbox" required /><span>我已确认：该退款不可撤销，且不会回滚套餐权益</span></label>
+          <FormFooter pending={pending} onClose={close} submitLabel="确认全额退回余额" />
+        </form> : null}
       </EditorModal>
     </section>
   );
@@ -1658,18 +1912,143 @@ function TrafficEditor({
   );
 }
 
+// ---------------------------------------------------------------------------
+// 退款与对账
+// ---------------------------------------------------------------------------
+
+function RefundsEditor({ page }: { page: Extract<AdminEditorData, { section: "refunds" }>['page'] }) {
+  return <section className="v2-block"><div className="table-wrap"><table className="v2-table"><thead><tr><th>订单号</th><th>用户</th><th>退款金额</th><th>原因</th><th>操作管理员</th><th>完成时间</th></tr></thead><tbody>
+    {page.rows.length ? page.rows.map((row) => <tr key={row.id}><td className="mono">{row.tradeNo}<small>退款 #{row.id}</small></td><td>{row.email}</td><td>{money(row.amount)}</td><td>{row.reason}</td><td>{row.adminEmail}</td><td>{row.completedAt}</td></tr>) : <tr><td colSpan={6} className="admin-empty">暂无退款记录</td></tr>}
+  </tbody></table></div><p className="admin-audit-note">退款只退回站内余额，不会自动撤销已经开通的订阅权益。</p></section>;
+}
+
+function ReconciliationEditor({ page }: { page: Extract<AdminEditorData, { section: "reconciliation" }>['page'] }) {
+  const { pending, submit } = useSubmit();
+  const [selected, setSelected] = useState<(typeof page.rows)[number] | null>(null);
+  const close = () => setSelected(null);
+  return <>
+    <section className="v2-block">
+      <header className="v2-block-header"><div><h2>导入渠道 CSV 账单</h2><p className="admin-audit-note">固定表头：provider_trade_no,amount_cents,status,paid_at,currency；金额单位为分，仅支持 CNY。</p></div><Link className="admin-action-button" href="/api/admin/reconciliation/template">下载模板</Link></header>
+      <form className="admin-inline-form" onSubmit={(event) => { event.preventDefault(); submit(importReconciliationCsvAction, event.currentTarget, () => {}); }}>
+        <input name="provider" required pattern="[a-z0-9_-]{2,50}" placeholder="provider，例如 mock" aria-label="支付渠道" />
+        <input name="file" required type="file" accept=".csv,text/csv" aria-label="CSV 账单" />
+        <button type="submit" className="button button-primary" disabled={pending}><Upload size={15} />导入并核对</button>
+      </form>
+    </section>
+    <section className="v2-block"><div className="table-wrap"><table className="v2-table"><thead><tr><th>渠道 / 批次</th><th>渠道流水号</th><th>金额</th><th>匹配结果</th><th>处理状态</th><th>操作</th></tr></thead><tbody>
+      {page.rows.length ? page.rows.map((row) => <tr key={row.id}><td><span className="mono">{row.provider}</span><small>{row.filename} · #{row.batchId}</small></td><td className="mono">{row.providerTradeNo}</td><td>{money(row.amount)}</td><td><span className={`v2-badge ${row.matchStatus === "matched" ? "badge-success" : "badge-warning"}`}>{row.matchStatus}</span></td><td>{row.resolutionStatus === "open" ? "待处理" : row.resolutionStatus === "ignored" ? "已忽略" : "无需处理"}{row.resolutionNote ? <small>{row.resolutionNote}</small> : null}</td><td>{row.resolutionStatus === "open" ? <button type="button" className="admin-action-button" onClick={() => setSelected(row)}>处理</button> : <span className="admin-muted">—</span>}</td></tr>) : <tr><td colSpan={6} className="admin-empty">暂无对账明细</td></tr>}
+    </tbody></table></div></section>
+    <EditorModal open={selected !== null} title="处理对账差异" onClose={close} width={560}>{selected ? <form className="admin-editor-form" onSubmit={(event) => { event.preventDefault(); submit(resolveReconciliationRowAction, event.currentTarget, close); }}><input name="rowId" type="hidden" value={selected.id} /><div className="admin-readonly-row"><span>渠道流水 <code>{selected.providerTradeNo}</code></span><span>结果 <code>{selected.matchStatus}</code></span></div><label className="v2-field"><span>处理备注</span><textarea name="note" required rows={4} maxLength={500} placeholder="说明已核实原因；该操作不会自动改账" /></label><FormFooter pending={pending} onClose={close} submitLabel="标记为已处理" /></form> : null}</EditorModal>
+  </>;
+}
+
+const SETTING_SOURCE_LABELS = { admin: "后台设置", env: "环境变量", default: "默认值" } as const;
+
+/**
+ * 系统设置：按分组平铺在一张表单里，一次保存。
+ * 敏感项不回显：留空表示保持不变，勾选「清除」后回退到环境变量。
+ */
+function SettingsEditor({ rows, encryptionReady }: { rows: Extract<AdminEditorData, { section: "settings" }>["page"]["rows"]; encryptionReady: boolean }) {
+  const { pending, submit } = useSubmit();
+  const [testing, startTesting] = useTransition();
+  const { showToast } = useToast();
+  const groups = [...new Set(rows.map((row) => row.group))];
+  // 保存后 router.refresh() 带回新值；以当前值为 key 重建表单，让 defaultValue 跟上。
+  const formKey = rows.map((row) => `${row.key}=${row.value}:${row.source}:${row.updatedAt ?? ""}`).join("|");
+
+  const testPanel = () => {
+    startTesting(async () => {
+      try {
+        const result = await testPanelConnectionAction();
+        showToast(result.message, result.ok ? "success" : "error");
+      } catch {
+        showToast("连接测试失败", "error");
+      }
+    });
+  };
+
+  return (
+    <form key={formKey} className="admin-editor-form" style={{ gridColumn: "1 / -1" }} onSubmit={(event) => { event.preventDefault(); submit(saveSystemSettingsAction, event.currentTarget, () => {}); }}>
+      {!encryptionReady ? (
+        <p className="admin-audit-note" style={{ color: "var(--v2-danger, #d4380d)" }}>
+          服务器未配置 SETTINGS_ENCRYPTION_KEY：敏感项（Token、密钥）暂时只能通过环境变量设置，其余设置不受影响。
+        </p>
+      ) : null}
+      {groups.map((group) => (
+        <section className="v2-block" key={group}>
+          <header className="v2-block-header">
+            <h2>{group}</h2>
+            {group === "节点" ? (
+              <button type="button" className="button button-secondary" onClick={testPanel} disabled={testing}>
+                {testing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                {testing ? "测试中…" : "测试 3x-ui 连接"}
+              </button>
+            ) : null}
+          </header>
+          <div className="admin-form-grid" style={{ padding: "0 16px 16px" }}>
+            {rows.filter((row) => row.group === group).map((row) => (
+              <label className="v2-field" key={row.key}>
+                <span>
+                  {row.label}{row.unit ? `（${row.unit}）` : ""}{" "}
+                  <span className={`v2-badge ${row.source === "admin" ? "badge-success" : ""}`}>{SETTING_SOURCE_LABELS[row.source]}</span>
+                </span>
+                {row.kind === "secret" ? (
+                  <input
+                    name={row.key}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={row.configured ? `已配置（来源：${SETTING_SOURCE_LABELS[row.source]}），留空不修改` : "未配置"}
+                    disabled={!encryptionReady}
+                  />
+                ) : (
+                  <input
+                    name={row.key}
+                    type={row.kind === "url" ? "url" : "number"}
+                    defaultValue={row.source === "admin" ? row.value : ""}
+                    placeholder={row.value ? `当前：${row.value}` : "未配置"}
+                    min={row.min ?? undefined}
+                    max={row.max ?? undefined}
+                    step={row.kind === "number" ? "0.01" : row.kind === "int" ? "1" : undefined}
+                  />
+                )}
+                <small>
+                  {row.description}
+                  {row.env ? ` 留空则使用环境变量 ${row.env}${row.defaultValue ? `，再没有则用默认值 ${row.defaultValue}` : ""}。` : ""}
+                </small>
+                {row.kind === "secret" && row.source === "admin" ? (
+                  <label className="admin-check-row"><input name={`clear:${row.key}`} type="checkbox" /><span>清除后台值（回退到环境变量）</span></label>
+                ) : null}
+              </label>
+            ))}
+          </div>
+        </section>
+      ))}
+      <div className="admin-form-footer">
+        <button type="submit" className="button button-primary" disabled={pending}>
+          {pending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          {pending ? "保存中…" : "保存设置"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function AdminEditor({ data, q }: { data: AdminEditorData; q: string }) {
   const section = () => {
     if (data.section === "users") return <UsersEditor page={data.page} />;
-    if (data.section === "plans") return <PlansEditor page={data.page} />;
+    if (data.section === "plans") return <PlansEditor page={data.page} groups={data.groups} />;
     if (data.section === "coupons") return <CouponsEditor page={data.page} plans={data.plans} />;
     if (data.section === "payments") return <PaymentsEditor page={data.page} />;
+    if (data.section === "refunds") return <RefundsEditor page={data.page} />;
+    if (data.section === "reconciliation") return <ReconciliationEditor page={data.page} />;
     if (data.section === "recharge-cards") return <RechargeCardsEditor page={data.page} q={q} />;
-    if (data.section === "nodes") return <NodesEditor page={data.page} />;
+    if (data.section === "nodes") return <NodesEditor page={data.page} groups={data.groups} />;
     if (data.section === "tickets") return <TicketsEditor page={data.page} />;
     if (data.section === "notices") return <NoticesEditor page={data.page} />;
     if (data.section === "knowledge") return <KnowledgeEditor page={data.page} />;
     if (data.section === "traffic") return <TrafficEditor page={data.page} summary={data.summary} q={q} />;
+    if (data.section === "mail") return <MailEditor settings={data.page.rows[0]} />;
+    if (data.section === "settings") return <SettingsEditor rows={data.page.rows} encryptionReady={data.encryptionReady} />;
     return <OrdersEditor page={data.page} plans={data.plans} />;
   };
 
@@ -1677,7 +2056,7 @@ export function AdminEditor({ data, q }: { data: AdminEditorData; q: string }) {
   // 两者因此在同一排；表格设了 grid-column: 1 / -1，始终整行铺满。
   return (
     <div className="admin-editor">
-      <AdminListToolbar section={data.section} q={q} />
+      {data.section !== "mail" && data.section !== "settings" ? <AdminListToolbar section={data.section} q={q} /> : null}
       {section()}
     </div>
   );

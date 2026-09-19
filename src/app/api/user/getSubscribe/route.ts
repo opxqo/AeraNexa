@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "@/lib/server/db";
+import { getSubscribeBaseUrl } from "@/lib/server/settings";
 import { toApiError, unauthenticated } from "@/lib/server/errors";
 import { getCurrentUser } from "@/lib/server/users";
 
@@ -12,8 +13,8 @@ export async function GET() {
     const user = await getCurrentUser();
     if (!user) throw unauthenticated();
 
-    const baseUrl = (process.env.SUBSCRIBE_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
-    const subscribeUrl = `${baseUrl}/api/v1/client/subscribe?token=${encodeURIComponent(user.subscription_token)}`;
+    const baseUrl = await getSubscribeBaseUrl();
+    const subscribeUrl = `${baseUrl}/api/client/subscribe?token=${encodeURIComponent(user.subscription_token)}`;
 
     const [plans] = await getDbPool().execute<RowDataPacket[]>(
       "SELECT id, name, transfer_enable, speed_limit, is_renewable FROM plans WHERE id = ? LIMIT 1",

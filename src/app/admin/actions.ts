@@ -14,7 +14,19 @@ import {
 import { getDbPool } from "@/lib/server/db";
 import { adjustUserBalance, createRechargeCardBatch, disableRechargeCard, enableRechargeCard } from "@/lib/server/recharge-cards";
 import { hasVisibleContent, sanitizeRichText } from "@/lib/server/sanitize";
+import { sendSmtpTestEmail } from "@/lib/server/mailer";
+import { saveSmtpSettings } from "@/lib/server/smtp-settings";
 import { gbToBytes, ORDER_STATUS } from "@/lib/server/subscription";
+import { refundBalanceOrder } from "@/lib/server/payment-refunds";
+import { dispatchSandboxPaymentCallback } from "@/lib/server/payment-callbacks";
+import { importReconciliationCsv, resolveReconciliationRow } from "@/lib/server/reconciliation";
+import { savePaymentCallbackSecret } from "@/lib/server/payment-credentials";
+import { importInbounds } from "@/lib/server/panel/import-inbounds";
+import { getServerStatus, PanelError } from "@/lib/server/panel/client";
+import { markAllPanelClientsDirty, markPanelClientDirty } from "@/lib/server/node-sync";
+import { removeUserDevices } from "@/lib/server/devices";
+import { saveSettings } from "@/lib/server/settings";
+import { findSettingDef, SETTING_DEFS } from "@/lib/server/settings-schema";
 
 type ActionResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -68,8 +80,92 @@ function dateToEpochSeconds(value: FormDataEntryValue | null): number | null | u
 }
 
 function refreshAdmin() {
-  for (const path of ["/admin", "/admin/users", "/admin/plans", "/admin/orders", "/admin/coupons", "/admin/payments", "/admin/recharge-cards", "/admin/nodes", "/admin/tickets", "/admin/notices", "/admin/knowledge"]) {
+  for (const path of ["/admin", "/admin/users", "/admin/plans", "/admin/orders", "/admin/refunds", "/admin/reconciliation", "/admin/coupons", "/admin/payments", "/admin/recharge-cards", "/admin/nodes", "/admin/tickets", "/admin/notices", "/admin/knowledge", "/admin/mail", "/admin/settings"]) {
     revalidatePath(path);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 系统设置
+// ---------------------------------------------------------------------------
+
+/**
+ * 表单字段名即设置 key。敏感项留空 = 保持不变；勾选 `clear:<key>` = 清除后台值（回退环境变量）。
+ * 非敏感项留空 = 清除后台值。
+ */
+export async function saveSystemSettingsAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const values: Record<string, string> = {};
+    for (const def of SETTING_DEFS) {
+      const raw = formData.get(def.key);
+      if (raw !== null) values[def.key] = String(raw);
+    }
+    const clearSecrets = SETTING_DEFS
+      .filter((def) => def.kind === "secret" && checkbox(formData.get(`clear:${def.key}`)) === 1)
+      .map((def) => def.key);
+    const changed = await saveSettings({ values, clearSecrets }, admin.id);
+    if (!changed.length) return ok("没有需要保存的变更");
+    // 审计只记录改了哪些项，不记录值（其中可能有密钥）。
+    await audit("admin.settings_saved", "system_settings", changed.join(","), {
+      changed: changed.map((key) => findSettingDef(key)?.label ?? key),
+    }, admin.id);
+    refreshAdmin();
+    return ok(`已保存 ${changed.length} 项设置，数秒内生效`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "保存系统设置失败");
+  }
+}
+
+/** 用当前生效的 3x-ui 设置发一次只读请求（server/status），验证地址与 token。 */
+export async function testPanelConnectionAction(): Promise<ActionResult> {
+  try {
+    await requireAdminUser();
+    const status = await getServerStatus();
+    return ok(`连接成功：3x-ui ${status.panelVersion}，Xray ${status.xrayVersion}（${status.xrayState === "running" ? "运行中" : status.xrayState}）`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "连接 3x-ui 失败");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 邮件服务
+// ---------------------------------------------------------------------------
+
+export async function saveSmtpSettingsAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const host = text(formData.get("host"), 255);
+    const portRaw = text(formData.get("port"), 16);
+    const port = portRaw ? intValue(portRaw, 1, 65535) : 0;
+    const username = text(formData.get("username"), 255);
+    const password = text(formData.get("password"), 1000);
+    const fromName = text(formData.get("fromName"), 100);
+    const fromEmail = text(formData.get("fromEmail"), 255).toLowerCase();
+    const enabled = checkbox(formData.get("enabled")) === 1;
+    if (host && !/^[a-zA-Z0-9.-]+$/.test(host)) return fail("SMTP 主机格式不正确");
+    if (port === null) return fail("SMTP 端口需为 1-65535 的整数");
+    if (fromEmail && !/^\S+@\S+\.\S+$/.test(fromEmail)) return fail("发件邮箱格式不正确");
+    const settings = await saveSmtpSettings({ enabled, host, port: port ?? 0, secure: checkbox(formData.get("secure")) === 1, username, password: password || undefined, fromName, fromEmail }, admin.id);
+    await audit("admin.smtp_saved", "smtp_settings", 1, { enabled: settings.enabled, host: settings.host, port: settings.port, secure: settings.secure, username: settings.username, fromEmail: settings.fromEmail, passwordUpdated: Boolean(password) }, admin.id);
+    if (enabled) await audit("admin.smtp_toggled", "smtp_settings", 1, { enabled: true }, admin.id);
+    refreshAdmin();
+    return ok(settings.enabled ? "SMTP 配置已保存并启用" : "SMTP 配置已保存，当前保持停用");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "保存 SMTP 配置失败");
+  }
+}
+
+export async function testSmtpSettingsAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const to = text(formData.get("to"), 255).toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(to)) return fail("请输入有效的测试收件邮箱");
+    await sendSmtpTestEmail(to);
+    await audit("admin.smtp_tested", "smtp_settings", 1, { to }, admin.id);
+    return ok("测试邮件已发送，请检查收件箱和垃圾邮件箱");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "SMTP 测试失败");
   }
 }
 
@@ -92,8 +188,10 @@ export async function saveUserAction(formData: FormData): Promise<ActionResult> 
     const expiredAt = dateToEpochSeconds(formData.get("expiredAt"));
     const balance = moneyToCents(formData.get("balance"));
     const commissionBalance = moneyToCents(formData.get("commissionBalance"));
+    const deviceLimitOverride = optionalInt(formData.get("deviceLimitOverride"), 0, 1000);
 
     if (!id) return fail("用户信息不完整");
+    if (deviceLimitOverride === undefined) return fail("设备数需为 0 到 1000 的整数，留空跟随套餐");
     if (!nickname) return fail("请填写昵称");
     if (!["admin", "user"].includes(role)) return fail("身份标签不正确");
     if (transferEnableGb === null) return fail("流量额度需为 0 到 1000000 之间的整数（GB）");
@@ -121,12 +219,14 @@ export async function saveUserAction(formData: FormData): Promise<ActionResult> 
       previousBalance = Number(users[0].balance ?? 0);
       const [result] = await connection.execute<ResultSetHeader>(
         `UPDATE users SET nickname = ?, role = ?, is_active = ?, transfer_enable = ?, expired_at = ?,
-          balance = ?, commission_balance = ?, updated_at = CURRENT_TIMESTAMP
+          balance = ?, commission_balance = ?, device_limit_override = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [nickname, role, isActive, gbToBytes(transferEnableGb), expiredAt, balance, commissionBalance, id],
+        [nickname, role, isActive, gbToBytes(transferEnableGb), expiredAt, balance, commissionBalance, deviceLimitOverride, id],
       );
       if (result.affectedRows !== 1) throw new Error("用户不存在或未发生变更");
       await adjustUserBalance(connection, id, previousBalance, balance, admin.id);
+      // 停用 / 额度 / 到期都会影响 3x-ui 客户端，与本次修改同事务标脏。
+      await markPanelClientDirty(connection, id);
       await connection.commit();
     } catch (error) {
       await connection.rollback();
@@ -140,6 +240,20 @@ export async function saveUserAction(formData: FormData): Promise<ActionResult> 
     return ok("用户已保存");
   } catch (error) {
     return fail(error instanceof Error ? error.message : "保存用户失败");
+  }
+}
+
+export async function clearUserDevicesAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const id = intValue(formData.get("id"), 1);
+    if (!id) return fail("用户编号不正确");
+    const removed = await removeUserDevices(id);
+    await audit("admin.user_devices_cleared", "user", id, { removed }, admin.id);
+    refreshAdmin();
+    return ok(`已清空 ${removed} 台设备`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "清空设备失败");
   }
 }
 
@@ -229,8 +343,12 @@ export async function savePlanAction(formData: FormData): Promise<ActionResult> 
     const capacityLimit = optionalInt(formData.get("capacityLimit"), 0, 1_000_000);
     const sortOrder = intValue(formData.get("sortOrder"), 0, 100_000);
     const content = optionalText(formData.get("content"), 5000);
+    const groupId = optionalInt(formData.get("groupId"), 1);
+    const deviceLimit = optionalInt(formData.get("deviceLimit"), 0, 1000);
 
     if (!name) return fail("请填写套餐名称");
+    if (groupId === undefined) return fail("节点权限组不正确");
+    if (deviceLimit === undefined) return fail("设备数上限需为 0 到 1000 的整数，留空或 0 表示不限");
     if (transferEnable === null) return fail("流量需为 0 到 1000000 之间的整数（GB）");
     if (speedLimit === undefined) return fail("限速需为非负整数（Mbps），留空表示不限速");
     if (capacityLimit === undefined) return fail("人数上限需为非负整数，留空表示不限");
@@ -248,9 +366,9 @@ export async function savePlanAction(formData: FormData): Promise<ActionResult> 
     }
 
     const pool = getDbPool();
-    const columns = ["name", "transfer_enable", "speed_limit", "capacity_limit", "content", "sort_order", "is_visible", "is_renewable"];
+    const columns = ["name", "group_id", "device_limit", "transfer_enable", "speed_limit", "capacity_limit", "content", "sort_order", "is_visible", "is_renewable"];
     const values: Array<string | number | null> = [
-      name, transferEnable, speedLimit ?? null, capacityLimit ?? null, content, sortOrder,
+      name, groupId, deviceLimit, transferEnable, speedLimit ?? null, capacityLimit ?? null, content, sortOrder,
       checkbox(formData.get("isVisible")), checkbox(formData.get("isRenewable")),
     ];
     for (const field of PLAN_PRICE_FIELDS) {
@@ -263,7 +381,9 @@ export async function savePlanAction(formData: FormData): Promise<ActionResult> 
         `UPDATE plans SET ${columns.map((column) => `${column} = ?`).join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [...values, id],
       );
-      await audit("admin.plan_saved", "plan", id, { name, transferEnable, updated: true }, admin.id);
+      // 改权限组会改变持有该套餐的用户能用的节点。
+      await markAllPanelClientsDirty(pool);
+      await audit("admin.plan_saved", "plan", id, { name, groupId, transferEnable, updated: true }, admin.id);
       refreshAdmin();
       return ok("套餐已保存");
     }
@@ -486,6 +606,7 @@ export async function savePaymentMethodAction(formData: FormData): Promise<Actio
     const feePercent = Number(formData.get("handlingFeePercent"));
     const notifyDomain = optionalText(formData.get("notifyDomain"), 255);
     const sortOrder = intValue(formData.get("sortOrder"), 0, 100_000);
+    const callbackSecret = text(formData.get("callbackSecret"), 1000);
 
     if (!provider || !/^[a-z0-9_-]{2,50}$/.test(provider)) return fail("Provider 标识只能包含小写字母、数字、下划线和短横线");
     if (provider === "balance") return fail("余额支付为系统内置渠道，不能手工修改");
@@ -504,17 +625,19 @@ export async function savePaymentMethodAction(formData: FormData): Promise<Actio
            notify_domain = ?, is_enabled = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [...values, id],
       );
+      if (callbackSecret) await savePaymentCallbackSecret(id, callbackSecret, admin.id);
       await audit("admin.payment_saved", "payment_method", id, { provider, name, updated: true }, admin.id);
       refreshAdmin();
       return ok("支付渠道已保存");
     }
 
-    await pool.execute(
+    const [created] = await pool.execute<ResultSetHeader>(
       `INSERT INTO payment_methods (uuid, provider, name, config, handling_fee_fixed, handling_fee_percent, notify_domain, is_enabled, sort_order)
        VALUES (?, ?, ?, JSON_OBJECT(), ?, ?, ?, ?, ?)`,
       [randomUUID().replaceAll("-", ""), ...values],
     );
-    await audit("admin.payment_saved", "payment_method", provider, { provider, name, created: true }, admin.id);
+    if (callbackSecret) await savePaymentCallbackSecret(Number(created.insertId), callbackSecret, admin.id);
+    await audit("admin.payment_saved", "payment_method", provider, { provider, name, created: true, callbackSecretUpdated: Boolean(callbackSecret) }, admin.id);
     refreshAdmin();
     return ok("支付渠道已创建");
   } catch (error) {
@@ -551,6 +674,72 @@ export async function deletePaymentMethodAction(formData: FormData): Promise<Act
 }
 
 // ---------------------------------------------------------------------------
+// 退款、签名沙箱与对账
+// ---------------------------------------------------------------------------
+
+export async function refundBalanceOrderAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const orderId = intValue(formData.get("orderId"), 1);
+    const reason = text(formData.get("reason"), 500);
+    if (!orderId) return fail("订单编号不正确");
+    if (!reason) return fail("请填写退款原因");
+    if (checkbox(formData.get("confirmed")) !== 1) return fail("请勾选确认退款后再提交");
+    const refund = await refundBalanceOrder(orderId, admin.id, reason);
+    await audit("admin.payment_refunded", "payment_refund", refund.id, { orderId, transactionId: refund.transactionId, amount: refund.amount, reason }, admin.id);
+    refreshAdmin();
+    return ok(`退款完成，已退回 ${(refund.amount / 100).toFixed(2)} 元余额`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "退款失败");
+  }
+}
+
+export async function sendSandboxPaymentCallbackAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const transactionId = intValue(formData.get("transactionId"), 1);
+    if (!transactionId) return fail("支付交易编号不正确");
+    const result = await dispatchSandboxPaymentCallback(transactionId);
+    await audit("admin.payment_sandbox_callback", "payment_transaction", transactionId, { result }, admin.id);
+    refreshAdmin();
+    return ok(result.processed ? "签名沙箱回调已完成订单履约" : "签名沙箱回调已接收，等待人工处理");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "签名沙箱回调失败");
+  }
+}
+
+export async function importReconciliationCsvAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const provider = text(formData.get("provider"), 50).toLowerCase();
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return fail("请选择 CSV 账单文件");
+    if (file.size > 2_000_000) return fail("CSV 文件不能超过 2MB");
+    const result = await importReconciliationCsv({ provider, filename: file.name, csv: await file.text(), adminId: admin.id });
+    await audit("admin.reconciliation_imported", "reconciliation_batch", result.batchId, { provider, total: result.total, matched: result.matched, issues: result.issues }, admin.id);
+    refreshAdmin();
+    return ok(`对账导入完成：${result.matched} 条匹配，${result.issues} 条待处理`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "导入对账账单失败");
+  }
+}
+
+export async function resolveReconciliationRowAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const rowId = intValue(formData.get("rowId"), 1);
+    const note = text(formData.get("note"), 500);
+    if (!rowId) return fail("对账明细编号不正确");
+    await resolveReconciliationRow(rowId, admin.id, note);
+    await audit("admin.reconciliation_resolved", "reconciliation_row", rowId, { resolution: "ignored", note }, admin.id);
+    refreshAdmin();
+    return ok("差异已标记为已处理，不会自动改账");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "处理对账差异失败");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 节点
 // ---------------------------------------------------------------------------
 
@@ -570,6 +759,8 @@ export async function saveNodeAction(formData: FormData): Promise<ActionResult> 
     const inboundId = optionalText(formData.get("externalInboundId"), 128);
     const tags = optionalText(formData.get("tags"), 255);
     const sortOrder = intValue(formData.get("sortOrder"), 0, 100_000);
+    const groupIds = [...new Set(formData.getAll("groupIds").map((value) => intValue(value, 1)))];
+    if (groupIds.some((value) => value === null)) return fail("节点权限组不正确");
 
     if (!name) return fail("请填写节点名称");
     if (!PROTOCOL_PATTERN.test(protocol)) return fail("协议只能包含小写字母、数字、下划线和短横线");
@@ -586,31 +777,126 @@ export async function saveNodeAction(formData: FormData): Promise<ActionResult> 
     const values = [
       name, protocol, host, port, serverPort ?? null, rate, panel, inboundId,
       tagList ? JSON.stringify(tagList) : null, checkbox(formData.get("isVisible")),
-      checkbox(formData.get("isOnline")), sortOrder,
+      checkbox(formData.get("isEnabled")), checkbox(formData.get("isOnline")), sortOrder,
     ];
 
     if (id) {
+      // 从 3x-ui 导入的节点：协议 / 来源面板 / 入站 ID / 服务端口以面板为准，只能靠重新导入刷新，
+      // 表单里即使被改动也原样保留（IF 分支按 snapshot_hash 判定是否导入节点）。
       await pool.execute(
-        `UPDATE nodes SET name = ?, protocol = ?, host = ?, port = ?, server_port = ?, rate = ?,
-           external_panel = ?, external_inbound_id = ?, tags = ?, is_visible = ?, is_online = ?,
+        `UPDATE nodes SET name = ?,
+           protocol = IF(snapshot_hash IS NULL, ?, protocol),
+           host = ?, port = ?,
+           server_port = IF(snapshot_hash IS NULL, ?, server_port),
+           rate = ?,
+           external_panel = IF(snapshot_hash IS NULL, ?, external_panel),
+           external_inbound_id = IF(snapshot_hash IS NULL, ?, external_inbound_id),
+           tags = ?, is_visible = ?, is_enabled = ?, is_online = ?,
            sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [...values, id],
       );
-      await audit("admin.node_saved", "node", id, { name, host, port, updated: true }, admin.id);
+      await replaceNodeGroups(id, groupIds as number[]);
+      await audit("admin.node_saved", "node", id, { name, host, port, groupIds, updated: true }, admin.id);
       refreshAdmin();
       return ok("节点已保存");
     }
 
-    await pool.execute(
-      `INSERT INTO nodes (name, protocol, host, port, server_port, rate, external_panel, external_inbound_id, tags, is_visible, is_online, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    const [created] = await pool.execute<ResultSetHeader>(
+      `INSERT INTO nodes (name, protocol, host, port, server_port, rate, external_panel, external_inbound_id, tags, is_visible, is_enabled, is_online, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       values,
     );
-    await audit("admin.node_saved", "node", name, { name, host, port, created: true }, admin.id);
+    await replaceNodeGroups(created.insertId, groupIds as number[]);
+    await audit("admin.node_saved", "node", created.insertId, { name, host, port, groupIds, created: true }, admin.id);
     refreshAdmin();
     return ok("节点已创建");
   } catch (error) {
     return fail(error instanceof Error ? error.message : "保存节点失败");
+  }
+}
+
+/** 覆盖写节点所属权限组，并让所有用户重新计算可用节点（节点启停也走这里）。 */
+async function replaceNodeGroups(nodeId: number, groupIds: number[]): Promise<void> {
+  const connection = await getDbPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute("DELETE FROM node_access_groups WHERE node_id = ?", [nodeId]);
+    for (const groupId of groupIds) {
+      await connection.execute("INSERT INTO node_access_groups (node_id, group_id) VALUES (?, ?)", [nodeId, groupId]);
+    }
+    await markAllPanelClientsDirty(connection);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function saveAccessGroupAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const id = intValue(formData.get("id"), 1);
+    const name = text(formData.get("name"), 100);
+    if (!name) return fail("请填写权限组名称");
+    const pool = getDbPool();
+    try {
+      if (id) {
+        const [result] = await pool.execute<ResultSetHeader>(
+          "UPDATE access_groups SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          [name, id],
+        );
+        if (result.affectedRows !== 1) return fail("权限组不存在");
+      } else {
+        await pool.execute("INSERT INTO access_groups (name) VALUES (?)", [name]);
+      }
+    } catch (error) {
+      if ((error as { code?: string }).code === "ER_DUP_ENTRY") return fail("已有同名权限组");
+      throw error;
+    }
+    await audit("admin.access_group_saved", "access_group", id ?? name, { name, created: !id }, admin.id);
+    refreshAdmin();
+    return ok(id ? "权限组已重命名" : "权限组已创建");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "保存权限组失败");
+  }
+}
+
+export async function deleteAccessGroupAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const id = intValue(formData.get("id"), 1);
+    if (!id) return fail("权限组编号不正确");
+    const pool = getDbPool();
+    const [plans] = await pool.execute<RowDataPacket[]>("SELECT COUNT(*) AS total FROM plans WHERE group_id = ?", [id]);
+    if (Number(plans[0]?.total) > 0) {
+      return fail("仍有套餐使用该权限组，删除会让这些套餐的用户失去全部节点；请先把套餐改到其他权限组");
+    }
+    const [result] = await pool.execute<ResultSetHeader>("DELETE FROM access_groups WHERE id = ?", [id]);
+    if (result.affectedRows !== 1) return fail("权限组不存在");
+    await audit("admin.access_group_deleted", "access_group", id, {}, admin.id);
+    refreshAdmin();
+    return ok("权限组已删除");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "删除权限组失败");
+  }
+}
+
+export async function importInboundsAction(): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const result = await importInbounds();
+    await audit("admin.nodes_imported", "node", "3x-ui", result, admin.id);
+    refreshAdmin();
+    const parts = [`新增 ${result.created}`, `更新 ${result.updated}`, `未变 ${result.unchanged}`];
+    if (result.restored) parts.push(`恢复 ${result.restored}`);
+    if (result.missing) parts.push(`面板中已不存在 ${result.missing}`);
+    if (result.skipped) parts.push(`无法识别 ${result.skipped}`);
+    return ok(`已从 3x-ui ${result.panelVersion} 同步 ${result.total} 个入站：${parts.join("，")}`);
+  } catch (error) {
+    if (error instanceof PanelError) return fail(error.message);
+    return fail(error instanceof Error ? error.message : "同步 3x-ui 入站失败");
   }
 }
 
@@ -626,11 +912,12 @@ export async function deleteNodeAction(formData: FormData): Promise<ActionResult
       [id],
     );
     if (Number(accounts[0]?.total) > 0) {
-      return fail("该节点下仍有用户节点账号，删除会级联清理；请先改为「隐藏」并确认后再操作");
+      return fail(`该节点仍分配给 ${Number(accounts[0]?.total)} 个用户；请先取消「启用」，等待同步完成（账号数归零）后再删除`);
     }
 
     const [result] = await pool.execute<ResultSetHeader>("DELETE FROM nodes WHERE id = ?", [id]);
     if (result.affectedRows !== 1) return fail("节点不存在");
+    await markAllPanelClientsDirty(pool);
 
     await audit("admin.node_saved", "node", id, { deleted: true }, admin.id);
     refreshAdmin();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { recordAudit } from "@/lib/server/audit";
-import { getEmailVerificationCode } from "@/lib/server/email-verification";
+import { consumeVerificationCode } from "@/lib/server/email-verification";
 import { badRequest, conflict, readJsonBody, toApiError } from "@/lib/server/errors";
 import { setSessionCookie } from "@/lib/server/session";
 import { findUserByEmail, registerUser, toPublicUser } from "@/lib/server/users";
@@ -29,9 +29,9 @@ export async function POST(request: Request) {
     if (password.length < PASSWORD_MIN_LENGTH) throw badRequest(`密码长度不能少于 ${PASSWORD_MIN_LENGTH} 位`);
     if (password.length > PASSWORD_MAX_LENGTH) throw badRequest(`密码长度不能超过 ${PASSWORD_MAX_LENGTH} 位`);
     if (password !== confirmation) throw badRequest("两次输入的密码不一致");
-    if (emailCode !== getEmailVerificationCode()) throw badRequest("邮箱验证码错误");
-
     if (await findUserByEmail(email)) throw conflict("该邮箱已经注册");
+    if (!emailCode) throw badRequest("请输入邮箱验证码");
+    await consumeVerificationCode(email, "register", emailCode);
 
     const user = await registerUser({ email, password, inviteCode: inviteCode || undefined });
     await setSessionCookie(user.id);

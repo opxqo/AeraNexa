@@ -37,7 +37,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   try {
-    if (!isAuthorizedTrafficReport(request)) throw unauthenticated("上报凭据缺失或不正确");
+    if (!(await isAuthorizedTrafficReport(request))) throw unauthenticated("上报凭据缺失或不正确");
 
     const body = await readJsonBody(request);
     if (!("records" in body) && !("node_records" in body)) {

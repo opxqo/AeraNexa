@@ -3,6 +3,7 @@ import "server-only";
 import type { PoolConnection } from "mysql2/promise";
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
+import { getNumberSetting } from "./settings";
 
 /**
  * 返佣（佣金）。
@@ -11,8 +12,8 @@ import { getDbPool } from "./db";
  * 但项目里此前**只有 SELECT、没有任何 INSERT**——实测下来邀请页佣金恒为 0、明细恒为空、
  * 划转恒报「佣金余额不足」。这里补上写入与结算，读取沿用既有的 `getInvites`。
  *
- * 比例是**全局统一**的，走环境变量，与 `NODE_TRAFFIC_SECRET` / `EMAIL_VERIFICATION_CODE`
- * 同一套路：不为此新增一张配置表。
+ * 比例与冷静期是**全局统一**的，在后台「系统设置」中调整（未设置时回退环境变量
+ * COMMISSION_RATE_PERCENT / COMMISSION_AVAILABLE_AFTER_DAYS），只影响之后产生的佣金。
  */
 
 /** 佣金状态。与 commission_logs.status 列一致。 */
@@ -27,8 +28,8 @@ const ORDER_COMMISSION_CALCULATED = 1;
  * 默认 0 = 不返佣。这是钱相关的设置，**默认关比默认送钱安全**——
  * 部署时没配就自动送 10% 是很糟糕的默认值。
  */
-export function commissionRatePercent(): number {
-  const raw = Number(process.env.COMMISSION_RATE_PERCENT ?? 0);
+export async function commissionRatePercent(): Promise<number> {
+  const raw = await getNumberSetting("commission.rate_percent");
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   return Math.min(raw, 100);
 }
@@ -39,8 +40,8 @@ export function commissionRatePercent(): number {
  * 留出冷静期是为了退款：订单退款后应把佣金置为 invalid，而一旦已经结算进余额就追不回来了。
  * 默认 0（立即可结算），因为当前项目还没有退款写路径，留着只会让「待结算」永远是 0。
  */
-function commissionAvailableAfterDays(): number {
-  const raw = Number(process.env.COMMISSION_AVAILABLE_AFTER_DAYS ?? 0);
+async function commissionAvailableAfterDays(): Promise<number> {
+  const raw = await getNumberSetting("commission.available_after_days");
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   return Math.min(Math.floor(raw), 365);
 }
@@ -64,7 +65,7 @@ export async function recordCommissionForOrder(
   buyerUserId: number,
   orderAmount: number,
 ): Promise<void> {
-  const rate = commissionRatePercent();
+  const rate = await commissionRatePercent();
   if (!rate) return;
 
   const [referral] = await connection.execute<RowDataPacket[]>(
@@ -85,7 +86,7 @@ export async function recordCommissionForOrder(
        (inviter_user_id, invited_user_id, order_id, order_amount, commission_amount, status, available_at)
      VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? DAY))
      ON DUPLICATE KEY UPDATE commission_amount = commission_amount`,
-    [inviterId, buyerUserId, orderId, Math.max(0, orderAmount), amount, COMMISSION_STATUS.PENDING, commissionAvailableAfterDays()],
+    [inviterId, buyerUserId, orderId, Math.max(0, orderAmount), amount, COMMISSION_STATUS.PENDING, await commissionAvailableAfterDays()],
   );
 
   await connection.execute(

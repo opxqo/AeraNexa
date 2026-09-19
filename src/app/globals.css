@@ -309,6 +309,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .user-role-badge { color: #64717d; background: #eef1f5; }
 .admin-editor-form { display: grid; gap: 16px; }
 .admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.admin-inline-actions, .admin-inline-form { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.admin-inline-form { padding: 15px 17px; }
+.admin-inline-form input { min-width: min(100%, 300px); }
+.checkbox-field { grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
+.checkbox-field small { grid-column: 2; }
+.checkbox-field input { width: 15px; height: 15px; accent-color: var(--v2-primary); }
 .admin-check-list { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .admin-check-row { display: inline-flex; align-items: center; gap: 8px; color: var(--v2-text); cursor: pointer; }
 .admin-check-row input { width: 15px; height: 15px; accent-color: var(--v2-primary); }

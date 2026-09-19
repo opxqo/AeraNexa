@@ -5,6 +5,7 @@ import type { Pool, PoolConnection } from "mysql2/promise";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { recordCommissionForOrder, settleMaturedCommissions } from "./commission";
 import { getDbPool } from "./db";
+import { markPanelClientDirty } from "./node-sync";
 import {
   badRequest,
   conflict,
@@ -41,7 +42,7 @@ export type ClientPlan = RowDataPacket & {
   created_at: Date; updated_at: Date;
 };
 
-type OrderRow = RowDataPacket & {
+export type OrderRow = RowDataPacket & {
   id: number; user_id: number; plan_id: number; payment_method_id: number | null; coupon_id: number | null;
   order_type: number; period: string; trade_no: string;
   total_amount: number | string; handling_amount: number | string; discount_amount: number | string;
@@ -656,7 +657,7 @@ const orderSelect = `
   SELECT o.*, p.name AS plan_name, p.transfer_enable, p.speed_limit, p.is_renewable
   FROM orders o INNER JOIN plans p ON p.id = o.plan_id`;
 
-async function getOrder(executor: SqlExecutor, userId: number, tradeNo: string, withLock = false): Promise<OrderRow | null> {
+export async function getOrder(executor: SqlExecutor, userId: number, tradeNo: string, withLock = false): Promise<OrderRow | null> {
   const [rows] = await executor.execute<OrderRow[]>(
     `${orderSelect} WHERE o.user_id = ? AND o.trade_no = ? LIMIT 1${withLock ? " FOR UPDATE" : ""}`,
     [userId, tradeNo],
@@ -798,7 +799,9 @@ export async function listPaymentMethods() {
   await ensureSystemPaymentMethods();
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT id, provider, name, icon, handling_fee_fixed, handling_fee_percent
-       FROM payment_methods WHERE is_enabled = 1 ORDER BY sort_order ASC, id ASC`,
+       FROM payment_methods
+      WHERE is_enabled = 1 AND provider IN ('balance', 'mock')
+      ORDER BY sort_order ASC, id ASC`,
   );
   return rows.map((row) => ({
     id: asNumber(row.id),
@@ -1034,7 +1037,7 @@ export type FulfillmentSource = "gateway" | "admin" | "wallet";
  * 网关回调与后台补单共用此函数，保证折抵标记、订阅开通、溢出退款三条副作用
  * 在任何来源下完全一致，避免两条路径各写一份实现后逐渐漂移。
  */
-async function settleOrder(
+export async function settleOrder(
   connection: PoolConnection,
   order: OrderRow,
   userId: number,
@@ -1063,6 +1066,8 @@ async function settleOrder(
   }
 
   await fulfillOrder(connection, order, userId);
+  // 开通与「要求同步到 3x-ui」同事务提交（outbox），worker 随后下发客户端。
+  await markPanelClientDirty(connection, userId);
 
   // 给邀请人记佣金。与履约同一事务：订单完成但佣金没记、或佣金记了但订单没成，都会对不上账。
   // 网关回调与后台补单共用此函数，因此两条来源的返佣行为一致。

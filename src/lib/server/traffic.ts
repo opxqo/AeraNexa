@@ -5,6 +5,7 @@ import type { PoolConnection } from "mysql2/promise";
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
 import { badRequest } from "./errors";
+import { getSetting } from "./settings";
 
 /**
  * 节点流量上报的写入路径。
@@ -58,13 +59,13 @@ export type TrafficReportResult = {
  * 认证
  * ------------------------------------------------------------------ */
 
-function nodeTrafficSecret(): string {
-  const configured = process.env.NODE_TRAFFIC_SECRET?.trim();
+async function nodeTrafficSecret(): Promise<string> {
+  const configured = await getSetting("node.traffic_secret");
   if (configured) return configured;
 
   // 与 session.ts 一致：生产环境宁可直接失败，也不要退回一个众所周知的默认密钥。
   if (process.env.NODE_ENV === "production") {
-    throw new Error("NODE_TRAFFIC_SECRET is required in production");
+    throw new Error("节点流量上报密钥未配置：请在后台「系统设置」或环境变量 NODE_TRAFFIC_SECRET 中设置");
   }
 
   return "aeranexa-local-node-traffic-secret";
@@ -76,13 +77,13 @@ function nodeTrafficSecret(): string {
  * 用 timingSafeEqual 而不是 `===`：字符串比较会在第一个不同字节处返回，
  * 逐字节试可以把密钥一个字节一个字节地试出来。
  */
-export function isAuthorizedTrafficReport(request: Request): boolean {
+export async function isAuthorizedTrafficReport(request: Request): Promise<boolean> {
   const header = request.headers.get("authorization");
   const bearer = header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   const provided = bearer || request.headers.get("x-node-token")?.trim() || "";
   if (!provided) return false;
 
-  const expected = nodeTrafficSecret();
+  const expected = await nodeTrafficSecret();
   const left = Buffer.from(provided, "utf8");
   const right = Buffer.from(expected, "utf8");
   // timingSafeEqual 要求两片等长，长度不等时先判否（长度本身会泄漏，但远好于逐字节比较）。

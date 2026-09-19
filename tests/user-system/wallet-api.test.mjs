@@ -1,7 +1,8 @@
 /** 余额支付与卡密充值的端到端验收。运行前需启动本地 Next 服务。 */
 import assert from "node:assert/strict";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
+import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 import { enableMockPaymentForTests, restoreMockPaymentMethod } from "./helpers.mjs";
 
@@ -21,8 +22,16 @@ async function connection() { return mysql.createConnection(dbConfig); }
 async function register() {
   const email = `wallet-${Date.now()}-${randomBytes(3).toString("hex")}@example.test`;
   created.users.push(email);
-  const response = await post("/api/auth/register", null, { email, password, password_confirmation: password, email_code: "666666" });
-  assert.equal(response.status, 201, await response.text());
+  const db = await connection();
+  try {
+    await db.execute(
+      `INSERT INTO users (email, password_hash, nickname, uuid, subscription_token, email_verified_at)
+       VALUES (?, ?, 'wallet-test', ?, ?, CURRENT_TIMESTAMP)`,
+      [email, await bcrypt.hash(password, 12), randomUUID(), randomBytes(16).toString("hex")],
+    );
+  } finally { await db.end(); }
+  const response = await post("/api/auth/login", null, { email, password });
+  assert.equal(response.status, 200, await response.text());
   return { email, cookie: response.headers.getSetCookie()[0].split(";", 1)[0] };
 }
 

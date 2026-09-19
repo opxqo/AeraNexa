@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   balance BIGINT NOT NULL DEFAULT 0,
   commission_balance BIGINT NOT NULL DEFAULT 0,
   plan_id BIGINT UNSIGNED NULL,
+  device_limit_override INT UNSIGNED NULL COMMENT '单用户覆盖套餐设备数，NULL 跟随套餐，0 表示不限',
   expired_at BIGINT NULL,
   remind_expire TINYINT(1) NOT NULL DEFAULT 1,
   remind_traffic TINYINT(1) NOT NULL DEFAULT 1,
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS plans (
   content TEXT NULL,
   transfer_enable BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '套餐流量，单位 GB',
   speed_limit INT UNSIGNED NULL COMMENT 'Mbps，NULL 表示不限速',
+  device_limit INT UNSIGNED NULL COMMENT '设备数上限（limitIp + 订阅 HWID），NULL 或 0 表示不限',
   month_price BIGINT UNSIGNED NULL COMMENT '金额单位：分',
   quarter_price BIGINT UNSIGNED NULL,
   half_year_price BIGINT UNSIGNED NULL,
@@ -252,6 +254,105 @@ CREATE TABLE IF NOT EXISTS payment_events (
     FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
   CONSTRAINT payment_events_transaction_id_foreign
     FOREIGN KEY (transaction_id) REFERENCES payment_transactions (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 支付退款、回调接收与对账。退款账本和订单的升级差额 refund_amount 分离，避免混淆两种资金语义。
+CREATE TABLE IF NOT EXISTS payment_refunds (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  order_id BIGINT UNSIGNED NOT NULL,
+  transaction_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  admin_id BIGINT UNSIGNED NOT NULL,
+  amount BIGINT UNSIGNED NOT NULL COMMENT '退款金额，单位：分',
+  reason VARCHAR(500) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'completed',
+  completed_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY payment_refunds_transaction_unique (transaction_id),
+  KEY payment_refunds_order_created_index (order_id, created_at),
+  KEY payment_refunds_user_created_index (user_id, created_at),
+  CONSTRAINT payment_refunds_order_id_foreign FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE RESTRICT,
+  CONSTRAINT payment_refunds_transaction_id_foreign FOREIGN KEY (transaction_id) REFERENCES payment_transactions (id) ON DELETE RESTRICT,
+  CONSTRAINT payment_refunds_user_id_foreign FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT,
+  CONSTRAINT payment_refunds_admin_id_foreign FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 网关回调先落接收账本，再映射为 payment_events；无效签名和找不到订单的事件也可追溯。
+CREATE TABLE IF NOT EXISTS payment_callback_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  provider VARCHAR(50) NOT NULL,
+  event_id VARCHAR(255) NOT NULL,
+  timestamp_seconds BIGINT UNSIGNED NOT NULL,
+  signature_valid TINYINT(1) NOT NULL DEFAULT 0,
+  payload JSON NULL,
+  payload_sha256 CHAR(64) NOT NULL,
+  processing_status VARCHAR(32) NOT NULL DEFAULT 'received',
+  error_message VARCHAR(500) NULL,
+  transaction_id BIGINT UNSIGNED NULL,
+  order_id BIGINT UNSIGNED NULL,
+  received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY payment_callback_events_provider_event_unique (provider, event_id),
+  KEY payment_callback_events_status_received_index (processing_status, received_at),
+  KEY payment_callback_events_transaction_index (transaction_id),
+  CONSTRAINT payment_callback_events_transaction_id_foreign FOREIGN KEY (transaction_id) REFERENCES payment_transactions (id) ON DELETE SET NULL,
+  CONSTRAINT payment_callback_events_order_id_foreign FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 网关密钥与普通支付方式配置隔离，始终存 AES-256-GCM 密文，后台不读取明文。
+CREATE TABLE IF NOT EXISTS payment_method_credentials (
+  payment_method_id BIGINT UNSIGNED NOT NULL,
+  secret_ciphertext TEXT NOT NULL,
+  secret_iv VARCHAR(64) NOT NULL,
+  secret_auth_tag VARCHAR(64) NOT NULL,
+  updated_by_admin_id BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (payment_method_id),
+  CONSTRAINT payment_method_credentials_method_id_foreign FOREIGN KEY (payment_method_id) REFERENCES payment_methods (id) ON DELETE CASCADE,
+  CONSTRAINT payment_method_credentials_admin_id_foreign FOREIGN KEY (updated_by_admin_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reconciliation_batches (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  provider VARCHAR(50) NOT NULL,
+  file_sha256 CHAR(64) NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  imported_by_admin_id BIGINT UNSIGNED NOT NULL,
+  total_rows INT UNSIGNED NOT NULL DEFAULT 0,
+  matched_rows INT UNSIGNED NOT NULL DEFAULT 0,
+  issue_rows INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY reconciliation_batches_provider_file_unique (provider, file_sha256),
+  KEY reconciliation_batches_created_index (created_at),
+  CONSTRAINT reconciliation_batches_admin_id_foreign FOREIGN KEY (imported_by_admin_id) REFERENCES users (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reconciliation_rows (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  batch_id BIGINT UNSIGNED NOT NULL,
+  line_number INT UNSIGNED NOT NULL,
+  provider_trade_no VARCHAR(255) NOT NULL,
+  amount_cents BIGINT UNSIGNED NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'CNY',
+  provider_status VARCHAR(32) NOT NULL,
+  paid_at DATETIME NULL,
+  match_status VARCHAR(32) NOT NULL,
+  transaction_id BIGINT UNSIGNED NULL,
+  resolution_status VARCHAR(32) NOT NULL DEFAULT 'open',
+  resolution_note VARCHAR(500) NULL,
+  resolved_by_admin_id BIGINT UNSIGNED NULL,
+  resolved_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY reconciliation_rows_batch_row_unique (batch_id, line_number),
+  KEY reconciliation_rows_status_index (match_status, resolution_status),
+  KEY reconciliation_rows_transaction_index (transaction_id),
+  CONSTRAINT reconciliation_rows_batch_id_foreign FOREIGN KEY (batch_id) REFERENCES reconciliation_batches (id) ON DELETE CASCADE,
+  CONSTRAINT reconciliation_rows_transaction_id_foreign FOREIGN KEY (transaction_id) REFERENCES payment_transactions (id) ON DELETE SET NULL,
+  CONSTRAINT reconciliation_rows_admin_id_foreign FOREIGN KEY (resolved_by_admin_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 邀请、返佣与钱包流水
@@ -450,6 +551,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   external_panel VARCHAR(50) NOT NULL DEFAULT '3x-ui',
   external_inbound_id VARCHAR(128) NULL,
+  origin_node_guid VARCHAR(64) NULL COMMENT '3x-ui originNodeGuid：入站实际所在的物理节点',
   name VARCHAR(255) NOT NULL,
   protocol VARCHAR(32) NOT NULL,
   host VARCHAR(255) NOT NULL,
@@ -459,9 +561,13 @@ CREATE TABLE IF NOT EXISTS nodes (
   tags JSON NULL,
   config JSON NULL,
   is_visible TINYINT(1) NOT NULL DEFAULT 0,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '参与给用户分配；与前台可见分开',
   is_online TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0,
   last_check_at DATETIME NULL,
+  inbound_snapshot JSON NULL COMMENT '最近一次导入的 3x-ui 入站（已剔除客户端与服务端私钥）',
+  snapshot_hash CHAR(64) NULL,
+  missing_since DATETIME NULL COMMENT '3x-ui 中已不存在的时间；不自动删除',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -506,6 +612,56 @@ CREATE TABLE IF NOT EXISTS proxy_accounts (
     FOREIGN KEY (node_id) REFERENCES nodes (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 一个用户一个 3x-ui 客户端（docs/node-domain-design.md §3.2）。
+-- 业务写路径只做「标脏」（desired_version++），由节点 worker 收敛到 3x-ui。
+CREATE TABLE IF NOT EXISTS panel_clients (
+  user_id BIGINT UNSIGNED NOT NULL,
+  email VARCHAR(64) NOT NULL COMMENT '3x-ui 客户端标识，固定 u{user_id}',
+  sub_id VARCHAR(32) NOT NULL COMMENT '3x-ui subId；不对外暴露 3x-ui 自带订阅',
+  desired_version BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  synced_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  sync_status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'pending | synced | failed',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NULL,
+  last_error TEXT NULL,
+  last_synced_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  UNIQUE KEY panel_clients_email_unique (email),
+  KEY panel_clients_pending_index (sync_status, next_attempt_at),
+  CONSTRAINT panel_clients_user_id_foreign
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 流量采集游标：3x-ui 的 up/down 是累计值，按上次读数求增量（docs/node-domain-design.md §4.4）。
+-- cursor_key 形如 client:u58 / inbound:1。
+CREATE TABLE IF NOT EXISTS panel_traffic_cursors (
+  cursor_key VARCHAR(80) NOT NULL,
+  last_up BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  last_down BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  collected_at DATETIME NOT NULL,
+  PRIMARY KEY (cursor_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 订阅层设备登记（HWID）。只存哈希；「重置安全信息」时清空（docs/node-domain-design.md §4.7）。
+CREATE TABLE IF NOT EXISTS user_devices (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  hwid_hash CHAR(64) NOT NULL,
+  user_agent VARCHAR(255) NULL,
+  device_os VARCHAR(64) NULL,
+  os_version VARCHAR(64) NULL,
+  device_model VARCHAR(128) NULL,
+  first_seen_at DATETIME NOT NULL,
+  last_seen_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY user_devices_user_hwid_unique (user_id, hwid_hash),
+  KEY user_devices_user_seen_index (user_id, last_seen_at),
+  CONSTRAINT user_devices_user_id_foreign
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS user_traffic_records (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id BIGINT UNSIGNED NOT NULL,
@@ -545,6 +701,7 @@ CREATE TABLE IF NOT EXISTS email_verification_codes (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   email VARCHAR(255) NOT NULL,
   purpose VARCHAR(32) NOT NULL DEFAULT 'register',
+  request_ip VARCHAR(45) NOT NULL DEFAULT '',
   code_hash VARCHAR(255) NOT NULL,
   attempts INT UNSIGNED NOT NULL DEFAULT 0,
   expires_at DATETIME NOT NULL,
@@ -552,7 +709,44 @@ CREATE TABLE IF NOT EXISTS email_verification_codes (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY email_verification_lookup_index (email, purpose, expires_at),
-  KEY email_verification_expiry_index (expires_at)
+  KEY email_verification_expiry_index (expires_at),
+  KEY email_verification_ip_created_index (request_ip, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 系统设置：可由管理员在运行时调整的配置（src/lib/server/settings-schema.ts）。
+-- 敏感项（secret）只存 AES-256-GCM 密文，主密钥 SETTINGS_ENCRYPTION_KEY 留在环境变量。
+CREATE TABLE IF NOT EXISTS system_settings (
+  setting_key VARCHAR(64) NOT NULL,
+  value_text TEXT NULL COMMENT '非敏感项明文',
+  value_ciphertext TEXT NULL COMMENT '敏感项密文（Base64）',
+  value_iv VARCHAR(32) NULL,
+  value_auth_tag VARCHAR(32) NULL,
+  updated_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (setting_key),
+  CONSTRAINT system_settings_updated_by_foreign
+    FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS smtp_settings (
+  id TINYINT UNSIGNED NOT NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  host VARCHAR(255) NULL,
+  port SMALLINT UNSIGNED NULL,
+  secure TINYINT(1) NOT NULL DEFAULT 0,
+  username VARCHAR(255) NULL,
+  password_ciphertext TEXT NULL,
+  password_iv VARCHAR(64) NULL,
+  password_auth_tag VARCHAR(64) NULL,
+  from_name VARCHAR(100) NULL,
+  from_email VARCHAR(255) NULL,
+  updated_by_admin_id BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT smtp_settings_singleton CHECK (id = 1),
+  CONSTRAINT smtp_settings_admin_id_foreign
+    FOREIGN KEY (updated_by_admin_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -658,3 +852,110 @@ VALUES ('20260919_003', 'recharge card batches and card redemption ledger');
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260919_004', 'indexes: tickets updated_at for admin list ordering');
+
+-- 20260919_005：节点流量汇总的覆盖索引。
+-- 后台「流量统计」的汇总按 record_type 分组并对全表聚合，既有的
+-- node_traffic_records_record_at_index 以 record_at 打头，无法支撑该分组，
+-- 实测退化为全表扫描 + filesort。补一个以 record_type 打头、同时覆盖聚合列的索引，
+-- 让分组直接走索引顺序（Using index），实测（aeranexa_perf，2700 行）
+-- 无 JOIN 版本 1.34ms → 0.72ms。
+-- 该表随节点上报持续增长（30 节点按小时上报约 26 万行/年），全表扫描会线性恶化。
+SET @node_traffic_type_index_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'node_traffic_records'
+    AND INDEX_NAME = 'node_traffic_records_type_aggregate_index'
+);
+SET @node_traffic_type_index_sql = IF(
+  @node_traffic_type_index_exists = 0,
+  'ALTER TABLE node_traffic_records ADD KEY node_traffic_records_type_aggregate_index
+     (record_type, node_id, upload_bytes, download_bytes)',
+  'SELECT 1'
+);
+PREPARE node_traffic_type_index_statement FROM @node_traffic_type_index_sql;
+EXECUTE node_traffic_type_index_statement;
+DEALLOCATE PREPARE node_traffic_type_index_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260919_005', 'indexes: node_traffic_records covering index for traffic summary grouping');
+
+-- 20260919_006：SMTP 后台配置与验证码请求 IP 限流。
+-- 历史库的验证码表早于 request_ip 字段，采用 information_schema 探测保证整体 schema 重放幂等。
+SET @email_verification_request_ip_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'email_verification_codes' AND COLUMN_NAME = 'request_ip'
+);
+SET @email_verification_request_ip_sql = IF(
+  @email_verification_request_ip_exists = 0,
+  'ALTER TABLE email_verification_codes ADD COLUMN request_ip VARCHAR(45) NOT NULL DEFAULT '''' AFTER purpose, ADD KEY email_verification_ip_created_index (request_ip, created_at)',
+  'SELECT 1'
+);
+PREPARE email_verification_request_ip_statement FROM @email_verification_request_ip_sql;
+EXECUTE email_verification_request_ip_statement;
+DEALLOCATE PREPARE email_verification_request_ip_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260919_006', 'smtp settings and email verification request IP tracking');
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260920_001', 'payment refunds, signed callback receipts, encrypted credentials and CSV reconciliation');
+
+-- 20260920_002：节点域第一步——从 3x-ui 主控导入入站（docs/node-domain-design.md §3.1）。
+-- 五列同时引入，以 inbound_snapshot 为探针做一次幂等判断。
+SET @nodes_panel_import_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nodes' AND COLUMN_NAME = 'inbound_snapshot'
+);
+SET @nodes_panel_import_sql = IF(
+  @nodes_panel_import_exists = 0,
+  'ALTER TABLE nodes
+     ADD COLUMN origin_node_guid VARCHAR(64) NULL COMMENT ''3x-ui originNodeGuid：入站实际所在的物理节点'' AFTER external_inbound_id,
+     ADD COLUMN is_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT ''参与给用户分配；与前台可见分开'' AFTER is_visible,
+     ADD COLUMN inbound_snapshot JSON NULL COMMENT ''最近一次导入的 3x-ui 入站（已剔除客户端与服务端私钥）'' AFTER last_check_at,
+     ADD COLUMN snapshot_hash CHAR(64) NULL AFTER inbound_snapshot,
+     ADD COLUMN missing_since DATETIME NULL COMMENT ''3x-ui 中已不存在的时间；不自动删除'' AFTER snapshot_hash',
+  'SELECT 1'
+);
+PREPARE nodes_panel_import_statement FROM @nodes_panel_import_sql;
+EXECUTE nodes_panel_import_statement;
+DEALLOCATE PREPARE nodes_panel_import_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260920_002', 'nodes: 3x-ui inbound import (origin guid, enabled flag, snapshot, missing marker)');
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260920_003', 'panel_clients: one 3x-ui client per user with outbox-style sync versioning');
+
+-- 20260920_004：流量采集游标、设备数限制。
+SET @plans_device_limit_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plans' AND COLUMN_NAME = 'device_limit'
+);
+SET @plans_device_limit_sql = IF(
+  @plans_device_limit_exists = 0,
+  'ALTER TABLE plans ADD COLUMN device_limit INT UNSIGNED NULL COMMENT ''设备数上限（limitIp + 订阅 HWID），NULL 或 0 表示不限'' AFTER speed_limit',
+  'SELECT 1'
+);
+PREPARE plans_device_limit_statement FROM @plans_device_limit_sql;
+EXECUTE plans_device_limit_statement;
+DEALLOCATE PREPARE plans_device_limit_statement;
+
+SET @users_device_limit_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'device_limit_override'
+);
+SET @users_device_limit_sql = IF(
+  @users_device_limit_exists = 0,
+  'ALTER TABLE users ADD COLUMN device_limit_override INT UNSIGNED NULL COMMENT ''单用户覆盖套餐设备数，NULL 跟随套餐，0 表示不限'' AFTER plan_id',
+  'SELECT 1'
+);
+PREPARE users_device_limit_statement FROM @users_device_limit_sql;
+EXECUTE users_device_limit_statement;
+DEALLOCATE PREPARE users_device_limit_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260920_004', 'traffic collection cursors, device limits (plans/users) and HWID device registry');
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260920_005', 'system_settings: runtime-adjustable configuration moved out of environment variables');

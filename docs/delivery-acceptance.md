@@ -257,11 +257,11 @@ eslint tests         → 0 问题
 
 `user_traffic_records` 全库只有一处引用——`client-portal.ts` 的 SELECT。没有任何写入路径，也没有从面板拉取用量的定时任务。后果：流量明细页与超额判定没有真实数据源。
 
-### 6.3 SMTP / 邮箱验证未接入（已确认优先级低）
+### 6.3 SMTP / 邮箱验证
 
-- 验证码硬编码为 `EMAIL_VERIFICATION_CODE`（默认 `666666`）。
-- `email_verification_codes`、`password_reset_tokens` 两表零引用。
-- 找回密码接口返回 501，`send-email-verify` 与 `forget` 中均标注 `TODO(SMTP)`。
+- `/admin/mail` 保存 SMTP 主机、账号及发件人；密码只以 AES-256-GCM 密文入库，主密钥与验证码 pepper 只在部署环境中保存。
+- 注册与找回密码均使用十分钟有效、一次性消费的六位验证码；验证码仅存 HMAC 哈希，并实施邮箱/IP 发送限流和错误次数限制。
+- 服务关闭、配置不完整或服务器缺少密钥时，客户接口返回 503；不会回显或接受固定验证码。
 
 ### 6.4 其他
 
@@ -601,21 +601,6 @@ assert.equal(typeof created.data, "string", "创建邀请码接口应返回新�
 assert.ok(invites.data.codes.some((item) => item.code === created.data), "返回的邀请码应能在列表中找到");
 ```
 
-### 13.2 `/payment-test` 挂在所有用户的「财务」导航里
-
-先核实再动手：这个页面**全文件没有任何 `fetch`**，是纯静态原型——它不发请求、
-不建订单，只是把「下单 → 回调」的界面过一遍。
-
-所以它不是安全漏洞，问题是**误导**：用户点进去什么都不会发生，只会以为支付流程坏了。
-
-按项目既有的 `NODE_ENV === "production"` 惯例（见 `proxy.ts`、`session.ts`），两处成对处理：
-
-- `src/lib/navigation.ts` 新增 `DEMO_ONLY_SECTIONS`，生产环境从 `portalSections` 过滤掉该入口
-  （`migratableSections` 由它派生，自动一致）；
-- `src/app/(portal)/payment-test/page.tsx` 生产环境直接 `notFound()`，URL 也不可达。
-
-只隐藏导航不够——URL 仍然可达，所以路由必须一起拦。
-
 ### 13.3 早期订单的履约来源显示成「未履约」
 
 `fulfillment_source` 是 `20260919_002` 迁移**后加的列**，加列之前就流转完的订单是 `NULL`。
@@ -779,7 +764,7 @@ after(async () => { await restoreMockPaymentMethod(mockPaymentWasEnabled); ... }
 ### 比例：全局统一，走环境变量
 
 按选择用**全局统一比例**，不新增配置表，与 `AUTH_SESSION_SECRET` /
-`NODE_TRAFFIC_SECRET` / `EMAIL_VERIFICATION_CODE` 同一套路：
+`NODE_TRAFFIC_SECRET` 同一套路：
 
 ```bash
 COMMISSION_RATE_PERCENT=10      # 百分数；0 或未设置 = 不返佣
@@ -991,8 +976,7 @@ assert.deepEqual(stale, [], `以下表已修好，请从清单删除：${stale.j
 **全项目零引用（等于没实现）**
 
 - `access_groups` / `node_access_groups` —— 节点分组访问控制。
-- `email_verification_codes` / `password_reset_tokens` —— 均卡在 SMTP；
-  前者靠固定验证码 `666666` 通过，后者接口直接返回 501。
+- `password_reset_tokens` —— 当前使用验证码式找回密码；此表保留给将来的链接式重置，不参与当前流程。
 - `schema_migrations` —— 迁移脚本是整体重放 `schema.sql`（全 `IF NOT EXISTS`），
   没有做版本跟踪，这张表因此没人用。对当前写法无害，但意味着**没有迁移历史可查**。
 
@@ -1064,3 +1048,76 @@ env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID \
 
 34 条路由全部编译成功，含本轮新增的后台流量板块（走 `/admin/[section]` 动态路由）
 与 `/api/node/traffic`。构建后回归 **88/88**，`tsc` / `eslint` 均为 0。
+
+---
+
+## 十八、附：查询性能审计（流量板块）
+
+### 方法：不靠猜，也不在业务库上测
+
+业务库只有 1 个用户、5 张订单。**空表上所有执行计划长得一样**，`EXPLAIN` 看不出问题，
+耗时都在 0.1ms 量级无法区分。因此建了独立的 `aeranexa_perf` 库灌入真实规模数据：
+
+| 表 | 行数 |
+| --- | --- |
+| `user_traffic_records` | ~19.9 万 |
+| `orders` | ~6.0 万 |
+| `ticket_messages` | ~6.0 万 |
+| `wallet_transactions` | ~5.0 万 |
+| `tickets` | ~3.0 万 |
+| `commission_logs` | ~2.0 万 |
+| `users` | ~2.0 万 |
+
+每条查询跑 7 次取中位数（避开首次冷缓存），同时输出 `EXPLAIN`。
+脚本放在隔离工作区，**不进业务仓库**；测完 `DROP DATABASE`，并复核真实库行数未变。
+
+> **防呆**：本项目的 `schema.sql` 开头有 `CREATE DATABASE` + `USE aeranexa`，
+> 用 `multipleStatements` 连到 perf 库直接执行会把 DDL 打到真实库上。
+> 必须先剥掉这两类语句并断言，执行后再确认 `SELECT DATABASE()` 没跑偏。
+
+### 结果：多数查询健康，两处可改
+
+以下都已走索引、亚毫秒，无需处理：后台订单列表（0.98ms）、用户列表（0.33ms）、
+工单列表（0.33ms）、流量列表（0.29ms）、佣金结算（0.19ms）、节点列表（0.21ms）。
+
+**问题在流量板块的计数与汇总**——都是我自己上一轮写的代码：
+
+| 查询 | 改前 | 改后 | 手段 |
+| --- | --- | --- | --- |
+| 流量汇总（按粒度分组） | 2.05 ms | **0.72 ms** | 去掉多余 JOIN + 覆盖索引 |
+| 流量计数 | 1.41 ms | **0.91 ms** | 去掉多余 JOIN |
+
+**① 无意义的 JOIN。** 汇总与计数的列全部来自 `node_traffic_records`，
+`LEFT JOIN nodes` 只是为了按节点名过滤；无搜索词时它不过滤掉任何行，
+却会改变执行计划。改为无搜索词时不 JOIN（与订单计数已有的做法一致）。
+
+**② 分组缺少可用索引。** 既有 `node_traffic_records_record_at_index` 以 `record_at` 打头，
+无法支撑 `GROUP BY record_type`，实测退化为全表扫描 + `Using filesort`。
+新增覆盖索引 `(record_type, node_id, upload_bytes, download_bytes)` 后，
+计划变为 `Using index`——分组直接按索引顺序完成，且无需回表。
+
+索引按 `20260919_005` 的幂等写法加入 `schema.sql`（沿用 `20260919_004` 的既有模式），
+已在本库执行并确认重复执行不报错。
+
+> **代价要说清楚**：该索引服务「流量汇总按粒度分组」这一条查询。
+> 当前数据量下绝对收益只有 1.3ms，加它的理由是这张表会持续增长
+> （30 节点按小时上报约 26 万行/年），而全表扫描 + filesort 会线性恶化。
+> 若将来规模再上一个量级，正确做法是上汇总表（rollup），而不是继续加索引——
+> 索引只降低常数，不改变聚合全表的复杂度。
+
+### 一个「测了但没改」的案例
+
+`listTraffic(userId, days)` 的 `days` 参数**只作用在 `LIMIT` 上**，SQL 里没有日期过滤，
+因此要先把该用户的全部历史分组聚合，再取最后 N 条。看起来是个明显的优化点。
+
+但实测两者**没有可测差异**（0.26ms vs 0.23ms）——因为种子数据里每个用户只有约 10 条记录，
+「全部历史」与「30 天」几乎相等。**数据不支持预设的结论，所以没有改**；
+改它还会动语义（"最近 N 个桶" vs "最近 N 天"，在混合粒度下并不等价）。
+
+教训：**先量再改，量不出差别就别改。** 凭直觉"优化"有可能只是把代码搅乱。
+
+### 验证
+
+- 全量 **89/89**，tsc / eslint 均为 0；
+- 迁移幂等（连跑两次无错），真实库 `users` 1、`orders` 5 未变；
+- perf 库已删除，工作区无残留。

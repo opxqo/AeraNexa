@@ -4,6 +4,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { RowDataPacket } from "mysql2";
 import bcrypt from "bcryptjs";
 import { getDbPool } from "./db";
+import { markPanelClientDirty } from "./node-sync";
 import { badRequest } from "./errors";
 import { getSessionUserId } from "./session";
 
@@ -285,5 +286,9 @@ export async function resetSecurity(userId: number): Promise<string> {
     "UPDATE users SET uuid = ?, subscription_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
     [uuid, subscriptionToken, userId],
   );
+  // UUID 即 3x-ui 客户端凭据：轮换后旧 UUID 必须立即在 3x-ui 失效。
+  await markPanelClientDirty(getDbPool(), userId);
+  // 订阅 token 已换，旧设备登记一并清空，名额留给重新导入的设备。
+  await getDbPool().execute("DELETE FROM user_devices WHERE user_id = ?", [userId]);
   return subscriptionToken;
 }

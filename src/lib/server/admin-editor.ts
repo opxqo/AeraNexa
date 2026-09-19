@@ -4,6 +4,8 @@ import type { RowDataPacket } from "mysql2";
 import type { AdminSectionKey } from "@/lib/admin-navigation";
 import { getDbPool } from "./db";
 import { requireAdminUser } from "./admin";
+import { getSmtpSettings } from "./smtp-settings";
+import { listSettingsForAdmin, settingsEncryptionReady, type AdminSettingView } from "./settings";
 import { badRequest, notFound } from "./errors";
 import { ensureSystemPaymentMethods } from "./client-portal";
 import { ONETIME_PERIOD, RECURRING_PERIODS } from "./subscription";
@@ -26,6 +28,12 @@ type EditorUser = {
   id: number; email: string; nickname: string; role: "admin" | "user"; isActive: boolean;
   planName: string; createdAt: string; expiredAt: string; transferEnableGb: number;
   balance: number; commissionBalance: number; uuid: string;
+  /** 已用流量（GB，节点域流量采集回写）。 */
+  usedGb: number;
+  /** 单用户设备数覆盖；null 跟随套餐，0 不限。 */
+  deviceLimitOverride: number | null;
+  /** 订阅层已登记设备数。 */
+  deviceCount: number;
 };
 
 type EditorPlan = {
@@ -34,11 +42,26 @@ type EditorPlan = {
   monthPrice: number | null; quarterPrice: number | null; halfYearPrice: number | null;
   yearPrice: number | null; twoYearPrice: number | null; threeYearPrice: number | null;
   onetimePrice: number | null; resetPrice: number | null;
+  /** 设备数上限；null 或 0 表示不限。 */
+  deviceLimit: number | null;
+  /** 节点权限组；null 表示该套餐不分配任何节点。 */
+  groupId: number | null;
 };
 
 type EditorPayment = {
   id: number; provider: string; name: string; isEnabled: boolean; handlingFeeFixed: number;
   handlingFeePercent: number; notifyDomain: string; sortOrder: number; transactionCount: number;
+};
+
+type EditorRefund = {
+  id: number; orderId: number; tradeNo: string; email: string; amount: number; reason: string;
+  status: string; adminEmail: string; completedAt: string; createdAt: string;
+};
+
+type EditorReconciliation = {
+  id: number; batchId: number; provider: string; filename: string; providerTradeNo: string;
+  amount: number; status: string; matchStatus: string; resolutionStatus: string;
+  resolutionNote: string; createdAt: string;
 };
 
 export type EditorRechargeCard = {
@@ -59,9 +82,32 @@ export type AdminRechargeCardBatchDetails = {
 
 type EditorNode = {
   id: number; name: string; protocol: string; host: string; port: number; serverPort: number | null;
-  rate: number; isVisible: boolean; isOnline: boolean; externalPanel: string;
+  rate: number; isVisible: boolean; isEnabled: boolean; isOnline: boolean; externalPanel: string;
   externalInboundId: string; sortOrder: number; lastCheckAt: string; accountCount: number;
+  /** 由 3x-ui 导入（有入站快照）：协议、入站 ID、服务端口以面板为准，后台只读。 */
+  imported: boolean;
+  /** 3x-ui 中已不存在的时间；空字符串表示正常。 */
+  missingSince: string;
+  groupIds: number[];
 };
+
+/** 节点权限组：套餐 → 权限组 → 节点，决定用户能用哪些节点。 */
+export type EditorAccessGroup = { id: number; name: string; nodeCount: number; planCount: number };
+
+async function listAccessGroups(): Promise<EditorAccessGroup[]> {
+  const [rows] = await getDbPool().query<RowDataPacket[]>(
+    `SELECT g.id, g.name,
+            (SELECT COUNT(*) FROM node_access_groups nag WHERE nag.group_id = g.id) AS node_count,
+            (SELECT COUNT(*) FROM plans p WHERE p.group_id = g.id) AS plan_count
+       FROM access_groups g ORDER BY g.id ASC`,
+  );
+  return rows.map((row) => ({
+    id: asNumber(row.id),
+    name: String(row.name),
+    nodeCount: asNumber(row.node_count),
+    planCount: asNumber(row.plan_count),
+  }));
+}
 
 type EditorTicket = {
   id: number; subject: string; email: string; userId: number; level: number; status: number;
@@ -74,6 +120,7 @@ type EditorOrder = {
   couponCode: string; adminRemark: string;
   /** gateway = 支付回调履约；admin = 后台人工补单；null = 尚未履约。 */
   fulfillmentSource: string | null;
+  paymentProvider: string | null; paymentTransactionId: number | null; refunded: boolean;
   createdAt: string; paidAt: string;
 };
 
@@ -135,16 +182,27 @@ type EditorKnowledge = {
   bodyLength: number;
 };
 
+type EditorMailSettings = {
+  enabled: boolean; host: string; port: number; secure: boolean; username: string;
+  fromName: string; fromEmail: string; hasPassword: boolean; configured: boolean;
+  encryptionReady: boolean; updatedAt: string;
+};
+
 export type AdminEditorData =
   | { section: "users"; page: AdminPage<EditorUser> }
-  | { section: "plans"; page: AdminPage<EditorPlan> }
+  // 套餐与节点表单都要选择节点权限组，因此一并带上权限组选项。
+  | { section: "plans"; page: AdminPage<EditorPlan>; groups: EditorAccessGroup[] }
   | { section: "payments"; page: AdminPage<EditorPayment> }
+  | { section: "refunds"; page: AdminPage<EditorRefund> }
+  | { section: "reconciliation"; page: AdminPage<EditorReconciliation> }
   | { section: "recharge-cards"; page: AdminPage<EditorRechargeCardBatch> }
-  | { section: "nodes"; page: AdminPage<EditorNode> }
+  | { section: "nodes"; page: AdminPage<EditorNode>; groups: EditorAccessGroup[] }
   | { section: "tickets"; page: AdminPage<EditorTicket> }
   | { section: "notices"; page: AdminPage<EditorNotice> }
   | { section: "knowledge"; page: AdminPage<EditorKnowledge> }
   | { section: "traffic"; page: AdminPage<EditorNodeTraffic>; summary: TrafficSummary }
+  | { section: "mail"; page: AdminPage<EditorMailSettings> }
+  | { section: "settings"; page: AdminPage<AdminSettingView>; encryptionReady: boolean }
   // 优惠券表单需要勾选适用套餐，因此一并带上套餐选项。
   | { section: "coupons"; page: AdminPage<EditorCoupon>; plans: Array<{ id: number; name: string }> }
   // 订单改单表单需要切换套餐与周期，因此带上套餐及其可售周期。
@@ -258,7 +316,7 @@ async function countTotal(sql: string, params: Array<string | number | null>): P
 }
 
 export async function getAdminEditorData(
-  section: Exclude<AdminSectionKey, "settings">,
+  section: AdminSectionKey,
   query: AdminListQuery = {},
 ): Promise<AdminEditorData> {
   await requireAdminUser();
@@ -266,12 +324,32 @@ export async function getAdminEditorData(
   const { q, page, pageSize, offset } = normalize(query);
   const limitClause = ` LIMIT ${pageSize} OFFSET ${offset}`;
 
+  if (section === "settings") {
+    const rows = await listSettingsForAdmin();
+    return { section, page: { total: rows.length, page: 1, pageSize: rows.length, rows }, encryptionReady: settingsEncryptionReady() };
+  }
+
+  if (section === "mail") {
+    const settings = await getSmtpSettings();
+    return {
+      section,
+      page: { total: 1, page: 1, pageSize: 1, rows: [{
+        enabled: settings.enabled, host: settings.host, port: settings.port, secure: settings.secure,
+        username: settings.username, fromName: settings.fromName, fromEmail: settings.fromEmail,
+        hasPassword: settings.hasPassword, configured: settings.configured,
+        encryptionReady: settings.encryptionReady, updatedAt: asDate(settings.updatedAt),
+      }] },
+    };
+  }
+
   if (section === "users") {
     const where = q ? "WHERE (u.email LIKE ? OR u.nickname LIKE ?)" : "";
     const params = q ? [like(q), like(q)] : [];
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT u.id, u.email, u.nickname, u.role, u.is_active, u.expired_at, u.transfer_enable,
-              u.balance, u.commission_balance, u.uuid, u.created_at, p.name AS plan_name
+              u.balance, u.commission_balance, u.uuid, u.created_at, p.name AS plan_name,
+              u.upload_bytes + u.download_bytes AS used_bytes, u.device_limit_override,
+              (SELECT COUNT(*) FROM user_devices d WHERE d.user_id = u.id) AS device_count
          FROM users u LEFT JOIN plans p ON p.id = u.plan_id
          ${where} ORDER BY u.id DESC${limitClause}`,
       params,
@@ -298,6 +376,9 @@ export async function getAdminEditorData(
           balance: asNumber(row.balance),
           commissionBalance: asNumber(row.commission_balance),
           uuid: String(row.uuid),
+          usedGb: Math.round((asNumber(row.used_bytes) / 1073741824) * 100) / 100,
+          deviceLimitOverride: row.device_limit_override === null ? null : asNumber(row.device_limit_override),
+          deviceCount: asNumber(row.device_count),
         })),
       },
     };
@@ -307,7 +388,7 @@ export async function getAdminEditorData(
     const where = q ? "WHERE name LIKE ?" : "";
     const params = q ? [like(q)] : [];
     const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT id, name, transfer_enable, speed_limit, capacity_limit, content, sort_order,
+      `SELECT id, group_id, name, transfer_enable, speed_limit, device_limit, capacity_limit, content, sort_order,
               is_visible, is_renewable, month_price, quarter_price, half_year_price, year_price,
               two_year_price, three_year_price, onetime_price, reset_price
          FROM plans ${where} ORDER BY sort_order ASC, id DESC${limitClause}`,
@@ -337,8 +418,11 @@ export async function getAdminEditorData(
           threeYearPrice: nullable(row.three_year_price),
           onetimePrice: nullable(row.onetime_price),
           resetPrice: nullable(row.reset_price),
+          groupId: nullable(row.group_id),
+          deviceLimit: nullable(row.device_limit),
         })),
       },
+      groups: await listAccessGroups(),
     };
   }
 
@@ -371,6 +455,53 @@ export async function getAdminEditorData(
         })),
       },
     };
+  }
+
+  if (section === "refunds") {
+    const where = q ? "WHERE (o.trade_no LIKE ? OR u.email LIKE ? OR r.reason LIKE ?)" : "";
+    const params = q ? [like(q), like(q), like(q)] : [];
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT r.id, r.order_id, r.amount, r.reason, r.status, r.completed_at, r.created_at,
+              o.trade_no, u.email, admin.email AS admin_email
+         FROM payment_refunds r
+         INNER JOIN orders o ON o.id = r.order_id
+         INNER JOIN users u ON u.id = r.user_id
+         INNER JOIN users admin ON admin.id = r.admin_id
+         ${where} ORDER BY r.id DESC${limitClause}`,
+      params,
+    );
+    const total = await countTotal(
+      `SELECT COUNT(*) AS total FROM payment_refunds r INNER JOIN orders o ON o.id = r.order_id INNER JOIN users u ON u.id = r.user_id ${where}`,
+      params,
+    );
+    return { section, page: { total, page, pageSize, rows: rows.map((row) => ({
+      id: asNumber(row.id), orderId: asNumber(row.order_id), tradeNo: String(row.trade_no), email: String(row.email),
+      amount: asNumber(row.amount), reason: String(row.reason), status: String(row.status), adminEmail: String(row.admin_email),
+      completedAt: asDate(row.completed_at as Date | null), createdAt: asDate(row.created_at as Date),
+    })) } };
+  }
+
+  if (section === "reconciliation") {
+    const where = q ? "WHERE (b.provider LIKE ? OR rr.provider_trade_no LIKE ? OR rr.match_status LIKE ?)" : "";
+    const params = q ? [like(q), like(q), like(q)] : [];
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      `SELECT rr.id, rr.batch_id, rr.provider_trade_no, rr.amount_cents, rr.match_status, rr.resolution_status,
+              rr.resolution_note, rr.created_at, b.provider, b.filename
+         FROM reconciliation_rows rr
+         INNER JOIN reconciliation_batches b ON b.id = rr.batch_id
+         ${where} ORDER BY rr.id DESC${limitClause}`,
+      params,
+    );
+    const total = await countTotal(
+      `SELECT COUNT(*) AS total FROM reconciliation_rows rr INNER JOIN reconciliation_batches b ON b.id = rr.batch_id ${where}`,
+      params,
+    );
+    return { section, page: { total, page, pageSize, rows: rows.map((row) => ({
+      id: asNumber(row.id), batchId: asNumber(row.batch_id), provider: String(row.provider), filename: String(row.filename),
+      providerTradeNo: String(row.provider_trade_no), amount: asNumber(row.amount_cents), status: "已导入",
+      matchStatus: String(row.match_status), resolutionStatus: String(row.resolution_status),
+      resolutionNote: row.resolution_note ? String(row.resolution_note) : "", createdAt: asDate(row.created_at as Date),
+    })) } };
   }
 
   if (section === "recharge-cards") {
@@ -406,8 +537,10 @@ export async function getAdminEditorData(
     const where = q ? "WHERE (n.name LIKE ? OR n.host LIKE ?)" : "";
     const params = q ? [like(q), like(q)] : [];
     const [rows] = await pool.execute<RowDataPacket[]>(
-      `SELECT n.id, n.name, n.protocol, n.host, n.port, n.server_port, n.rate, n.is_visible, n.is_online,
-              n.external_panel, n.external_inbound_id, n.sort_order, n.last_check_at,
+      `SELECT n.id, n.name, n.protocol, n.host, n.port, n.server_port, n.rate, n.is_visible, n.is_enabled, n.is_online,
+              n.external_panel, n.external_inbound_id, n.sort_order, n.last_check_at, n.missing_since,
+              n.snapshot_hash IS NOT NULL AS imported,
+              (SELECT GROUP_CONCAT(nag.group_id) FROM node_access_groups nag WHERE nag.node_id = n.id) AS group_ids,
               (SELECT COUNT(*) FROM proxy_accounts pa WHERE pa.node_id = n.id) AS account_count
          FROM nodes n ${where} ORDER BY n.sort_order ASC, n.id DESC${limitClause}`,
       params,
@@ -426,14 +559,19 @@ export async function getAdminEditorData(
           serverPort: row.server_port === null ? null : asNumber(row.server_port),
           rate: asNumber(row.rate),
           isVisible: Boolean(row.is_visible),
+          isEnabled: Boolean(row.is_enabled),
           isOnline: Boolean(row.is_online),
           externalPanel: String(row.external_panel),
           externalInboundId: row.external_inbound_id ? String(row.external_inbound_id) : "",
           sortOrder: asNumber(row.sort_order),
           lastCheckAt: asDate(row.last_check_at as Date | null),
           accountCount: asNumber(row.account_count),
+          imported: Boolean(row.imported),
+          missingSince: row.missing_since ? asDate(row.missing_since as Date) : "",
+          groupIds: row.group_ids ? String(row.group_ids).split(",").map(Number).filter(Number.isInteger) : [],
         })),
       },
+      groups: await listAccessGroups(),
     };
   }
 
@@ -590,8 +728,11 @@ export async function getAdminEditorData(
          ${where} ORDER BY r.record_at DESC, r.id DESC${limitClause}`,
       params,
     );
+    // 无搜索词时计数与汇总都不需要 JOIN：两者的列全部来自 r，
+    // JOIN 仅为了按节点名过滤。与订单计数的既有做法一致。
+    const countJoin = q ? " LEFT JOIN nodes n ON n.id = r.node_id" : "";
     const total = await countTotal(
-      `SELECT COUNT(*) AS total FROM node_traffic_records r LEFT JOIN nodes n ON n.id = r.node_id ${where}`,
+      `SELECT COUNT(*) AS total FROM node_traffic_records r${countJoin} ${where}`,
       params,
     );
     // 汇总必须跟随搜索条件，否则「筛选后表格变了、卡片数字没变」会让人以为算错了。
@@ -599,8 +740,7 @@ export async function getAdminEditorData(
       `SELECT r.record_type,
               COALESCE(SUM(r.upload_bytes), 0) AS up, COALESCE(SUM(r.download_bytes), 0) AS down,
               COUNT(DISTINCT r.node_id) AS nodes, COUNT(*) AS records
-         FROM node_traffic_records r
-         LEFT JOIN nodes n ON n.id = r.node_id
+         FROM node_traffic_records r${countJoin}
          ${where}
          GROUP BY r.record_type ORDER BY r.record_type`,
       params,
@@ -635,6 +775,9 @@ export async function getAdminEditorData(
     `SELECT o.id, o.trade_no, o.order_type, o.period, o.plan_id, o.total_amount, o.discount_amount,
             o.surplus_amount, o.status, o.created_at, o.paid_at,
             o.fulfillment_source, o.admin_remark, c.code AS coupon_code,
+            (SELECT pm.provider FROM payment_transactions pt INNER JOIN payment_methods pm ON pm.id = pt.payment_method_id WHERE pt.order_id = o.id AND pt.status = 'completed' ORDER BY pt.id DESC LIMIT 1) AS payment_provider,
+            (SELECT pt.id FROM payment_transactions pt WHERE pt.order_id = o.id AND pt.status = 'completed' ORDER BY pt.id DESC LIMIT 1) AS payment_transaction_id,
+            EXISTS(SELECT 1 FROM payment_refunds pr WHERE pr.order_id = o.id) AS refunded,
             u.email, p.name AS plan_name
        FROM orders o
        INNER JOIN users u ON u.id = o.user_id
@@ -683,6 +826,9 @@ export async function getAdminEditorData(
         couponCode: row.coupon_code === null ? "" : String(row.coupon_code),
         adminRemark: row.admin_remark === null ? "" : String(row.admin_remark),
         fulfillmentSource: row.fulfillment_source === null ? null : String(row.fulfillment_source),
+        paymentProvider: row.payment_provider === null ? null : String(row.payment_provider),
+        paymentTransactionId: row.payment_transaction_id === null ? null : asNumber(row.payment_transaction_id),
+        refunded: Boolean(row.refunded),
         createdAt: asDate(row.created_at as Date),
         paidAt: asDate(row.paid_at as Date | null),
       })),

@@ -26,16 +26,13 @@ test("登录接口将损坏的 JSON 识别为客户端请求错误", async () =>
   await assertApiError(response, { message: "请求格式不正确", code: "invalid_request" });
 });
 
-test("未配置 SMTP 时发送接口返回默认验证码提示", async () => {
+test("未启用 SMTP 时发送接口安全拒绝且不回显验证码", async () => {
   const response = await fetch(`${baseUrl}/api/auth/send-email-verify`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: "verification@example.test" }),
   });
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    data: "666666",
-    message: "SMTP 尚未配置，当前验证码为 666666",
-  });
+  assert.equal(response.status, 503);
+  await assertApiError(response, { message: "邮件验证服务暂未启用", code: "unavailable" });
 });

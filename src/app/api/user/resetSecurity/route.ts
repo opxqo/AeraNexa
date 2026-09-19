@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { toApiError, unauthenticated } from "@/lib/server/errors";
+import { getSubscribeBaseUrl } from "@/lib/server/settings";
 import { getCurrentUser, resetSecurity } from "@/lib/server/users";
 
 export const runtime = "nodejs";
@@ -15,12 +16,12 @@ export async function POST() {
     if (!user) throw unauthenticated();
 
     const token = await resetSecurity(user.id);
-    const baseUrl = (process.env.SUBSCRIBE_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
+    const baseUrl = await getSubscribeBaseUrl();
     return NextResponse.json({
       data: {
         token,
         uuid: user.uuid,
-        subscribe_url: `${baseUrl}/api/v1/client/subscribe?token=${token}`,
+        subscribe_url: `${baseUrl}/api/client/subscribe?token=${token}`,
       },
     });
   } catch (error) {
