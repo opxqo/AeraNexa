@@ -20,7 +20,7 @@ async function proxyRequest(request: NextRequest, { params }: { params: Promise<
   });
 
   try {
-    let body: any = undefined;
+    let body: BodyInit | undefined = undefined;
     if (["POST", "PUT", "PATCH"].includes(request.method)) {
       const contentType = request.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
@@ -50,11 +50,12 @@ async function proxyRequest(request: NextRequest, { params }: { params: Promise<
       statusText: response.statusText,
       headers: respHeaders,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       {
         message: `后端服务连接异常 (${targetBaseUrl})，请确认 V2Board 服务是否启动或检查环境变量配置。`,
-        detail: err.message,
+        detail,
       },
       { status: 502 },
     );

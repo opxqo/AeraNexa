@@ -1,48 +1,50 @@
 import { NextResponse } from "next/server";
+import { recordAudit } from "@/lib/server/audit";
 import { getEmailVerificationCode } from "@/lib/server/email-verification";
+import { badRequest, conflict, readJsonBody, toApiError } from "@/lib/server/errors";
 import { setSessionCookie } from "@/lib/server/session";
-import { createUser, findUserByEmail, toPublicUser } from "@/lib/server/users";
+import { findUserByEmail, registerUser, toPublicUser } from "@/lib/server/users";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** users.email 为 VARCHAR(64)，超长会在数据库层被截断或报错，这里提前拦截。 */
+const EMAIL_MAX_LENGTH = 64;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 72;
+const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 
 export async function POST(request: Request) {
-  let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ message: "请求格式不正确" }, { status: 400 });
-  }
-
-  try {
-    const payload = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    const payload = await readJsonBody(request);
     const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
     const password = typeof payload.password === "string" ? payload.password : "";
     const confirmation = typeof payload.password_confirmation === "string" ? payload.password_confirmation : password;
     const emailCode = typeof payload.email_code === "string" ? payload.email_code.trim() : "";
-    const expectedEmailCode = getEmailVerificationCode();
+    const inviteCode = typeof payload.invite_code === "string" ? payload.invite_code.trim() : "";
 
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-      return NextResponse.json({ message: "请输入有效的邮箱地址" }, { status: 400 });
+    if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+      throw badRequest("请输入有效的邮箱地址");
     }
-    if (password.length < 8) {
-      return NextResponse.json({ message: "密码长度不能少于 8 位" }, { status: 400 });
-    }
-    if (password !== confirmation) {
-      return NextResponse.json({ message: "两次输入的密码不一致" }, { status: 400 });
-    }
-    if (emailCode !== expectedEmailCode) {
-      return NextResponse.json({ message: "邮箱验证码错误" }, { status: 400 });
-    }
+    if (password.length < PASSWORD_MIN_LENGTH) throw badRequest(`密码长度不能少于 ${PASSWORD_MIN_LENGTH} 位`);
+    if (password.length > PASSWORD_MAX_LENGTH) throw badRequest(`密码长度不能超过 ${PASSWORD_MAX_LENGTH} 位`);
+    if (password !== confirmation) throw badRequest("两次输入的密码不一致");
+    if (emailCode !== getEmailVerificationCode()) throw badRequest("邮箱验证码错误");
 
-    if (await findUserByEmail(email)) {
-      return NextResponse.json({ message: "该邮箱已经注册" }, { status: 409 });
-    }
+    if (await findUserByEmail(email)) throw conflict("该邮箱已经注册");
 
-    const user = await createUser(email, password);
+    const user = await registerUser({ email, password, inviteCode: inviteCode || undefined });
     await setSessionCookie(user.id);
+    await recordAudit({
+      action: "auth.register",
+      userId: user.id,
+      request,
+      context: { email, invited: Boolean(inviteCode) },
+    });
+
     return NextResponse.json({ data: toPublicUser(user) }, { status: 201 });
   } catch (error) {
-    console.error("AeraNexa registration failed", error);
-    return NextResponse.json({ message: "注册失败，请检查数据库配置" }, { status: 503 });
+    const { status, payload } = toApiError(error, "auth register");
+    return NextResponse.json(payload, { status });
   }
 }

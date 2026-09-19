@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/server/users";
 import { getUserStats } from "@/lib/server/client-portal";
+import { toApiError, unauthenticated } from "@/lib/server/errors";
+import { getCurrentUser } from "@/lib/server/users";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ message: "未登录或登录已过期" }, { status: 401 });
+    if (!user) throw unauthenticated();
     return NextResponse.json({ data: await getUserStats(user.id) });
   } catch (error) {
-    console.error("AeraNexa user stats lookup failed", error);
-    return NextResponse.json({ message: "用户系统暂不可用，请检查数据库配置" }, { status: 503 });
+    const { status, payload } = toApiError(error, "user getStat");
+    return NextResponse.json(payload, { status });
   }
 }

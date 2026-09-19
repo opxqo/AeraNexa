@@ -1,33 +1,47 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, updatePreferences } from "@/lib/server/users";
+import { badRequest, readJsonBody, toApiError, unauthenticated } from "@/lib/server/errors";
+import { getCurrentUser, updatePreferences, updateProfile } from "@/lib/server/users";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const isReminderValue = (value: unknown): boolean => value === undefined || value === 0 || value === 1;
 
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ message: "请求格式不正确" }, { status: 400 });
-  }
-
   try {
     const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ message: "未登录或登录已过期" }, { status: 401 });
+    if (!user) throw unauthenticated();
 
-    const payload = body && typeof body === "object" ? body as Record<string, unknown> : {};
-    const isReminderValue = (value: unknown) => value === undefined || value === 0 || value === 1;
+    const payload = await readJsonBody(request);
+
     if (!isReminderValue(payload.remind_expire) || !isReminderValue(payload.remind_traffic)) {
-      return NextResponse.json({ message: "提醒设置格式不正确" }, { status: 400 });
+      throw badRequest("提醒设置格式不正确");
     }
 
-    await updatePreferences(user.id, {
-      remind_expire: payload.remind_expire as number | undefined,
-      remind_traffic: payload.remind_traffic as number | undefined,
-    });
+    const hasNickname = payload.nickname !== undefined;
+    let nickname: string | undefined;
+    if (hasNickname) {
+      if (typeof payload.nickname !== "string") throw badRequest("昵称格式不正确");
+      nickname = payload.nickname.trim();
+      if (nickname.length < 1 || nickname.length > 50) throw badRequest("昵称长度需在 1 到 50 个字符之间");
+      // 过滤控制字符，避免写入不可见内容导致后台与订阅页显示异常。
+      if (/[\u0000-\u001f\u007f]/.test(nickname)) throw badRequest("昵称包含不可用字符");
+    }
+
+    const hasReminder = payload.remind_expire !== undefined || payload.remind_traffic !== undefined;
+    if (!hasNickname && !hasReminder) throw badRequest("没有需要更新的内容");
+
+    if (hasReminder) {
+      await updatePreferences(user.id, {
+        remind_expire: payload.remind_expire as number | undefined,
+        remind_traffic: payload.remind_traffic as number | undefined,
+      });
+    }
+    if (hasNickname) await updateProfile(user.id, { nickname });
+
     return NextResponse.json({ data: true });
   } catch (error) {
-    console.error("AeraNexa user preference update failed", error);
-    return NextResponse.json({ message: "保存失败，请检查数据库配置" }, { status: 503 });
+    const { status, payload } = toApiError(error, "user update");
+    return NextResponse.json(payload, { status });
   }
 }
