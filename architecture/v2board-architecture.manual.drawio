@@ -1,0 +1,125 @@
+<mxfile host="app.diagrams.net" modified="2026-09-19T01:20:00.000Z" agent="Codex drawio-skill" version="24.7.17">
+  <diagram id="v2board-architecture" name="V2Board Architecture">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1500" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="V2Board 架构图｜Laravel 8 单体应用" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontFamily=PingFang SC;fontSize=22;fontStyle=1;fontColor=#1f2937;" vertex="1" parent="1">
+          <mxGeometry x="40" y="5" width="700" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="scope" value="源码快照：master @ 0ca4762｜config/app.php: v1.7.4.1681103823832｜部署边界为入口与配置推断，非实时运行拓扑" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;fontFamily=PingFang SC;fontSize=11;fontColor=#6b7280;" vertex="1" parent="1">
+          <mxGeometry x="910" y="8" width="1240" height="26" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="layer_client" value="参与者与客户端" style="swimlane;startSize=30;horizontal=1;rounded=0;html=1;whiteSpace=wrap;fillColor=none;strokeColor=#82b366;fontColor=#82b366;fontFamily=PingFang SC;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="45" width="1920" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_user" value="用户 / 订阅客户端" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer_client">
+          <mxGeometry x="30" y="65" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_admin" value="管理员 / 运营人员" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer_client">
+          <mxGeometry x="250" y="65" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_ui" value="Web / Admin UI&#xa;Blade + public/assets" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer_client">
+          <mxGeometry x="650" y="55" width="250" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_nodes" value="代理节点 / 节点程序&#xa;Server API + 流量上报" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer_client">
+          <mxGeometry x="1120" y="55" width="250" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="layer_ingress" value="接入层" style="swimlane;startSize=30;horizontal=1;rounded=0;html=1;whiteSpace=wrap;fillColor=none;strokeColor=#d79b00;fontColor=#d79b00;fontFamily=PingFang SC;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="250" y="270" width="1500" height="170" as="geometry"/>
+        </mxCell>
+        <mxCell id="ingress_webserver" value="Web Server / PHP-FPM&#xa;部署边界（由入口推断）" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="layer_ingress">
+          <mxGeometry x="350" y="55" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="ingress_index" value="Laravel Front Controller&#xa;public/index.php" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="layer_ingress">
+          <mxGeometry x="850" y="55" width="250" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="layer_app" value="Laravel 8 应用层" style="swimlane;startSize=30;horizontal=1;rounded=0;html=1;whiteSpace=wrap;fillColor=none;strokeColor=#9673a6;fontColor=#9673a6;fontFamily=PingFang SC;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="480" width="1760" height="450" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_router" value="RouteServiceProvider&#xa;/api/v1 + web routes" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer_app">
+          <mxGeometry x="30" y="70" width="230" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_routes" value="HTTP Middleware + Route Modules&#xa;JSON / Language / Auth / Log&#xa;Passport · Guest · User · Admin · Staff · Client · Server" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="layer_app">
+          <mxGeometry x="310" y="60" width="300" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_controllers" value="Controllers&#xa;认证、订购、节点、工单、统计" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="layer_app">
+          <mxGeometry x="680" y="70" width="240" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_services" value="Application Services&#xa;Auth / Order / Plan / Server / User&#xa;Payment / Mail / Telegram / Ticket" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="layer_app">
+          <mxGeometry x="990" y="55" width="280" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_protocols" value="Subscription &amp; Protocol Renderers&#xa;Clash / Surge / Loon / V2RayN&#xa;Shadowsocks / Trojan / Hysteria" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="layer_app">
+          <mxGeometry x="310" y="260" width="300" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_payments" value="Payment Adapters&#xa;Stripe / Alipay / WeChat / Crypto" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="layer_app">
+          <mxGeometry x="680" y="270" width="240" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="app_models" value="Eloquent Models&#xa;User / Plan / Order / Server / Stat / Ticket" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="layer_app">
+          <mxGeometry x="990" y="265" width="280" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="layer_runtime" value="异步任务与状态" style="swimlane;startSize=30;horizontal=1;rounded=0;html=1;whiteSpace=wrap;fillColor=none;strokeColor=#d6b656;fontColor=#d6b656;fontFamily=PingFang SC;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="980" width="1920" height="240" as="geometry"/>
+        </mxCell>
+        <mxCell id="runtime_cli" value="Artisan / Console Commands&#xa;Check / Reset / Update / Statistics" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer_runtime">
+          <mxGeometry x="40" y="70" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="runtime_horizon" value="Laravel Horizon Worker&#xa;PM2: php artisan horizon" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer_runtime">
+          <mxGeometry x="350" y="70" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="runtime_jobs" value="Queue Jobs&#xa;OrderHandle · TrafficFetch · SendEmail · SendTelegram" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer_runtime">
+          <mxGeometry x="660" y="70" width="300" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="state_redis" value="Redis&#xa;Cache · Session · Queue · Horizon metadata" style="shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="layer_runtime">
+          <mxGeometry x="1120" y="65" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="state_mysql" value="MySQL&#xa;install.sql / update.sql&#xa;业务主数据与统计" style="shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="layer_runtime">
+          <mxGeometry x="1410" y="65" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="state_storage" value="Local Storage&#xa;logs / framework cache / views" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer_runtime">
+          <mxGeometry x="1700" y="70" width="220" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="layer_external" value="外部集成" style="swimlane;startSize=30;horizontal=1;rounded=0;html=1;whiteSpace=wrap;fillColor=none;strokeColor=#666666;fontColor=#666666;fontFamily=PingFang SC;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="1270" width="1600" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_payment" value="支付平台&#xa;Stripe / Alipay / WeChat / Crypto&#xa;回调进入 Guest/PaymentController" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer_external">
+          <mxGeometry x="60" y="55" width="300" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_mail" value="SMTP / Mailgun&#xa;邮件投递服务" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer_external">
+          <mxGeometry x="620" y="60" width="240" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_telegram" value="Telegram Bot API&#xa;通知与 Webhook" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="layer_external">
+          <mxGeometry x="1120" y="60" width="240" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e01" value="访问" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="client_user" target="client_ui"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e02" value="管理" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="client_admin" target="client_ui"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e03" value="HTTPS / API" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="client_ui" target="ingress_webserver"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e04" value="节点 API / 流量" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="client_nodes" target="ingress_webserver"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e05" value="PHP-FPM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ingress_webserver" target="ingress_index"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e06" value="Laravel bootstrap" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ingress_index" target="app_router"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e07" value="web / api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_router" target="app_routes"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e08" value="路由分发" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_routes" target="app_controllers"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e09" value="业务编排" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_controllers" target="app_services"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e10" value="订阅 / 配置输出" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_controllers" target="app_protocols"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e11" value="支付编排" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_services" target="app_payments"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e12" value="领域读写" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_services" target="app_models"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e13" value="dispatch / queue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;" edge="1" parent="1" source="app_services" target="runtime_horizon"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1450" y="650"/><mxPoint x="1450" y="940"/><mxPoint x="350" y="940"/><mxPoint x="350" y="1085"/></Array></mxGeometry></mxCell>
+        <mxCell id="e14" value="cache / session" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_services" target="state_redis"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e15" value="日志 / 视图缓存" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_services" target="state_storage"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e16" value="Eloquent" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_models" target="state_mysql"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e17" value="checkout / notify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="app_payments" target="external_payment"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e18" value="启动 worker" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="runtime_cli" target="runtime_horizon"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e19" value="执行队列作业" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="runtime_horizon" target="runtime_jobs"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e20" value="queue / Horizon" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="runtime_horizon" target="state_redis"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="640" y="1015"/><mxPoint x="1160" y="1015"/></Array></mxGeometry></mxCell>
+        <mxCell id="e21" value="SMTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="runtime_jobs" target="external_mail"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e22" value="Bot API" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="runtime_jobs" target="external_telegram"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

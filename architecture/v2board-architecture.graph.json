@@ -1,0 +1,225 @@
+{
+  "direction": "LR",
+  "ranksep": 1.15,
+  "nodesep": 0.55,
+  "nodes": [
+    {
+      "id": "client_user",
+      "label": "用户 / 订阅客户端",
+      "group": "client",
+      "groupLabel": "参与者与客户端",
+      "width": 170,
+      "height": 58,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;"
+    },
+    {
+      "id": "client_admin",
+      "label": "管理员 / 运营人员",
+      "group": "client",
+      "width": 170,
+      "height": 58,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;"
+    },
+    {
+      "id": "client_ui",
+      "label": "Web / Admin UI\nBlade + public/assets",
+      "group": "client",
+      "width": 205,
+      "height": 68,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;"
+    },
+    {
+      "id": "ingress_webserver",
+      "label": "Web Server / PHP-FPM\n部署边界（由入口推断）",
+      "group": "ingress",
+      "groupLabel": "接入层",
+      "width": 205,
+      "height": 68,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;"
+    },
+    {
+      "id": "ingress_index",
+      "label": "Laravel Front Controller\npublic/index.php",
+      "group": "ingress",
+      "width": 190,
+      "height": 66,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;"
+    },
+    {
+      "id": "request_router",
+      "label": "RouteServiceProvider\n/api/v1 + web routes",
+      "group": "request",
+      "groupLabel": "请求与路由层",
+      "width": 190,
+      "height": 66,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    },
+    {
+      "id": "request_middleware",
+      "label": "HTTP Middleware\nJSON / Language / Auth / Log",
+      "group": "request",
+      "width": 220,
+      "height": 68,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    },
+    {
+      "id": "request_routes",
+      "label": "Route Modules\nPassport · Guest · User · Admin\nStaff · Client · Server",
+      "group": "request",
+      "width": 245,
+      "height": 82,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    },
+    {
+      "id": "domain_controllers",
+      "label": "Controllers\n认证、订购、节点、工单、统计",
+      "group": "domain",
+      "groupLabel": "领域与应用层",
+      "width": 220,
+      "height": 70,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;"
+    },
+    {
+      "id": "domain_services",
+      "label": "Application Services\nAuth / Order / Plan / Server / User\nPayment / Mail / Telegram / Ticket",
+      "group": "domain",
+      "width": 260,
+      "height": 86,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;"
+    },
+    {
+      "id": "domain_protocols",
+      "label": "Subscription & Protocol Renderers\nClash / Surge / Loon / V2RayN\nShadowsocks / Trojan / Hysteria",
+      "group": "domain",
+      "width": 265,
+      "height": 86,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;"
+    },
+    {
+      "id": "domain_payments",
+      "label": "Payment Adapters\nStripe / Alipay / WeChat / Crypto",
+      "group": "domain",
+      "width": 230,
+      "height": 70,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;"
+    },
+    {
+      "id": "domain_models",
+      "label": "Eloquent Models\nUser / Plan / Order / Server / Stat / Ticket",
+      "group": "domain",
+      "width": 245,
+      "height": 70,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;"
+    },
+    {
+      "id": "async_cli",
+      "label": "Artisan / Console Commands\nCheck / Reset / Update / Statistics",
+      "group": "async",
+      "groupLabel": "异步任务与运维",
+      "width": 235,
+      "height": 70,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    },
+    {
+      "id": "async_horizon",
+      "label": "Laravel Horizon Worker\nPM2: php artisan horizon",
+      "group": "async",
+      "width": 230,
+      "height": 68,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    },
+    {
+      "id": "async_jobs",
+      "label": "Queue Jobs\nOrderHandle · TrafficFetch\nSendEmail · SendTelegram",
+      "group": "async",
+      "width": 245,
+      "height": 82,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    },
+    {
+      "id": "state_mysql",
+      "label": "MySQL\ninstall.sql / update.sql\n业务主数据与统计",
+      "group": "state",
+      "groupLabel": "状态与持久化",
+      "width": 190,
+      "height": 82,
+      "style": "shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;"
+    },
+    {
+      "id": "state_redis",
+      "label": "Redis\nCache · Session · Queue\nHorizon metadata",
+      "group": "state",
+      "width": 190,
+      "height": 82,
+      "style": "shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    },
+    {
+      "id": "state_storage",
+      "label": "Local Storage\nlogs / framework cache / views",
+      "group": "state",
+      "width": 210,
+      "height": 70,
+      "style": "rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    },
+    {
+      "id": "external_proxy_nodes",
+      "label": "代理节点 / 节点程序\nServer API + 流量上报",
+      "group": "external",
+      "groupLabel": "外部系统与集成",
+      "width": 220,
+      "height": 70,
+      "style": "rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    },
+    {
+      "id": "external_payment",
+      "label": "支付平台\nStripe / Alipay / WeChat / Crypto\n回调经 Guest/PaymentController 返回",
+      "group": "external",
+      "width": 235,
+      "height": 76,
+      "style": "rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    },
+    {
+      "id": "external_mail",
+      "label": "SMTP / Mailgun\n邮件投递服务",
+      "group": "external",
+      "width": 190,
+      "height": 66,
+      "style": "rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    },
+    {
+      "id": "external_telegram",
+      "label": "Telegram Bot API\n通知与 Webhook",
+      "group": "external",
+      "width": 190,
+      "height": 66,
+      "style": "rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    }
+  ],
+  "edges": [
+    {"source": "client_user", "target": "client_ui", "label": "访问"},
+    {"source": "client_admin", "target": "client_ui", "label": "管理"},
+    {"source": "client_ui", "target": "ingress_webserver", "label": "HTTPS / API"},
+    {"source": "external_proxy_nodes", "target": "ingress_webserver", "label": "节点 API / 流量"},
+    {"source": "ingress_webserver", "target": "ingress_index", "label": "PHP-FPM"},
+    {"source": "ingress_index", "target": "request_router", "label": "Laravel bootstrap"},
+    {"source": "request_router", "target": "request_middleware", "label": "web / api"},
+    {"source": "request_middleware", "target": "request_routes", "label": "认证与权限"},
+    {"source": "request_routes", "target": "domain_controllers", "label": "路由分发"},
+    {"source": "domain_controllers", "target": "domain_services", "label": "业务编排"},
+    {"source": "domain_controllers", "target": "domain_protocols", "label": "订阅 / 配置输出"},
+    {"source": "domain_controllers", "target": "domain_models", "label": "查询 / 写入"},
+    {"source": "domain_services", "target": "domain_models", "label": "领域读写"},
+    {"source": "domain_services", "target": "domain_payments", "label": "支付编排"},
+    {"source": "domain_services", "target": "async_jobs", "label": "dispatch"},
+    {"source": "domain_services", "target": "state_redis", "label": "cache / session"},
+    {"source": "domain_models", "target": "state_mysql", "label": "Eloquent"},
+    {"source": "domain_payments", "target": "external_payment", "label": "checkout / notify"},
+    {"source": "async_cli", "target": "domain_services", "label": "定时检查 / 维护"},
+    {"source": "async_cli", "target": "async_horizon", "label": "启动 worker"},
+    {"source": "async_horizon", "target": "async_jobs", "label": "执行队列作业"},
+    {"source": "async_horizon", "target": "state_redis", "label": "queue / Horizon"},
+    {"source": "async_jobs", "target": "external_mail", "label": "SMTP"},
+    {"source": "async_jobs", "target": "external_telegram", "label": "Bot API"},
+    {"source": "domain_services", "target": "state_storage", "label": "日志 / 视图缓存"}
+  ]
+}

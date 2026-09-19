@@ -1,0 +1,181 @@
+<mxfile>
+  <diagram id="autolayout" name="Page-1">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="group_0" value="异步任务与运维" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#d6b656;fontColor=#d6b656;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="906" y="6" width="293" height="450" as="geometry"/>
+        </mxCell>
+        <mxCell id="group_1" value="参与者与客户端" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#6c8ebf;fontColor=#6c8ebf;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="6" y="346" width="433" height="276" as="geometry"/>
+        </mxCell>
+        <mxCell id="group_2" value="领域与应用层" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9673a6;fontColor=#9673a6;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1206" y="6" width="628" height="448" as="geometry"/>
+        </mxCell>
+        <mxCell id="group_3" value="外部系统与集成" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;fontColor=#666666;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="446" y="496" width="1003" height="128" as="geometry"/>
+        </mxCell>
+        <mxCell id="group_4" value="接入层" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82b366;fontColor=#82b366;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="816" y="666" width="253" height="274" as="geometry"/>
+        </mxCell>
+        <mxCell id="group_5" value="请求与路由层" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#d79b00;fontColor=#d79b00;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="2256" y="336" width="293" height="450" as="geometry"/>
+        </mxCell>
+        <mxCell id="group_6" value="状态与持久化" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#b85450;fontColor=#b85450;verticalAlign=top;fontStyle=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1456" y="496" width="718" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_user" value="用户 / 订阅客户端" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="group_1">
+          <mxGeometry x="24" y="24" width="170" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_admin" value="管理员 / 运营人员" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="group_1">
+          <mxGeometry x="234" y="24" width="170" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="client_ui" value="Web / Admin UI&#xa;Blade + public/assets" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="group_1">
+          <mxGeometry x="204" y="184" width="205" height="68" as="geometry"/>
+        </mxCell>
+        <mxCell id="ingress_webserver" value="Web Server / PHP-FPM&#xa;部署边界（由入口推断）" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="group_4">
+          <mxGeometry x="24" y="24" width="205" height="68" as="geometry"/>
+        </mxCell>
+        <mxCell id="ingress_index" value="Laravel Front Controller&#xa;public/index.php" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="group_4">
+          <mxGeometry x="34" y="184" width="190" height="66" as="geometry"/>
+        </mxCell>
+        <mxCell id="request_router" value="RouteServiceProvider&#xa;/api/v1 + web routes" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="group_5">
+          <mxGeometry x="24" y="24" width="190" height="66" as="geometry"/>
+        </mxCell>
+        <mxCell id="request_middleware" value="HTTP Middleware&#xa;JSON / Language / Auth / Log" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="group_5">
+          <mxGeometry x="24" y="194" width="220" height="68" as="geometry"/>
+        </mxCell>
+        <mxCell id="request_routes" value="Route Modules&#xa;Passport · Guest · User · Admin&#xa;Staff · Client · Server" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="group_5">
+          <mxGeometry x="24" y="344" width="245" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="domain_controllers" value="Controllers&#xa;认证、订购、节点、工单、统计" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="group_2">
+          <mxGeometry x="384" y="24" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="domain_services" value="Application Services&#xa;Auth / Order / Plan / Server / User&#xa;Payment / Mail / Telegram / Ticket" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="group_2">
+          <mxGeometry x="24" y="184" width="260" height="86" as="geometry"/>
+        </mxCell>
+        <mxCell id="domain_protocols" value="Subscription &amp; Protocol Renderers&#xa;Clash / Surge / Loon / V2RayN&#xa;Shadowsocks / Trojan / Hysteria" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="group_2">
+          <mxGeometry x="324" y="184" width="265" height="86" as="geometry"/>
+        </mxCell>
+        <mxCell id="domain_payments" value="Payment Adapters&#xa;Stripe / Alipay / WeChat / Crypto" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="group_2">
+          <mxGeometry x="24" y="354" width="230" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="domain_models" value="Eloquent Models&#xa;User / Plan / Order / Server / Stat / Ticket" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="group_2">
+          <mxGeometry x="294" y="354" width="245" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="async_cli" value="Artisan / Console Commands&#xa;Check / Reset / Update / Statistics" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="group_0">
+          <mxGeometry x="34" y="24" width="235" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="async_horizon" value="Laravel Horizon Worker&#xa;PM2: php artisan horizon" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="group_0">
+          <mxGeometry x="34" y="184" width="230" height="68" as="geometry"/>
+        </mxCell>
+        <mxCell id="async_jobs" value="Queue Jobs&#xa;OrderHandle · TrafficFetch&#xa;SendEmail · SendTelegram" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="group_0">
+          <mxGeometry x="24" y="344" width="245" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="state_mysql" value="MySQL&#xa;install.sql / update.sql&#xa;业务主数据与统计" style="shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="group_6">
+          <mxGeometry x="254" y="24" width="190" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="state_redis" value="Redis&#xa;Cache · Session · Queue&#xa;Horizon metadata" style="shape=cylinder3;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="group_6">
+          <mxGeometry x="24" y="24" width="190" height="82" as="geometry"/>
+        </mxCell>
+        <mxCell id="state_storage" value="Local Storage&#xa;logs / framework cache / views" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="group_6">
+          <mxGeometry x="484" y="34" width="210" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_proxy_nodes" value="代理节点 / 节点程序&#xa;Server API + 流量上报" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="group_3">
+          <mxGeometry x="24" y="34" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_payment" value="支付平台&#xa;Stripe / Alipay / WeChat / Crypto" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="group_3">
+          <mxGeometry x="744" y="24" width="235" height="76" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_mail" value="SMTP / Mailgun&#xa;邮件投递服务" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="group_3">
+          <mxGeometry x="514" y="34" width="190" height="66" as="geometry"/>
+        </mxCell>
+        <mxCell id="external_telegram" value="Telegram Bot API&#xa;通知与 Webhook" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fontFamily=PingFang SC;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="group_3">
+          <mxGeometry x="284" y="34" width="190" height="66" as="geometry"/>
+        </mxCell>
+        <mxCell id="e0" value="访问" style="html=1;rounded=0;" edge="1" parent="1" source="client_user" target="client_ui">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="220" y="400"/><mxPoint x="220" y="400"/><mxPoint x="220" y="400"/><mxPoint x="220" y="400"/><mxPoint x="220" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e1" value="管理" style="html=1;rounded=0;" edge="1" parent="1" source="client_admin" target="client_ui">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="330" y="420"/><mxPoint x="330" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e2" value="HTTPS / API" style="html=1;rounded=0;" edge="1" parent="1" source="client_ui" target="ingress_webserver">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="310" y="650"/><mxPoint x="310" y="740"/><mxPoint x="310" y="740"/><mxPoint x="310" y="740"/><mxPoint x="830" y="740"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e3" value="节点 API / 流量" style="html=1;rounded=0;" edge="1" parent="1" source="external_proxy_nodes" target="ingress_webserver">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="580" y="640"/><mxPoint x="580" y="710"/><mxPoint x="580" y="710"/><mxPoint x="580" y="710"/><mxPoint x="830" y="710"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e4" value="支付回调" style="html=1;rounded=0;" edge="1" parent="1" source="external_payment" target="ingress_webserver">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1310" y="650"/><mxPoint x="1310" y="730"/><mxPoint x="1310" y="730"/><mxPoint x="1310" y="730"/><mxPoint x="1060" y="730"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e5" value="PHP-FPM" style="html=1;rounded=0;" edge="1" parent="1" source="ingress_webserver" target="ingress_index">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="940" y="760"/><mxPoint x="940" y="840"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e6" value="Laravel bootstrap" style="html=1;rounded=0;" edge="1" parent="1" source="ingress_index" target="request_router">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1340" y="880"/><mxPoint x="2220" y="880"/><mxPoint x="2220" y="880"/><mxPoint x="2220" y="880"/><mxPoint x="2220" y="400"/><mxPoint x="2220" y="400"/><mxPoint x="2220" y="400"/><mxPoint x="2270" y="400"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="web / api" style="html=1;rounded=0;" edge="1" parent="1" source="request_router" target="request_middleware">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2370" y="430"/><mxPoint x="2370" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e8" value="认证与权限" style="html=1;rounded=0;" edge="1" parent="1" source="request_middleware" target="request_routes">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2390" y="590"/><mxPoint x="2390" y="670"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e9" value="路由分发" style="html=1;rounded=0;" edge="1" parent="1" source="request_routes" target="domain_controllers">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2510" y="540"/><mxPoint x="2510" y="70"/><mxPoint x="2510" y="70"/><mxPoint x="2510" y="70"/><mxPoint x="1820" y="70"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e10" value="业务编排" style="html=1;rounded=0;" edge="1" parent="1" source="domain_controllers" target="domain_services">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1490" y="70"/><mxPoint x="1360" y="70"/><mxPoint x="1360" y="70"/><mxPoint x="1360" y="70"/><mxPoint x="1360" y="170"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e11" value="订阅 / 配置输出" style="html=1;rounded=0;" edge="1" parent="1" source="domain_controllers" target="domain_protocols">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1690" y="100"/><mxPoint x="1690" y="170"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e12" value="查询 / 写入" style="html=1;rounded=0;" edge="1" parent="1" source="domain_controllers" target="domain_models">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1800" y="190"/><mxPoint x="1800" y="410"/><mxPoint x="1800" y="410"/><mxPoint x="1800" y="410"/><mxPoint x="1760" y="410"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e13" value="领域读写" style="html=1;rounded=0;" edge="1" parent="1" source="domain_services" target="domain_models">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1490" y="320"/><mxPoint x="1490" y="400"/><mxPoint x="1490" y="400"/><mxPoint x="1490" y="400"/><mxPoint x="1490" y="400"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e14" value="支付编排" style="html=1;rounded=0;" edge="1" parent="1" source="domain_services" target="domain_payments">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1350" y="270"/><mxPoint x="1350" y="350"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="dispatch" style="html=1;rounded=0;" edge="1" parent="1" source="domain_services" target="async_jobs">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1160" y="270"/><mxPoint x="1080" y="270"/><mxPoint x="1080" y="270"/><mxPoint x="1080" y="270"/><mxPoint x="1080" y="340"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e16" value="cache / session" style="html=1;rounded=0;" edge="1" parent="1" source="domain_services" target="state_redis">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1490" y="270"/><mxPoint x="1490" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e17" value="Eloquent" style="html=1;rounded=0;" edge="1" parent="1" source="domain_models" target="state_mysql">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1730" y="430"/><mxPoint x="1730" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e18" value="checkout / notify" style="html=1;rounded=0;" edge="1" parent="1" source="domain_payments" target="external_payment">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1330" y="430"/><mxPoint x="1330" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e19" value="定时检查 / 维护" style="html=1;rounded=0;" edge="1" parent="1" source="async_cli" target="domain_services">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1090" y="140"/><mxPoint x="1090" y="190"/><mxPoint x="1090" y="190"/><mxPoint x="1090" y="190"/><mxPoint x="1220" y="190"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e20" value="启动 worker" style="html=1;rounded=0;" edge="1" parent="1" source="async_cli" target="async_horizon">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1010" y="100"/><mxPoint x="1010" y="180"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e21" value="执行队列作业" style="html=1;rounded=0;" edge="1" parent="1" source="async_horizon" target="async_jobs">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="980" y="260"/><mxPoint x="980" y="340"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e22" value="queue / Horizon" style="html=1;rounded=0;" edge="1" parent="1" source="async_horizon" target="state_redis">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1030" y="290"/><mxPoint x="1030" y="310"/><mxPoint x="1030" y="310"/><mxPoint x="1030" y="310"/><mxPoint x="1480" y="310"/><mxPoint x="1480" y="310"/><mxPoint x="1480" y="310"/><mxPoint x="1480" y="510"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e23" value="执行领域动作" style="html=1;rounded=0;" edge="1" parent="1" source="async_jobs" target="domain_services">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1120" y="320"/><mxPoint x="1120" y="270"/><mxPoint x="1120" y="270"/><mxPoint x="1120" y="270"/><mxPoint x="1220" y="270"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e24" value="SMTP" style="html=1;rounded=0;" edge="1" parent="1" source="async_jobs" target="external_mail">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1050" y="440"/><mxPoint x="1050" y="520"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e25" value="Bot API" style="html=1;rounded=0;" edge="1" parent="1" source="async_jobs" target="external_telegram">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="940" y="490"/><mxPoint x="940" y="560"/><mxPoint x="940" y="560"/><mxPoint x="940" y="560"/><mxPoint x="930" y="560"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e26" value="框架日志 / 缓存" style="html=1;rounded=0;" edge="1" parent="1" source="request_router" target="state_storage">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="2180" y="380"/><mxPoint x="2050" y="380"/><mxPoint x="2050" y="380"/><mxPoint x="2050" y="380"/><mxPoint x="2050" y="510"/></Array></mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

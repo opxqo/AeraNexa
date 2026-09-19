@@ -1,0 +1,13 @@
+.next/
+node_modules/
+.env
+.env.local
+.env.*.local
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+*.dtmp
+
+# Local upstream references are separate repositories, not part of AeraNexa.
+/source/

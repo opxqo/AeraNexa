@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3x-ui 面板 API 汇总表</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --border: #e3e6eb;
+    --text: #1a1d23;
+    --text-dim: #5c636e;
+    --text-faint: #8b929d;
+    --accent: #2f5fd0;
+    --get: #1d6fd4;
+    --get-bg: #e8f1fd;
+    --post: #0f7a4d;
+    --post-bg: #e3f6ec;
+    --delete: #c2333a;
+    --delete-bg: #fde9ea;
+    --put: #a2620a;
+    --put-bg: #fdf1dd;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+
+  /* ---------- header ---------- */
+  .hero {
+    background: linear-gradient(135deg, #171b24 0%, #232c3d 55%, #2c3f63 100%);
+    color: #fff;
+    padding: 40px 32px 32px;
+  }
+  .hero-inner { max-width: 1240px; margin: 0 auto; }
+  .hero h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: .3px; }
+  .hero p { margin: 0; color: #a9b4c6; font-size: 13px; }
+  .hero code { font-family: var(--mono); background: rgba(255,255,255,.1); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+  .stat {
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px;
+    padding: 12px 20px;
+    min-width: 128px;
+  }
+  .stat b { display: block; font-size: 24px; font-weight: 650; letter-spacing: .5px; }
+  .stat span { font-size: 12px; color: #a9b4c6; }
+
+  /* ---------- layout ---------- */
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 32px 80px; }
+  section { margin-bottom: 32px; }
+
+  h2.sec {
+    font-size: 17px;
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  h2.sec small { font-weight: 400; font-size: 12px; color: var(--text-faint); }
+
+  /* ---------- auth cards ---------- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .card p { margin: 0 0 8px; font-size: 13px; color: var(--text-dim); }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--text-dim); }
+  .card li { margin: 3px 0; }
+  .card code { font-family: var(--mono); font-size: 12px; background: #eef1f5; padding: 1px 5px; border-radius: 4px; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(246,247,249,.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 22px;
+  }
+  .toolbar input[type=search] {
+    flex: 1 1 260px;
+    min-width: 200px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: #fff;
+    color: var(--text);
+  }
+  .toolbar input[type=search]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .chip {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-dim);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--mono);
+  }
+  .chip:hover { border-color: #b9c1cd; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .toolbar .btn {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-dim);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .toolbar .btn:hover { border-color: #b9c1cd; }
+  .hint { font-size: 12px; color: var(--text-faint); margin-left: auto; }
+
+  /* ---------- tag groups ---------- */
+  .group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+    background: #fbfcfd;
+    border-bottom: 1px solid var(--border);
+  }
+  .group-head:hover { background: #f4f6f9; }
+  .group-head .caret { color: var(--text-faint); font-size: 11px; transition: transform .15s; width: 10px; }
+  .group.collapsed .caret { transform: rotate(-90deg); }
+  .group.collapsed table { display: none; }
+  .group-title { font-size: 15px; font-weight: 650; }
+  .group-title em { font-style: normal; color: var(--text-faint); font-weight: 400; font-size: 12px; margin-left: 6px; font-family: var(--mono); }
+  .group-meta { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .src { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .count {
+    background: #eef1f5;
+    color: var(--text-dim);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 9px;
+    font-family: var(--mono);
+  }
+  .note { font-size: 12px; color: var(--text-dim); padding: 10px 18px; background: #fbfcfd; border-bottom: 1px solid var(--border); }
+  .note::before { content: "ℹ "; color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; }
+  .table-wrap { overflow-x: auto; }
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-faint);
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--border);
+    background: #fdfdfe;
+    position: sticky;
+    top: 57px;
+    z-index: 2;
+  }
+  tbody td { padding: 9px 18px; border-bottom: 1px solid #eef0f3; vertical-align: top; font-size: 13px; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: #f8fafc; }
+  td.m { width: 82px; white-space: nowrap; }
+  td.p { width: 380px; min-width: 210px; }
+  td.d { color: var(--text-dim); }
+
+  .method {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 5px;
+    letter-spacing: .04em;
+  }
+  .method.GET    { color: var(--get);    background: var(--get-bg); }
+  .method.POST   { color: var(--post);   background: var(--post-bg); }
+  .method.DELETE { color: var(--delete); background: var(--delete-bg); }
+  .method.PUT, .method.PATCH { color: var(--put); background: var(--put-bg); }
+  .path { font-family: var(--mono); font-size: 12.5px; word-break: normal; overflow-wrap: anywhere; }
+  .path .var { color: var(--accent); }
+  .tagpill {
+    display: inline-block;
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 5px;
+    margin-left: 6px;
+    vertical-align: 1px;
+  }
+  .tagpill.pub { color: #0f7a4d; border-color: #b9e3cd; background: #f0faf5; }
+  .tagpill.ws  { color: #7a3fa5; border-color: #ddc7ee; background: #f8f2fc; }
+  .tagpill.node { color: #a2620a; border-color: #ead6ae; background: #fdf7ec; }
+
+  mark { background: #ffe9a8; padding: 0 2px; border-radius: 3px; }
+  tr.hide { display: none; }
+  .group.hide { display: none; }
+  .empty {
+    text-align: center;
+    color: var(--text-faint);
+    padding: 40px;
+    font-size: 13px;
+    display: none;
+  }
+
+  footer { max-width: 1240px; margin: 0 auto; padding: 0 32px 60px; color: var(--text-faint); font-size: 12px; }
+
+  @media (max-width: 760px) {
+    .hero, main, footer { padding-left: 16px; padding-right: 16px; }
+    td.p { width: auto; min-width: 210px; }
+    table { min-width: 640px; }
+    thead th { position: static; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <h1>3x-ui 面板 API 汇总表</h1>
+    <p>
+      来源 <code>source/3x-ui</code>（Go / Gin）· 规范文件 <code>docs/public/openapi.json</code>（OpenAPI 3.0.3 · “3X-UI Panel API v3.x”）
+      · 全部路由以 <code>basePath</code> 为前缀（默认 <code>/</code>），下表路径均为逻辑路径
+    </p>
+    <div class="stats">
+      <div class="stat"><b>189</b><span>接口操作</span></div>
+      <div class="stat"><b>182</b><span>路径</span></div>
+      <div class="stat"><b>13</b><span>功能分组</span></div>
+      <div class="stat"><b>3</b><span>认证方式</span></div>
+      <div class="stat"><b>10 MiB</b><span>请求体上限</span></div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <section>
+    <h2 class="sec">认证与安全模型 <small>所有 /panel/api/* 接口共用</small></h2>
+    <div class="cards">
+      <div class="card">
+        <h3>① 会话 Cookie</h3>
+        <p>浏览器登录方式。<code>POST /login</code> 后由服务端下发 <code>3x-ui</code> 会话 Cookie。</p>
+        <ul>
+          <li>非安全请求需带 <code>X-CSRF-Token</code> 头（由 <code>GET /csrf-token</code> 签发）</li>
+          <li>Cookie 属性：HttpOnly、SameSite=Lax、HTTPS 下 Secure</li>
+          <li>有效期由 <code>sessionMaxAge</code> 设置控制</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>② Bearer API Token</h3>
+        <p>在「设置 → 安全 → API Token」创建，<code>Authorization: Bearer &lt;token&gt;</code>。</p>
+        <ul>
+          <li><code>admin</code> — 全权，等同面板密码</li>
+          <li><code>monitor</code> — 仅只读监控白名单（status / history / 日志版本等）</li>
+          <li><code>node-sync</code> — 仅节点同步白名单（inbounds/clients 增删改、流量推送等）</li>
+          <li>明文仅创建时返回一次，库中只存哈希</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>③ mTLS 客户端证书</h3>
+        <p>节点间通信用。TLS 握手完成且证书通过校验即视为已认证。</p>
+        <ul>
+          <li>由 <code>nodes/mtls/ca</code> 签发 CA，节点侧用 <code>mtls/trustCA</code> 信任</li>
+          <li>证书认证自动获得 <code>node-sync</code> 范围</li>
+          <li>可在 HTTPS 面板上选开启，不影响浏览器访问</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>其他防护</h3>
+        <ul>
+          <li>请求体上限 10 MiB（<code>importDB</code> 除外，需流式接收大备份）</li>
+          <li>节点配置信封：zstd + <code>X-Config-Sha256</code> 校验</li>
+          <li>登录失败限流（<code>login_limiter.go</code>）</li>
+          <li>可配置 Web 域名校验、安全响应头 / HSTS</li>
+          <li>未认证 XHR 返回 401，裸请求返回 404（减少扫描面）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="搜索路径 / 说明 / 关键字，例如：traffic、reset、节点…" autocomplete="off">
+    <button class="chip on" data-m="">全部</button>
+    <button class="chip" data-m="GET">GET</button>
+    <button class="chip" data-m="POST">POST</button>
+    <button class="chip" data-m="DELETE">DELETE</button>
+    <button class="btn" id="toggleAll">全部折叠</button>
+    <span class="hint" id="hint"></span>
+  </div>
+
+  <div id="groups"></div>
+  <div class="empty" id="empty">没有匹配的接口</div>
+
+  <section>
+    <h2 class="sec">给 AeraNexa 的对接要点 <small>结合本项目边界</small></h2>
+    <div class="cards">
+      <div class="card">
+        <h3>浏览器不直连管理 API</h3>
+        <p>本项目 README 已定界：浏览器不得直接调用 3x-ui 管理接口，也不持有管理凭据。上表 <code>/panel/api/*</code> 全部应由服务端适配层代理，凭据只存在于服务端环境变量。</p>
+      </div>
+      <div class="card">
+        <h3>最合适的对接凭据</h3>
+        <p>若后端只做节点编排，用 <code>node-sync</code> 范围的 API Token 即可覆盖 inbounds / clients 同步与流量推送；监控面板数据用 <code>monitor</code> 范围，避免使用 <code>admin</code> 全权令牌。</p>
+      </div>
+      <div class="card">
+        <h3>订阅接口是用户侧出口</h3>
+        <p>「Subscription Server」四个接口不在 <code>/panel/api</code> 下、无需认证（subId 即凭据），路径由 <code>subPath</code> / <code>subJsonPath</code> / <code>subClashPath</code> 配置决定且默认随机化。这是用户订阅链接的真实来源，与 <code>getSubscribe</code> 返回的私有订阅地址对应。</p>
+      </div>
+      <div class="card">
+        <h3>流量数据的两套口径</h3>
+        <p><code>pushClientTraffics</code> 推送的数据只用于 UI 展示与本地配额判定，不并入本地计数器（保持增量计费不被打乱）。设计流量同步时不要把两者混算。</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  由 <code>source/3x-ui/docs/public/openapi.json</code> 归纳生成，说明文字为中文摘译；路径参数以 <span class="var">{花括号}</span> 标注，<code>:param</code> 为 Gin 原始写法。生成日期：2026-09-19。
+</footer>
+
+<script>
+const DATA = [
+  {
+    tag: "Authentication", zh: "面板认证", src: "controller/index.go",
+    note: "面板自身的登录态与会话管理，工作在前缀根路径下（非 /panel/api）。",
+    rows: [
+      ["POST", "/login", "用户名 + 密码登录，成功后下发会话 Cookie。所有基于 Cookie 的接口调用前必须先登录。"],
+      ["POST", "/logout", "清除会话 Cookie；浏览器会话需携带 CSRF 头。"],
+      ["GET",  "/csrf-token", "为当前会话签发 CSRF Token。SPA 在非安全请求中通过 X-CSRF-Token 头回传；Bearer 令牌调用可跳过。"],
+      ["POST", "/getTwoFactorEnable", "返回面板是否启用两步验证，登录页据此决定是否显示 OTP 输入框。"],
+    ]
+  },
+  {
+    tag: "Inbounds", zh: "入站管理", src: "controller/inbound.go",
+    note: "代理入站（协议监听）的增删改查、启停、流量重置与 VLESS/Trojan 回落规则。",
+    rows: [
+      ["GET",  "/panel/api/inbounds/list", "列出当前用户的全部入站，含每个入站的客户端流量计数；settings / streamSettings / sniffing 以嵌套 JSON 返回（兼容旧的转义字符串写法）。"],
+      ["GET",  "/panel/api/inbounds/list/slim", "与 /list 同形，但 clients[] 精简为 {email, enable, comment} 且不做 UUID/SubId 补全。列表页用；编辑时再取 /get/:id。"],
+      ["GET",  "/panel/api/inbounds/options", "轻量下拉投影：id、remark、tag、protocol、port、服务端计算的 tlsFlowCapable、ssMethod。跳过 settings 等大字段，适合上千客户端的面板。"],
+      ["GET",  "/panel/api/inbounds/allLinks", "跨全部入站与客户端返回所有协议 URL（vless/vmess/trojan/ss/hysteria/mtproto）。经订阅引擎渲染，应用 remark 模板。"],
+      ["GET",  "/panel/api/inbounds/get/{id}", "按数字 ID 获取单个入站。"],
+      ["POST", "/panel/api/inbounds/add", "新建入站。需发送完整入站负载（protocol、port、settings、streamSettings、sniffing、remark、expiryTime、total、enable）。"],
+      ["POST", "/panel/api/inbounds/del/{id}", "按 ID 删除入站，同时清理其客户端流量记录。"],
+      ["POST", "/panel/api/inbounds/bulkDel", "批量删除入站。逐条处理、按 id 回报失败；最多重启 xray 一次。"],
+      ["POST", "/panel/api/inbounds/update/{id}", "全量替换入站配置，body 与 /add 同形。客户端极多时开销大，仅切换启用请用 /setEnable。"],
+      ["POST", "/panel/api/inbounds/setEnable/{id}", "仅切换 enable 标志，不序列化整个 settings JSON。大入站开关推荐此接口。"],
+      ["POST", "/panel/api/inbounds/{id}/subSortIndex", "仅设置订阅排序索引；服务端读存量数据，排序不会把过期客户端列表带回。", "dep"],
+      ["POST", "/panel/api/inbounds/{id}/resetTraffic", "清零单个入站的上传 + 下载计数，不影响各客户端计数。"],
+      ["POST", "/panel/api/inbounds/{id}/delAllClients", "删除单个入站下的全部客户端，保留入站本身。不可撤销。"],
+      ["POST", "/panel/api/inbounds/resetAllTraffics", "清零全部入站的流量计数。破坏性操作。"],
+      ["POST", "/panel/api/inbounds/import", "从 JSON 批量导入入站（form 编码，单个 data 字段）。"],
+      ["POST", "/panel/api/inbounds/pushClientTraffics", "接收主面板按 GUID 聚合的客户端用量，存入侧表仅用于 UI 展示与本地配额判定，不并入本地计数（面板间调用）。", "node"],
+      ["GET",  "/panel/api/inbounds/{id}/fallbacks", "列出主 VLESS/Trojan TCP-TLS 入站的回落规则（子入站 + SNI/ALPN/path/dest 匹配条件）。"],
+      ["POST", "/panel/api/inbounds/{id}/fallbacks", "整体替换回落规则列表（JSON），触发 xray 重启。"],
+    ]
+  },
+  {
+    tag: "Clients", zh: "客户端管理", src: "controller/client.go · group.go",
+    note: "客户端（用户）的完整生命周期：增删改、附加/摘除入站、批量操作、分组、流量、IP、HWID、在线状态、链接导出。",
+    rows: [
+      ["GET",  "/panel/api/clients/list", "列出全部客户端及其附属入站 ID 与流量记录；reverse 字段以嵌套 JSON 返回。"],
+      ["GET",  "/panel/api/clients/list/paged", "服务端过滤 / 排序 / 分页，返回精简行（无 uuid/password 等）。附全库汇总计数（*Count 精确，邮箱数组上限 200 条），单页上限 200。"],
+      ["GET",  "/panel/api/clients/get/{email}", "按邮箱获取单个客户端完整信息，含附属入站 ID 与外部配置 ID。"],
+      ["GET",  "/panel/api/clients/get/tgId/{tgId}", "按 Telegram 用户 ID 查询客户端，返回数组（可多个共用同一 TG ID）。"],
+      ["GET",  "/panel/api/clients/traffic/{email}", "按邮箱查询客户端流量计数。"],
+      ["GET",  "/panel/api/clients/subLinks/{subId}", "按订阅 ID 返回全部协议 URL（JSON 数组、不 base64），与订阅端点同源；无启用客户端时返回空数组。"],
+      ["GET",  "/panel/api/clients/links/{email}", "单个客户端在所有附属入站上的全部 URL（每端点一条：托管 host → externalProxy → 入站地址）。"],
+      ["GET",  "/panel/api/clients/export", "导出全部客户端为 {client, inboundIds} 数组，形状与 /bulkCreate、/import 互通，可直接回灌。"],
+      ["POST", "/panel/api/clients/add", "新建客户端并一次性附加到一个或多个入站；协议密钥缺省由服务端生成。"],
+      ["POST", "/panel/api/clients/update/{email}", "按邮箱更新客户端，变更传播到所有附属入站。服务端为整行替换而非 patch，需提交想保留的全部字段。"],
+      ["POST", "/panel/api/clients/del/{email}", "按邮箱删除客户端，从所有入站移除；keepTraffic=1 可保留流量记录。"],
+      ["POST", "/panel/api/clients/{email}/attach", "把已有客户端附加到一个或多个入站。"],
+      ["POST", "/panel/api/clients/{email}/detach", "把客户端从指定入站摘除，不删除客户端。"],
+      ["POST", "/panel/api/clients/{email}/externalLinks", "替换客户端的外部链接与外部订阅（整组替换）。禁用行不参与订阅生成。"],
+      ["POST", "/panel/api/clients/import", "从 {data: 「<json>」} 导入客户端（/export 的产物）。已存在邮箱不覆盖，列入 skipped；结束时按需重启一次 xray。"],
+      ["POST", "/panel/api/clients/resetAllTraffics", "全局清零所有客户端上传/下载计数（不影响配额与到期）；有变动则触发 xray 重启。"],
+      ["POST", "/panel/api/clients/delDepleted", "删除所有流量耗尽（禁用重置时）或已过期的客户端，返回删除数。"],
+      ["POST", "/panel/api/clients/delOrphans", "删除未附加任何入站的孤立客户端及其流量、IP、HWID、外链记录。不可撤销。"],
+      ["POST", "/panel/api/clients/bulkCreate", "批量创建客户端（{client, inboundIds} 数组），逐条处理并返回失败原因；结束时按需重启一次 xray。"],
+      ["POST", "/panel/api/clients/bulkAdjust", "批量调整到期时间 / 流量配额（addDays、addBytes 可为负），可顺带设置 flow、HWID 上限、MTProto adTag；因耗尽被自动禁用的客户端解困后自动恢复启用。"],
+      ["POST", "/panel/api/clients/bulkEnable", "批量启用（按入站分组、单次读改写），运行中的 xray 就地加回用户。"],
+      ["POST", "/panel/api/clients/bulkDisable", "批量禁用（按入站分组、单次读改写），运行中的 xray 就地移除用户。"],
+      ["POST", "/panel/api/clients/bulkDel", "批量删除，逐条串行以保证前一条的提交状态可见；keepTraffic=true 保留 xray_client_traffic 行。"],
+      ["POST", "/panel/api/clients/bulkAttach", "把多个已有客户端附加到多个入站，保留邮箱/UUID/密码/subId 与共享流量行。"],
+      ["POST", "/panel/api/clients/bulkDetach", "批量摘除（bulkAttach 的镜像）；未附加的组合静默跳过，客户端记录保留。"],
+      ["POST", "/panel/api/clients/bulkResetTraffic", "批量清零流量（逐个走单客户端路径，重新启用并推送到 xray / 远程节点）。"],
+      ["GET",  "/panel/api/clients/groups", "列出所有客户端分组及成员数；持久化分组与客户端上派生出的 group_name 合并去重，按名称不区分大小写排序。"],
+      ["GET",  "/panel/api/clients/groups/{name}/emails", "只返回指定分组的成员邮箱列表，便于对整组发批量操作。"],
+      ["POST", "/panel/api/clients/groups/create", "创建空分组（占位），此后可在客户端表单与过滤器中选择；重名报错。"],
+      ["POST", "/panel/api/clients/groups/rename", "重命名分组：同时更新 client_groups 行与所有匹配客户端（clients.group_name 与各入站 settings JSON）内的标签，单事务。"],
+      ["POST", "/panel/api/clients/groups/delete", "删除分组：删 client_groups 行并清除所有匹配客户端的标签，客户端本身不删除。"],
+      ["POST", "/panel/api/clients/groups/resetTraffic", "只重置分组页展示的组级流量计数（以当前成员 up/down 之和为基线），不动各客户端计数，不重启 xray。"],
+      ["POST", "/panel/api/clients/groups/bulkAdd", "批量把客户端加入分组：更新 clients.group_name 并同步修补各入站 settings JSON，单事务；分组不存在时自动创建。"],
+      ["POST", "/panel/api/clients/groups/bulkRemove", "批量清除客户端的分组标签（bulkAdd 的逆操作），客户端保留。"],
+      ["POST", "/panel/api/clients/resetTraffic/{email}", "清零单个客户端流量，在其全部附属入站上重新启用并推送到 xray / 远程节点。"],
+      ["POST", "/panel/api/clients/updateTraffic/{email}", "手工调整客户端上传 + 下载计数，用于从外部计费系统迁移。"],
+      ["POST", "/panel/api/clients/ips/{email}", "列出使用该凭据连接过的来源 IP，返回「ip (timestamp)」字符串数组。"],
+      ["POST", "/panel/api/clients/clearIps/{email}", "清空该客户端已记录的 IP 列表。"],
+      ["POST", "/panel/api/clients/hwids/{email}", "列出客户端已注册的 HWID 设备及短指纹（不暴露完整哈希）。"],
+      ["DELETE","/panel/api/clients/hwids/{email}", "清空该客户端全部已注册 HWID 设备，允许重新注册。"],
+      ["DELETE","/panel/api/clients/hwids/{email}/{id}", "按 id 删除单个已注册 HWID 设备，释放一个限额槽位。"],
+      ["POST", "/panel/api/clients/onlines", "当前在线客户端邮箱列表（心跳窗口内），跨全部节点去重。"],
+      ["POST", "/panel/api/clients/onlinesByGuid", "按物理承载节点的 panelGuid 分组返回在线客户端邮箱，供入站页把在线状态归因到真实节点。"],
+      ["POST", "/panel/api/clients/clientIpsByGuid", "按节点 panelGuid 分组返回客户端来源 IP，供中心面板用真实访客 IP 做 IP 限额。"],
+      ["POST", "/panel/api/clients/activeInbounds", "心跳窗口内有流量的入站 tag，按承载节点 panelGuid 分组，配合 onlinesByGuid 精确标记多入站客户端的在线归属。"],
+      ["POST", "/panel/api/clients/lastOnline", "返回 客户端邮箱 → 最后在线 unix 时间戳 的映射。"],
+      ["POST", "/panel/api/clients/happLink/{id}", "在开启 Happ 链接生成时，用当前客户端订阅 URL 现场生成 crypt5 链接；不存库、不外发源 URL。源 URL 超 8192 字节返回 happ_source_too_long。"],
+    ]
+  },
+  {
+    tag: "Nodes", zh: "节点管理", src: "controller/node.go",
+    note: "多面板节点编排：节点注册与探测、mTLS 证书体系、远程证件与入站、节点面板自更新。",
+    rows: [
+      ["GET",  "/panel/api/nodes/list", "列出全部已配置节点及其连接信息、健康状态、最后心跳补丁。"],
+      ["GET",  "/panel/api/nodes/get/{id}", "按 ID 获取单个节点。"],
+      ["GET",  "/panel/api/nodes/webCert/{id}", "代理获取节点自身的 Web TLS 证书/密钥文件路径（供“从面板设置证书”填出节点上真实存在的路径）。"],
+      ["GET",  "/panel/api/nodes/history/{id}/{metric}/{bucket}", "单个节点的聚合指标历史，形状同 /server/history。"],
+      ["POST", "/panel/api/nodes/add", "注册远程节点：提供 URL、只写 apiToken、可选 remark 与 allowPrivateAddress；响应仅暴露 hasApiToken。"],
+      ["POST", "/panel/api/nodes/update/{id}", "替换节点连接信息。apiToken 只写：省略或传空保持原值，clearApiToken=true 清除。"],
+      ["POST", "/panel/api/nodes/del/{id}", "删除节点；已绑定的入站不会被自动迁移。"],
+      ["POST", "/panel/api/nodes/setEnable/{id}", "暂停 / 恢复与节点的流量同步。"],
+      ["POST", "/panel/api/nodes/test", "用请求体中的连接信息探测节点（不保存），返回与已注册节点相同的心跳快照。"],
+      ["POST", "/panel/api/nodes/certFingerprint", "不校验 TLS 证书连接节点，返回叶证书 SHA-256（base64），供添加节点对话框固定自签证书。"],
+      ["POST", "/panel/api/nodes/inbounds", "用未保存的节点连接信息列出可选择性导入的远程入站。"],
+      ["POST", "/panel/api/nodes/probe/{id}", "探测已有节点并更新其缓存的健康状态。"],
+      ["POST", "/panel/api/nodes/updatePanel", "触发给定各节点的面板自更新；仅启用且在线的节点执行，其余回报 skipped。dev=true 切到滚动 dev 通道。"],
+      ["POST", "/panel/api/nodes/mtls/ca", "输出本面板的节点认证 CA 证书（公开 PEM），用于粘贴到节点的 mTLS 信任设置；首次调用时惰性生成 CA 与主客户端证书。"],
+      ["POST", "/panel/api/nodes/mtls/trustCA", "设置本面板作为节点时信任的 CA（粘贴管理面板的 CA）；空值禁用，非空必须为 PEM 证书，下次重启生效。"],
+      ["POST", "/panel/api/nodes/mtls/reloadClient", "校验已存的主 mTLS 客户端凭据并使缓存的传输失效，各传输会在下次请求前用轮换后的证书重建。"],
+    ]
+  },
+  {
+    tag: "Hosts", zh: "主机（订阅入口覆盖）", src: "controller/host.go",
+    note: "针对订阅链接的按入站主机覆盖（域名、地址、SNI、路径、标签等），决定订阅里对外广播的入口。",
+    rows: [
+      ["GET",  "/panel/api/hosts/list", "列出全部主机，按入站分组、组内按排序。", ],
+      ["GET",  "/panel/api/hosts/get/{groupId}", "按 Group ID 获取单个主机组。"],
+      ["GET",  "/panel/api/hosts/byInbound/{inboundId}", "获取单个入站的主机，按主机组归并。"],
+      ["GET",  "/panel/api/hosts/tags", "全部主机使用的 tag 去重排序集合。"],
+      ["POST", "/panel/api/hosts/add", "在入站上创建主机组。"],
+      ["POST", "/panel/api/hosts/update/{groupId}", "整体替换主机组内容。"],
+      ["POST", "/panel/api/hosts/del/{groupId}", "删除主机组。"],
+      ["POST", "/panel/api/hosts/setEnable/{groupId}", "启用或禁用主机组。"],
+      ["POST", "/panel/api/hosts/reorder", "按数组中各 groupId 的位置设置主机组排序。"],
+      ["POST", "/panel/api/hosts/bulk/add", "批量添加主机组（同 /add）。"],
+      ["POST", "/panel/api/hosts/bulk/setEnable", "批量启用/禁用主机组。"],
+      ["POST", "/panel/api/hosts/bulk/del", "批量删除主机组。"],
+    ]
+  },
+  {
+    tag: "Server", zh: "服务器与面板运维", src: "controller/server.go · dist.go",
+    note: "状态与历史指标、Xray 进程控制与版本、日志、证书生成工具、数据库备份/恢复、REALITY 目标探测。",
+    rows: [
+      ["GET",  "/panel/api/openapi.json", "返回本 OpenAPI 3 文档（即 API Docs 页所用文件），可用于生成客户端或导入 API 工具。需会话或 Bearer 令牌。"],
+      ["GET",  "/panel/api/server/status", "实时机器快照：CPU、内存、Swap、磁盘、网络 IO、负载、连接数、Xray 状态。后台每 2 秒刷新缓存。"],
+      ["GET",  "/panel/api/server/fail2banStatus", "报告本机能否执行按客户端 IP 限制（依赖 Fail2ban 是否安装），面板据此决定是否放开 “IP Limit” 字段。"],
+      ["GET",  "/panel/api/server/cpuHistory/{bucket}", "【遗留】聚合 CPU 历史，建议改用 /history/cpu/:bucket（统一 {t, v} 形状）。", "dep"],
+      ["GET",  "/panel/api/server/history/{metric}/{bucket}", "单指标聚合时序，返回最近约 6 小时的 {t, v} 样本数组。"],
+      ["GET",  "/panel/api/server/xrayMetricsState", "Xray 运行时指标状态：配置是否有 metrics 块、哪些 expvar 键在流动、各键当前快照值；未配置时返回空状态。"],
+      ["GET",  "/panel/api/server/xrayMetricsHistory/{metric}/{bucket}", "单个 Xray 运行时指标最近约 6 小时的时序，形状同 /history/:metric/:bucket。"],
+      ["GET",  "/panel/api/server/xrayObservatory", "Xray observatory 最新快照：各出站延迟、健康状态、最后探测时间；仅当配置了 observatory 时有数据。"],
+      ["GET",  "/panel/api/server/xrayObservatoryHistory/{tag}/{bucket}", "单个出站 tag 的 observatory 探测结果时序。"],
+      ["GET",  "/panel/api/server/getXrayVersion", "列出本机可安装的 Xray 二进制版本。"],
+      ["GET",  "/panel/api/server/getPanelUpdateInfo", "检查 GitHub 上是否有更新版本。"],
+      ["GET",  "/panel/api/server/getUpdateStatus", "回报最近一次面板自更新的结果；用返回的 runId 与 updatePanel 的 runId 比对可区分本次与陈旧结果。"],
+      ["GET",  "/panel/api/server/getConfigJson", "返回本机当前正在运行的完整 Xray 配置。"],
+      ["GET",  "/panel/api/server/getDb", "以附件流式下载数据库备份：SQLite 面板为 .db 文件，PostgreSQL 面板为 pg_dump 自定义格式 .dump。"],
+      ["GET",  "/panel/api/server/getMigration", "以附件流式下载跨引擎迁移文件：SQLite 出具 .dump（SQL 文本），PostgreSQL 出具由实时数据构建的 .db。"],
+      ["GET",  "/panel/api/server/getNewUUID", "生成一个新的 UUID v4，便于填客户端 ID。"],
+      ["GET",  "/panel/api/server/getWebCertFiles", "返回本面板自身的 Web TLS 证书与密钥文件路径（供中心面板通过节点令牌取用）。", "node"],
+      ["GET",  "/panel/api/server/descendants", "只读返回本面板所管理节点的摘要（guid/parentGuid/name/address/status/versions），供父面板呈链式拓扑中的传递子节点。", "node"],
+      ["GET",  "/panel/api/server/getNewX25519Cert", "生成 Reality 用的新 X25519 密钥对。"],
+      ["GET",  "/panel/api/server/getNewmldsa65", "生成 ML-DSA-65 密钥对，返回 {seed, verify}。"],
+      ["GET",  "/panel/api/server/getNewmlkem768", "生成 ML-KEM-768 密钥对，返回 {seed, client}。"],
+      ["GET",  "/panel/api/server/getNewVlessEnc", "生成 VLESS 加密认证选项，返回各含 id/label/encryption/decryption 的 auths 数组。"],
+      ["GET",  "/panel/api/server/clientIps", "拉取全量 inbound_client_ips 表，供节点在集群内同步最近活跃 IP。", "node"],
+      ["POST", "/panel/api/server/clientIps", "提交一批最近活跃 IP 时间戳，与既有数据合并以维护全局统一的 IP 限制视图。", "node"],
+      ["POST", "/panel/api/server/stopXrayService", "停止 Xray 进程，所有代理立即离线。"],
+      ["POST", "/panel/api/server/restartXrayService", "用当前配置重载 Xray；结构性变更入站或路由后通常需要。"],
+      ["POST", "/panel/api/server/installXray/{version}", "下载并安装指定 Xray 版本，传「latest」取最新发布。"],
+      ["POST", "/panel/api/server/updatePanel", "面板自更新到最新版，成功后服务重启。"],
+      ["POST", "/panel/api/server/setUpdateChannel", "在稳定版与逐提交 dev 版之间切换更新通道，仅 dev 构建下有效。"],
+      ["POST", "/panel/api/server/updateGeofile", "刷新默认 GeoIP / GeoSite 数据文件；带 /:fileName 变体只更新单个文件。"],
+      ["POST", "/panel/api/server/updateGeofile/{fileName}", "按文件名（如 geoip.dat、geosite.dat）刷新单个 Geo 文件。"],
+      ["POST", "/panel/api/server/logs/{count}", "返回面板自身日志的最后 N 行。"],
+      ["POST", "/panel/api/server/xraylogs/{count}", "返回 Xray 进程日志的最后 N 行。"],
+      ["POST", "/panel/api/server/amneziawglogs/{count}", "返回 AmneziaWG 对端实时活动（握手、端点、传输）及面板自身的事件行。"],
+      ["POST", "/panel/api/server/importDB", "从上传的备份恢复数据库（multipart，字段名 db）。恢复后面板重启；破坏性操作。"],
+      ["POST", "/panel/api/server/getNewEchCert", "为给定 SNI 生成新的 ECH（加密客户端问候）密钥对与配置列表。"],
+      ["POST", "/panel/api/server/getCertHash", "计算证书（DER）的 SHA-256 十六进制值用于证书固定（pinnedPeerCertSha256）；可传服务器文件路径或内联 PEM/DER。"],
+      ["POST", "/panel/api/server/getRemoteCertHash", "对远端服务器执行 xray tls ping，返回其实时叶证书 SHA-256，用于证书固定。"],
+      ["POST", "/panel/api/server/scanRealityTarget", "对候选 REALITY 目标做实时 TLS 1.3 探测，返回可行性结论（TLS 1.3 + h2 + X25519 + 可信证书）与证书 SAN 域名。私有/环回地址标记 privateTarget=true，仅在 allowPrivate 时探测。"],
+      ["POST", "/panel/api/server/scanRealityTargets", "批量探测 / 发现 REALITY 目标，按可行性与延迟排序。逗号分隔 token 可为域名、裸 IP 或 CIDR；为空时探测 realityScanCandidates 设置（或内置种子列表）。"],
+    ]
+  },
+  {
+    tag: "Settings", zh: "面板设置", src: "controller/setting.go",
+    note: "设置的读写与校验、管理员凭据修改、面板重启、通知渠道测试。",
+    rows: [
+      ["POST", "/panel/api/setting/all", "返回全部面板设置：Web 服务、Telegram 机器人、订阅、安全、LDAP —— 即设置页编辑的完整 JSON。"],
+      ["POST", "/panel/api/setting/defaultSettings", "基于请求 host 计算默认设置，用于预览全新安装会采用的值。"],
+      ["POST", "/panel/api/setting/factoryDefaults", "按浏览器可见设置键返回出厂默认值，便于区分“已存值”与“回退默认值”；不含密钥、panelGuid、mTLS 等安装专属材料。"],
+      ["POST", "/panel/api/setting/update", "一次性持久化全部设置，body 形状同 /all；非法值（端口、证书对缺失等）在写入前被拒。"],
+      ["POST", "/panel/api/setting/validateRegex", "用后端 Go RE2 编译器校验任意正则，不保存。"],
+      ["POST", "/panel/api/setting/updateUser", "修改面板管理员用户名与密码，需校验当前凭据；成功后刷新会话。"],
+      ["POST", "/panel/api/setting/restartPanel", "3 秒宽限期后重启整个 3x-ui 进程；连接立即断开，约 5–10 秒后恢复。"],
+      ["POST", "/panel/api/setting/testSmtp", "分阶段测试 SMTP 连接（连接、认证、发送），返回含 stage 与 message 的结构化结果。"],
+      ["POST", "/panel/api/setting/testTgBot", "向配置的聊天发送测试消息以验证 Telegram 机器人。"],
+      ["POST", "/panel/api/setting/testDiscord", "向配置频道发送测试 embed 以验证 Discord 机器人。"],
+      ["GET",  "/panel/api/setting/getDefaultJsonConfig", "返回随本版本发布的内置默认 Xray JSON 配置模板。"],
+    ]
+  },
+  {
+    tag: "API Tokens", zh: "API 令牌", src: "controller/setting.go",
+    note: "范围化令牌的签发与生命周期；令牌值只读一次、库中仅存哈希。",
+    rows: [
+      ["GET",  "/panel/api/setting/apiTokens", "列出全部令牌（含禁用），从不返回令牌值，仅元数据。"],
+      ["POST", "/panel/api/setting/apiTokens/create", "签发范围化令牌，服务端生成的明文仅返回一次并以哈希存储。"],
+      ["POST", "/panel/api/setting/apiTokens/delete/{id}", "永久删除令牌，正在使用的调用方立即失效。"],
+      ["POST", "/panel/api/setting/apiTokens/setEnabled/{id}", "启用/禁用令牌而不删除；禁用令牌在下次请求即被 checkAPIAuth 拒绝。"],
+    ]
+  },
+  {
+    tag: "Xray Settings", zh: "Xray 配置与出站", src: "controller/xray_setting.go · sub_balancer.go",
+    note: "Xray 配置模板、出站测试与流量、Warp/Nord/PIA 集成、负载均衡器与路由调试、Geodata 浏览、出站订阅。",
+    rows: [
+      ["POST", "/panel/api/xray/", "一次性返回 Xray 配置模板（JSON 字符串）、可用入站 tag、客户端反向 tag、出站测试 URL。"],
+      ["GET",  "/panel/api/xray/getDefaultJsonConfig", "返回面板内置默认 Xray 配置（同 /panel/api/setting/getDefaultJsonConfig）。"],
+      ["GET",  "/panel/api/xray/getOutboundsTraffic", "返回每个出站的流量统计（up/down/total）。"],
+      ["GET",  "/panel/api/xray/getXrayResult", "返回 Xray 进程最近的 stdout/stderr 输出，用于排查启动错误与运行期告警。"],
+      ["POST", "/panel/api/xray/update", "保存 Xray JSON 配置模板与出站测试 URL（form 字段）。"],
+      ["POST", "/panel/api/xray/warp/{action}", "管理 Cloudflare Warp 集成，action 选择具体操作。"],
+      ["POST", "/panel/api/xray/nord/{action}", "管理 NordVPN 集成，action 选择具体操作。"],
+      ["POST", "/panel/api/xray/pia/{action}", "管理 PIA WireGuard 集成，action 选择具体操作。"],
+      ["POST", "/panel/api/xray/resetOutboundsTraffic", "按 tag 重置对应出站的流量计数。"],
+      ["POST", "/panel/api/xray/testOutbound", "测试单个出站配置：发送出站 JSON（必填），可选全部出站（解析 sockopt.dialerProxy 依赖）与模式标志。"],
+      ["POST", "/panel/api/xray/testOutbounds", "经一个共享临时 xray 实例批量测试出站（上限 50），按输入顺序返回 tag、延迟、HTTP 状态与 连接/TLS/TTFB 耗时拆分。"],
+      ["POST", "/panel/api/xray/balancerStatus", "运行中核心的负载均衡器实时状态（RoutingService.GetBalancerInfo）：当前 override 与策略偏好的目标，按均衡器 tag 映射。"],
+      ["POST", "/panel/api/xray/balancerOverride", "强制运行中的均衡器始终选择某个出站，热生效无需重启；xray 重启后自动清除。"],
+      ["POST", "/panel/api/xray/routeTest", "询问运行中的核心：对一条合成连接路由会选哪个出站（RoutingService.TestRoute），不发送流量。"],
+      ["GET",  "/panel/api/xray/geodata/files", "列出 Xray 资源目录下的 geo 数据库（.dat），含内容检测出的布局、大小、修改时间与分类数；解析失败也列出并在 error 中说明原因。"],
+      ["GET",  "/panel/api/xray/geodata/categories", "返回某数据库分类的一页，含各分类条目数与域名携带的属性（如 ads、cn）。"],
+      ["GET",  "/panel/api/xray/geodata/entries", "返回某分类规则的一页：geosite 为 domain/full/keyword/regexp 规则，geoip 为 CIDR。"],
+      ["POST", "/panel/api/xray/geodata/validate", "用磁盘上的数据库校验路由 token，只返回无法解析的项；纯域名与 CIDR 忽略。原因分类：syntax、fileMissing、categoryMissing。"],
+      ["GET",  "/panel/api/xray/outbound-subs", "列出全部出站订阅（提供额外出站的远程 URL），最新在前。"],
+      ["POST", "/panel/api/xray/outbound-subs", "创建出站订阅：拉取并解析 URL 为带稳定 tag 的出站，增量并入运行中的 Xray 配置。"],
+      ["POST", "/panel/api/xray/outbound-subs/{id}", "按 id 更新出站订阅，接受与创建相同的 form 字段。"],
+      ["POST", "/panel/api/xray/outbound-subs/{id}/refresh", "立即重新拉取订阅并返回解析出的出站，同时通知 Xray 重载。"],
+      ["POST", "/panel/api/xray/outbound-subs/{id}/move", "把订阅在优先级中上移或下移一步（控制其在合并出站中的位置）。"],
+      ["POST", "/panel/api/xray/outbound-subs/parse", "预览：拉取并解析订阅 URL 为出站，不做任何持久化。"],
+      ["DELETE","/panel/api/xray/outbound-subs/{id}", "按 id 删除出站订阅。"],
+      ["POST", "/panel/api/xray/outbound-subs/{id}/del", "按 id 删除出站订阅（DELETE 的 POST 别名，供不能发 DELETE 的客户端）。"],
+    ]
+  },
+  {
+    tag: "Subscription Balancers", zh: "订阅均衡器", src: "controller/sub_balancer.go",
+    note: "面向 JSON 订阅输出的客户端侧均衡器，会对所选入站上的客户端订阅生效。",
+    rows: [
+      ["GET",  "/panel/api/sub-balancers", "按排序（sort_order asc, id asc）列出全部订阅均衡器。"],
+      ["POST", "/panel/api/sub-balancers", "创建订阅均衡器；它会对位于所选入站上的每个客户端出现在其 JSON 订阅中。"],
+      ["POST", "/panel/api/sub-balancers/{id}", "按 id 更新（整行更新，字段同创建）；省略 memberWeights 清空已存权重，省略 enabled 保持当前值。"],
+      ["DELETE","/panel/api/sub-balancers/{id}", "按 id 删除均衡器。"],
+      ["POST", "/panel/api/sub-balancers/{id}/del", "按 id 删除均衡器（DELETE 的 POST 别名）。"],
+    ]
+  },
+  {
+    tag: "Subscription Server", zh: "订阅服务（用户侧出口）", src: "internal/sub",
+    note: "独立于 /panel/api 的对外订阅端点：无需认证，subId 即凭据；路径前缀由 subPath / subJsonPath / subClashPath 设置决定（默认安装会随机化）。",
+    rows: [
+      ["GET",  "/{subPath}{subid}", "返回匹配订阅 ID 的全部启用客户端的 base64 订阅链接。请求头 Accept: text/html 或 ?html=1 时改为渲染样式化信息页；?format=info 返回页面视图模型 JSON（流量、到期、在线状态，不含链接）供轮询。", "pub"],
+      ["GET",  "/{subPath}{subid}/hwid-status", "返回订阅的 HWID 设备槽位聚合使用情况：是否启用限制、上限、已注册数、剩余槽位。只读，不注册设备因此不消耗槽位；只有计数，无 HWID 值、邮箱或设备元数据。", "pub"],
+      ["GET",  "/{jsonPath}{subid}", "以 JSON 数组返回订阅（每个启用客户端一条代理配置），仅在设置中开启 JSON 订阅时可用。", "pub"],
+      ["GET",  "/{clashPath}{subid}", "以 Clash/Mihomo 兼容 YAML 返回订阅，含配置的全局 Clash 路由规则，仅在开启 Clash 订阅时可用。", "pub"],
+    ]
+  },
+  {
+    tag: "WebSocket", zh: "实时推送", src: "controller/websocket.go",
+    note: "面板实时状态推送通道（traffic、状态等），仅会话 Cookie 认证。",
+    rows: [
+      ["GET",  "/ws", "升级 HTTP 连接为 WebSocket。需已认证的会话 Cookie（不支持 Bearer 令牌），成功返回 101 Switching Protocols，随后服务端推送 JSON 消息。", "ws"],
+    ]
+  },
+  {
+    tag: "Backup", zh: "备份", src: "controller/api.go",
+    note: "面板数据的 Telegram 备份通道。",
+    rows: [
+      ["POST", "/panel/api/backuptotgbot", "向所有配置为管理员的 Telegram 会话发送一份最新数据库备份。无 body、无参数。"],
+    ]
+  },
+];
+
+/* ---------- render ---------- */
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const tagClass = t => ({pub:"pub", ws:"ws", node:"node", dep:"node"}[t] || "");
+const tagLabel = t => ({pub:"无需认证", ws:"Cookie 认证", node:"节点/集群同步", dep:"已废弃"}[t] || "");
+
+function pathHTML(p) {
+  return esc(p).replace(/\{([^}]+)\}/g, '<span class="var">{$1}</span>');
+}
+
+const total = DATA.reduce((n, g) => n + g.rows.length, 0);
+const container = document.getElementById("groups");
+container.innerHTML = DATA.map((g, gi) => `
+  <div class="group" id="g${gi}">
+    <div class="group-head" data-toggle>
+      <span class="caret">▼</span>
+      <span class="group-title">${esc(g.zh)}<em>${esc(g.tag)}</em></span>
+      <span class="group-meta">
+        <span class="src">${esc(g.src || "")}</span>
+        <span class="count">${g.rows.length}</span>
+      </span>
+    </div>
+    ${g.note ? `<div class="note">${esc(g.note)}</div>` : ""}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+      <tbody>
+        ${g.rows.map(r => {
+          const [m, p, d, t] = r;
+          const pill = t ? ` <span class="tagpill ${tagClass(t)}">${tagLabel(t)}</span>` : "";
+          return `<tr data-m="${m}" data-search="${esc((m + " " + p + " " + d + " " + g.zh + " " + g.tag).toLowerCase())}">
+            <td class="m"><span class="method ${m}">${m}</span></td>
+            <td class="p"><span class="path">${pathHTML(p)}</span>${pill}</td>
+            <td class="d">${esc(d)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    </div>
+  </div>
+`).join("");
+
+/* ---------- filter ---------- */
+const q = document.getElementById("q");
+const hint = document.getElementById("hint");
+const empty = document.getElementById("empty");
+let method = "";
+
+function apply() {
+  const term = q.value.trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll(".group").forEach(gr => {
+    let rows = 0;
+    gr.querySelectorAll("tbody tr").forEach(tr => {
+      const okM = !method || tr.dataset.m === method;
+      const okQ = !term || tr.dataset.search.includes(term);
+      const show = okM && okQ;
+      tr.classList.toggle("hide", !show);
+      if (show) rows++;
+    });
+    gr.classList.toggle("hide", rows === 0);
+    if (term || method) gr.classList.toggle("collapsed", rows === 0);
+    visible += rows;
+  });
+  empty.style.display = visible === 0 ? "block" : "none";
+  hint.textContent = (term || method) ? `匹配 ${visible} / ${total} 个接口` : `共 ${total} 个接口 · ${DATA.length} 个分组`;
+}
+
+q.addEventListener("input", apply);
+document.querySelectorAll(".chip").forEach(ch => ch.addEventListener("click", () => {
+  document.querySelectorAll(".chip").forEach(c => c.classList.remove("on"));
+  ch.classList.add("on");
+  method = ch.dataset.m;
+  apply();
+}));
+document.addEventListener("click", e => {
+  const head = e.target.closest("[data-toggle]");
+  if (head) head.parentElement.classList.toggle("collapsed");
+});
+document.getElementById("toggleAll").addEventListener("click", e => {
+  const groups = [...document.querySelectorAll(".group")];
+  const collapse = groups.some(g => !g.classList.contains("collapsed"));
+  groups.forEach(g => g.classList.toggle("collapsed", collapse));
+  e.target.textContent = collapse ? "全部展开" : "全部折叠";
+});
+apply();
+</script>
+</body>
+</html>
