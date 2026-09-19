@@ -15,11 +15,15 @@ export const planApi = {
     return plan;
   },
 
-  // 验证优惠券
-  async checkCoupon(code: string, plan_id: number): Promise<CouponVerifyResult> {
+  /**
+   * 验证优惠券。
+   * 必须同时传入 period，服务端才能按「所选周期原价」计算抵扣金额，
+   * 否则会退化为按月价格计算，导致前端展示与实际应付不一致。
+   */
+  async checkCoupon(code: string, plan_id: number, period?: string): Promise<CouponVerifyResult> {
     return localApiRequest<CouponVerifyResult>("client/coupons/check", {
       method: "POST",
-      body: { code, plan_id } as any,
+      body: { code, plan_id, period } as unknown as Record<string, unknown>,
     });
   },
 };

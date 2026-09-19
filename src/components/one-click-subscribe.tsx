@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { Copy, QrCode, ExternalLink, Check } from "lucide-react";
 import { Drawer, Modal, useToast } from "@/components/v2-modal";
+import { copyText } from "@/components/api-ui";
 
 interface ClientApp {
   name: string;
@@ -160,22 +161,26 @@ export function OneClickSubscribeDrawer({
   const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
 
-  const handleCopy = () => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(subscribeUrl).then(() => {
-        setCopied(true);
-        showToast("复制成功", "success");
-        setTimeout(() => setCopied(false), 2000);
-      });
+  const handleCopy = async () => {
+    const ok = await copyText(subscribeUrl);
+    if (!ok) {
+      showToast("复制失败，请手动选择链接复制", "error");
+      return;
     }
+    setCopied(true);
+    showToast("复制成功", "success");
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleLaunchClient = (client: ClientApp) => {
     const link = client.scheme(subscribeUrl);
-    if (typeof window !== "undefined") {
-      window.location.href = link;
-      showToast(`正在唤起 ${client.name}...`, "info");
+    if (!link) {
+      showToast("当前订阅链接不可用，请先开通订阅", "warning");
+      return;
     }
+    showToast(`正在唤起 ${client.name}...`, "info");
+    // 自定义协议（ss:// / v2ray:// 等）无法用 Next 路由跳转，只能交给浏览器处理。
+    window.location.assign(link);
   };
 
   return (

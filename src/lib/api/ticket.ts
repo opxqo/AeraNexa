@@ -13,11 +13,11 @@ export const ticketApi = {
     return localApiRequest<Ticket[]>("client/tickets");
   },
 
-  // 创建工单
-  async saveTicket(params: SaveTicketParams): Promise<boolean> {
-    return localApiRequest<boolean>("client/tickets", {
+  // 创建工单，返回新工单 id
+  async saveTicket(params: SaveTicketParams): Promise<number> {
+    return localApiRequest<number>("client/tickets", {
       method: "POST",
-      body: params as any,
+      body: params as unknown as Record<string, unknown>,
     });
   },
 
@@ -25,7 +25,7 @@ export const ticketApi = {
   async replyTicket(params: { id: number; message: string }): Promise<boolean> {
     return localApiRequest<boolean>("client/tickets/reply", {
       method: "POST",
-      body: params as any,
+      body: params as unknown as Record<string, unknown>,
     });
   },
 
@@ -33,7 +33,7 @@ export const ticketApi = {
   async closeTicket(id: number): Promise<boolean> {
     return localApiRequest<boolean>("client/tickets/close", {
       method: "POST",
-      body: { id } as any,
+      body: { id } as unknown as Record<string, unknown>,
     });
   },
   async fetchTicket(id: number): Promise<Ticket> {

@@ -1,32 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BadgeCheck,
-  CheckCircle2,
+  ArrowRight,
   Copy,
+  CreditCard,
   ExternalLink,
-  LifeBuoy,
-  Plus,
-  QrCode,
-  RotateCcw,
-  Search,
-  Send,
-  ShoppingBag,
-  Ticket as TicketIcon,
-  XCircle,
-  AlertCircle,
   Loader2,
   Lock,
+  Plus,
+  RotateCcw,
+  Search,
   Wallet,
-  Gift,
-  History,
-  Tag,
-  CreditCard,
-  Layers,
-  ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { planApi } from "@/lib/api/plan";
@@ -36,26 +23,43 @@ import { ticketApi } from "@/lib/api/ticket";
 import { inviteApi } from "@/lib/api/invite";
 import { knowledgeApi } from "@/lib/api/knowledge";
 import { userApi } from "@/lib/api/user";
+import { walletApi } from "@/lib/api/wallet";
 import type {
-  Plan,
+  CheckoutResult,
+  InviteFetch,
+  KnowledgeArticle,
   OrderItem,
+  PagedMeta,
   PaymentMethod,
+  Plan,
   ServerNode,
   Ticket,
-  InviteFetch,
   TrafficRecord,
-  KnowledgeArticle,
+  WalletTransaction,
 } from "@/lib/api/types";
-import { Modal, ConfirmModal, useToast } from "@/components/v2-modal";
+import { ConfirmModal, Modal, useToast } from "@/components/v2-modal";
 import { OneClickSubscribeDrawer } from "@/components/one-click-subscribe";
+import {
+  AsyncBoundary,
+  EmptyState,
+  FieldError,
+  copyText,
+  sanitizeHtml,
+  toErrorMessage,
+  useAsyncData,
+  useSubmitGuard,
+} from "@/components/api-ui";
 
-// 格式化金额 (分 -> 元)
+/* =========================================================================
+   展示常量与格式化
+   ========================================================================= */
+
+/** 金额单位为「分」，展示时统一转为元。 */
 function formatAmount(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined) return "¥0.00";
+  if (cents === null || cents === undefined || Number.isNaN(cents)) return "¥0.00";
   return `¥${(cents / 100).toFixed(2)}`;
 }
 
-// 格式化字节数
 function formatBytes(bytes: number | null | undefined): string {
   if (!bytes) return "0.00 B";
   const gb = bytes / 1073741824;
@@ -63,80 +67,183 @@ function formatBytes(bytes: number | null | undefined): string {
   const mb = bytes / 1048576;
   if (mb >= 1) return `${mb.toFixed(2)} MB`;
   const kb = bytes / 1024;
-  return `${kb.toFixed(2)} KB`;
+  if (kb >= 1) return `${kb.toFixed(2)} KB`;
+  return `${bytes} B`;
 }
 
-function planPeriodPrice(plan: Plan, period: string): number {
+function formatTime(seconds: number | null | undefined): string {
+  if (!seconds) return "—";
+  return new Date(seconds * 1000).toLocaleString();
+}
+
+const PERIOD_KEYS = [
+  "month_price",
+  "quarter_price",
+  "half_year_price",
+  "year_price",
+  "two_year_price",
+  "three_year_price",
+  "onetime_price",
+] as const;
+
+const PERIOD_LABELS: Record<string, string> = {
+  month_price: "月付",
+  quarter_price: "季付",
+  half_year_price: "半年付",
+  year_price: "年付",
+  two_year_price: "两年付",
+  three_year_price: "三年付",
+  onetime_price: "一次性",
+  reset_price: "流量重置",
+};
+
+/** 周期原价（分）；未配置该周期返回 null。 */
+function planPeriodPrice(plan: Plan, period: string): number | null {
   const value = plan[period as keyof Plan];
-  return typeof value === "number" ? value : 0;
+  return typeof value === "number" && value >= 0 ? value : null;
 }
 
-// =========================================================================
-// 1. 套餐购买页面 (ApiPlanPage)
-// =========================================================================
+/**
+ * 套餐可售周期。优先使用服务端下发的 available_periods，
+ * 这样前台永远不会渲染出一个「点了会报错」的周期按钮。
+ */
+function planPeriods(plan: Plan): string[] {
+  const fromServer = (plan.available_periods ?? []).filter((period) => period !== "reset_price");
+  if (fromServer.length) return fromServer;
+  return PERIOD_KEYS.filter((key) => planPeriodPrice(plan, key) !== null);
+}
+
+const ORDER_STATUS_META: Record<number, { label: string; tone: string }> = {
+  0: { label: "待支付", tone: "badge-warning" },
+  1: { label: "开通中", tone: "badge-info" },
+  2: { label: "已取消", tone: "badge-danger" },
+  3: { label: "已完成", tone: "badge-success" },
+  4: { label: "已折抵", tone: "badge-success" },
+  5: { label: "已退款", tone: "badge-danger" },
+};
+
+function OrderStatusBadge({ status, label }: { status: number; label?: string }) {
+  const meta = ORDER_STATUS_META[status] ?? { label: "未知", tone: "" };
+  return <span className={`v2-badge ${meta.tone}`}>{label || meta.label}</span>;
+}
+
+const TICKET_LEVEL_META: Record<number, { label: string; tone: string }> = {
+  0: { label: "低", tone: "badge-info" },
+  1: { label: "中", tone: "badge-warning" },
+  2: { label: "高", tone: "badge-danger" },
+};
+
+/** 极简 HTML 净化见 api-ui.tsx 的 sanitizeHtml。 */
+
+/* =========================================================================
+   1. 套餐购买
+   ========================================================================= */
+
 export function ApiPlanPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>("month_price");
-  const [couponCode, setCouponCode] = useState("");
-  const [discountCents, setDiscountCents] = useState(0);
-  const [orderModalOpen, setOrderModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const { isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    planApi
-      .fetchPlans()
-      .then((data) => setPlans(Array.isArray(data) ? data : []))
-      .catch((error: unknown) => showToast(error instanceof Error ? error.message : "套餐加载失败", "error"))
-      .finally(() => setLoading(false));
-  }, []);
+  const plansState = useAsyncData<Plan[]>(
+    async () => {
+      const data = await planApi.fetchPlans();
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { fallbackMessage: "套餐加载失败，请稍后重试" },
+  );
+
+  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("");
+  const [couponCode, setCouponCode] = useState("");
+  const [coupon, setCoupon] = useState<{ status: "idle" | "applied" | "invalid"; message: string; discount: number }>({
+    status: "idle",
+    message: "",
+    discount: 0,
+  });
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+
+  const couponGuard = useSubmitGuard();
+  const orderGuard = useSubmitGuard();
+
+  const availablePeriods = useMemo(() => (selectedPlan ? planPeriods(selectedPlan) : []), [selectedPlan]);
+
+  const subtotal = selectedPlan && selectedPeriod ? planPeriodPrice(selectedPlan, selectedPeriod) : null;
+  const payable = Math.max(0, (subtotal ?? 0) - coupon.discount);
 
   const handleOpenPurchase = (plan: Plan) => {
+    const periods = planPeriods(plan);
+    if (!periods.length) {
+      showToast("该套餐暂未配置可购买周期，请联系管理员", "warning");
+      return;
+    }
+    if (!isAuthenticated) {
+      showToast("请先登录后再购买", "warning");
+      router.push("/login");
+      return;
+    }
     setSelectedPlan(plan);
-    setDiscountCents(0);
+    setSelectedPeriod(periods[0]);
     setCouponCode("");
-    // 寻找可用的周期
-    if (plan.month_price) setSelectedPeriod("month_price");
-    else if (plan.onetime_price) setSelectedPeriod("onetime_price");
-    else if (plan.quarter_price) setSelectedPeriod("quarter_price");
-    else if (plan.year_price) setSelectedPeriod("year_price");
+    setCoupon({ status: "idle", message: "", discount: 0 });
     setOrderModalOpen(true);
   };
 
-  const handleCheckCoupon = async () => {
-    if (!couponCode.trim() || !selectedPlan) return;
-    try {
-      const res = await planApi.checkCoupon(couponCode, selectedPlan.id);
-      if (res?.value) {
-        setDiscountCents(res.value);
-        showToast("优惠券兑换成功", "success");
-      }
-    } catch (err: any) {
-      showToast(err.message || "无效或已过期的优惠券", "error");
+  // 周期变化后优惠券抵扣额会变，必须重新校验，否则展示金额与实际应付不符。
+  const handleSelectPeriod = (period: string) => {
+    if (period === selectedPeriod) return;
+    setSelectedPeriod(period);
+    if (coupon.status !== "idle") {
+      setCoupon({ status: "idle", message: "付款周期已变更，请重新验证优惠券", discount: 0 });
     }
   };
 
-  const handleConfirmOrder = async () => {
-    if (!selectedPlan) return;
-    setSubmitting(true);
-    try {
-      const trade_no = await orderApi.saveOrder({
-        plan_id: selectedPlan.id,
-        period: selectedPeriod,
-        coupon_code: couponCode.trim() || undefined,
-      });
-      showToast("订单创建成功，正在跳转收银台...", "success");
-      setOrderModalOpen(false);
-      router.push(`/order/${trade_no}`);
-    } catch (err: any) {
-      showToast(err.message || "创建订单失败，请检查未支付订单或重试", "error");
-    } finally {
-      setSubmitting(false);
-    }
+  const handleCouponInput = (value: string) => {
+    setCouponCode(value);
+    if (coupon.status !== "idle") setCoupon({ status: "idle", message: "", discount: 0 });
   };
+
+  const handleCheckCoupon = () => {
+    if (!selectedPlan || !selectedPeriod) return;
+    void couponGuard.run(async () => {
+      const code = couponCode.trim();
+      if (!code) {
+        setCoupon({ status: "invalid", message: "请输入优惠码", discount: 0 });
+        return;
+      }
+      try {
+        const result = await planApi.checkCoupon(code, selectedPlan.id, selectedPeriod);
+        const discount = result.discount_amount ?? 0;
+        if (discount > 0) {
+          setCoupon({ status: "applied", message: `已抵扣 ${formatAmount(discount)}`, discount });
+        } else {
+          setCoupon({ status: "invalid", message: "该优惠券在当前付款周期下没有可抵扣金额", discount: 0 });
+        }
+      } catch (error: unknown) {
+        setCoupon({ status: "invalid", message: toErrorMessage(error, "优惠券无效或已过期"), discount: 0 });
+      }
+    });
+  };
+
+  const handleConfirmOrder = () => {
+    if (!selectedPlan || !selectedPeriod) return;
+    void orderGuard.run(async () => {
+      try {
+        const tradeNo = await orderApi.saveOrder({
+          plan_id: selectedPlan.id,
+          period: selectedPeriod,
+          coupon_code: coupon.status === "applied" ? couponCode.trim() : undefined,
+        });
+        showToast("订单创建成功，正在前往收银台", "success");
+        setOrderModalOpen(false);
+        router.push(`/order/${tradeNo}`);
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "创建订单失败，请稍后重试"), "error");
+      }
+    });
+  };
+
+  const plans = plansState.data ?? [];
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -149,32 +256,49 @@ export function ApiPlanPage() {
         </p>
       </div>
 
-      {loading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          <p>正在拉取最新套餐与资费...</p>
-        </div>
-      ) : (
-        plans.length > 0 ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
-          {plans.map((p) => {
-            const price = p.month_price ?? p.onetime_price ?? p.quarter_price ?? p.year_price ?? 0;
+      <AsyncBoundary
+        loading={plansState.loading}
+        error={plansState.error}
+        onRetry={plansState.reload}
+        loadingText="正在拉取最新套餐与资费..."
+        empty={plans.length === 0 ? "暂未配置可购买套餐，请等待管理员发布。" : undefined}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
+          {plans.map((plan) => {
+            const periods = planPeriods(plan);
+            const leadPeriod = periods[0];
+            const leadPrice = leadPeriod ? planPeriodPrice(plan, leadPeriod) : null;
+            const isOneTime = periods.length === 1 && leadPeriod === "onetime_price";
             return (
-              <div key={p.id} className="plan-card" style={{ display: "flex", flexDirection: "column" }}>
+              <div key={plan.id} className="plan-card" style={{ display: "flex", flexDirection: "column" }}>
                 <span className="v2-badge badge-success" style={{ alignSelf: "flex-start", marginBottom: 12 }}>
-                  {p.renew ? "周期订阅" : "按流量"}
+                  {plan.renew ? "周期订阅" : "按流量"}
                 </span>
-                <h2 style={{ margin: "0 0 8px", fontSize: 20 }}>{p.name}</h2>
+                <h2 style={{ margin: "0 0 8px", fontSize: 20 }}>{plan.name}</h2>
                 <div style={{ margin: "0 0 16px" }}>
                   <span style={{ fontSize: 28, fontWeight: 600, color: "var(--v2-heading)" }}>
-                    {formatAmount(price)}
+                    {formatAmount(leadPrice)}
                   </span>
                   <span style={{ fontSize: 13, color: "var(--v2-muted)", marginLeft: 4 }}>
-                    {p.onetime_price ? "/ 一次性" : "/ 月"}
+                    / {leadPeriod ? PERIOD_LABELS[leadPeriod] ?? leadPeriod : "—"}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, color: "var(--v2-muted)", marginBottom: 16 }}>
-                  {p.transfer_enable} GB 流量 · {p.speed_limit ? `${p.speed_limit} Mbps` : "不限速"}
+                <div style={{ fontSize: 13, color: "var(--v2-muted)", marginBottom: 12 }}>
+                  {plan.transfer_enable} GB 流量 · {plan.speed_limit ? `${plan.speed_limit} Mbps` : "不限速"}
                 </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                  {periods.map((period) => (
+                    <span key={period} className="v2-badge">
+                      {PERIOD_LABELS[period] ?? period}
+                    </span>
+                  ))}
+                </div>
+                {plan.content && (
+                  <div
+                    style={{ fontSize: 13, color: "var(--v2-muted)", marginBottom: 16 }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(plan.content) }}
+                  />
+                )}
                 <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 8, fontSize: 13 }}>
                   <li>· 全球优质专线加速</li>
                   <li>· 支持全平台主流客户端</li>
@@ -186,18 +310,17 @@ export function ApiPlanPage() {
                     type="button"
                     className="btn btn-primary"
                     style={{ width: "100%" }}
-                    onClick={() => handleOpenPurchase(p)}
+                    onClick={() => handleOpenPurchase(plan)}
                   >
-                    立即购买
+                    立即购买{isOneTime ? "" : ""}
                   </button>
                 </div>
               </div>
             );
           })}
-        </div> : <div className="v2-block" style={{ padding: "36px 20px", textAlign: "center", color: "var(--v2-muted)" }}>暂未配置可购买套餐，请等待管理员发布。</div>
-      )}
+        </div>
+      </AsyncBoundary>
 
-      {/* 下单确认弹窗 */}
       {selectedPlan && (
         <Modal
           open={orderModalOpen}
@@ -210,7 +333,7 @@ export function ApiPlanPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setOrderModalOpen(false)}
-                disabled={submitting}
+                disabled={orderGuard.pending}
               >
                 取消
               </button>
@@ -218,9 +341,9 @@ export function ApiPlanPage() {
                 type="button"
                 className="btn btn-primary"
                 onClick={handleConfirmOrder}
-                disabled={submitting}
+                disabled={orderGuard.pending || !selectedPeriod}
               >
-                {submitting ? <Loader2 size={15} className="animate-spin" /> : "前往收银台支付"}
+                {orderGuard.pending ? <Loader2 size={15} className="animate-spin" /> : "前往收银台支付"}
               </button>
             </div>
           }
@@ -229,31 +352,21 @@ export function ApiPlanPage() {
             <div>
               <label style={{ display: "block", marginBottom: 6, fontWeight: 500 }}>选择付款周期</label>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                {[
-                  { key: "month_price", label: "月付", price: selectedPlan.month_price },
-                  { key: "quarter_price", label: "季付", price: selectedPlan.quarter_price },
-                  { key: "half_year_price", label: "半年付", price: selectedPlan.half_year_price },
-                  { key: "year_price", label: "年付", price: selectedPlan.year_price },
-                  { key: "two_year_price", label: "两年付", price: selectedPlan.two_year_price },
-                  { key: "onetime_price", label: "一次性", price: selectedPlan.onetime_price },
-                ]
-                  .filter((item) => item.price !== null && item.price !== undefined)
-                  .map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      className={`period ${selectedPeriod === item.key ? "active" : ""}`}
-                      onClick={() => setSelectedPeriod(item.key)}
-                      style={{ textAlign: "center", padding: "10px 8px" }}
-                    >
-                      <span style={{ fontSize: 12 }}>{item.label}</span>
-                      <strong style={{ fontSize: 14 }}>{formatAmount(item.price)}</strong>
-                    </button>
-                  ))}
+                {availablePeriods.map((period) => (
+                  <button
+                    key={period}
+                    type="button"
+                    className={`period ${selectedPeriod === period ? "active" : ""}`}
+                    onClick={() => handleSelectPeriod(period)}
+                    style={{ textAlign: "center", padding: "10px 8px" }}
+                  >
+                    <span style={{ fontSize: 12 }}>{PERIOD_LABELS[period] ?? period}</span>
+                    <strong style={{ fontSize: 14 }}>{formatAmount(planPeriodPrice(selectedPlan, period))}</strong>
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* 优惠券 */}
             <div>
               <label style={{ display: "block", marginBottom: 6, fontWeight: 500 }}>折价优惠券</label>
               <div style={{ display: "flex", gap: 8 }}>
@@ -261,32 +374,64 @@ export function ApiPlanPage() {
                   type="text"
                   placeholder="请输入优惠码"
                   value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
+                  onChange={(event) => handleCouponInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleCheckCoupon();
+                    }
+                  }}
+                  className={coupon.status === "invalid" ? "input-invalid" : undefined}
                   style={{ flex: 1, padding: "8px 10px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
                 />
-                <button type="button" className="btn btn-secondary" onClick={handleCheckCoupon}>
-                  验证
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleCheckCoupon}
+                  disabled={couponGuard.pending || !couponCode.trim()}
+                >
+                  {couponGuard.pending ? <Loader2 size={14} className="animate-spin" /> : "验证"}
                 </button>
               </div>
-              {discountCents > 0 && (
-                <small style={{ color: "#52c41a", marginTop: 4, display: "block" }}>
-                  优惠券抵扣：-{formatAmount(discountCents)}
-                </small>
+              {coupon.status !== "idle" && (
+                <div className={`coupon-result ${coupon.status === "applied" ? "applied" : "invalid"}`}>
+                  <span>{coupon.message}</span>
+                  {coupon.status === "applied" && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setCouponCode("");
+                        setCoupon({ status: "idle", message: "", discount: 0 });
+                      }}
+                    >
+                      移除
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
-            <div style={{ padding: "12px 14px", background: "var(--v2-header)", borderRadius: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>应付总计</span>
-                <strong style={{ fontSize: 18, color: "var(--v2-primary)" }}>
-                  {formatAmount(
-                    Math.max(
-                      0,
-                      planPeriodPrice(selectedPlan, selectedPeriod) - discountCents,
-                    ),
-                  )}
-                </strong>
+            <div style={{ padding: "12px 14px", background: "var(--v2-header)", borderRadius: 4, display: "grid", gap: 8 }}>
+              <div className="summary-row">
+                <span>周期原价</span>
+                <span>{formatAmount(subtotal)}</span>
               </div>
+              {coupon.discount > 0 && (
+                <div className="summary-row">
+                  <span>优惠券抵扣</span>
+                  <span style={{ color: "#52c41a" }}>-{formatAmount(coupon.discount)}</span>
+                </div>
+              )}
+              <div className="summary-row total">
+                <span>应付总计</span>
+                <strong style={{ fontSize: 18, color: "var(--v2-primary)" }}>{formatAmount(payable)}</strong>
+              </div>
+              {selectedPlan.renew === 1 && (
+                <small className="field-hint" style={{ margin: 0 }}>
+                  升级订单将自动折抵当前订阅的剩余价值，实际应付以收银台为准。
+                </small>
+              )}
             </div>
           </div>
         </Modal>
@@ -295,54 +440,46 @@ export function ApiPlanPage() {
   );
 }
 
-// =========================================================================
-// 2. 我的订单列表与收银台 (ApiOrderPage & ApiOrderDetailPage)
-// =========================================================================
+/* =========================================================================
+   2. 订单列表
+   ========================================================================= */
+
+const ORDER_FILTERS: { label: string; status: number | undefined }[] = [
+  { label: "全部", status: undefined },
+  { label: "待支付", status: 0 },
+  { label: "已完成", status: 3 },
+  { label: "已取消", status: 2 },
+];
+
 export function ApiOrderPage() {
   const { showToast } = useToast();
-  const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<number | undefined>(undefined);
+  const [page, setPage] = useState(1);
   const [cancellingTradeNo, setCancellingTradeNo] = useState<string | null>(null);
+  const cancelGuard = useSubmitGuard();
 
-  const fetchOrders = () => {
-    setLoading(true);
-    orderApi
-      .fetchOrders(filterStatus)
-      .then((res) => setOrders(Array.isArray(res) ? res : []))
-      .catch((error: unknown) => showToast(error instanceof Error ? error.message : "订单加载失败", "error"))
-      .finally(() => setLoading(false));
-  };
+  const ordersState = useAsyncData<{ items: OrderItem[]; meta: PagedMeta }>(
+    () => orderApi.fetchOrderPage({ status: filterStatus, page }),
+    [filterStatus, page],
+    { fallbackMessage: "订单加载失败，请稍后重试" },
+  );
 
-  useEffect(() => {
-    fetchOrders();
-  }, [filterStatus]);
+  const items = ordersState.data?.items ?? [];
+  const meta = ordersState.data?.meta;
 
-  const handleCancel = async (trade_no: string) => {
-    try {
-      await orderApi.cancelOrder(trade_no);
-      showToast("订单已成功取消", "success");
-      setCancellingTradeNo(null);
-      fetchOrders();
-    } catch (err: any) {
-      showToast(err.message || "取消订单失败", "error");
-    }
-  };
-
-  const getStatusBadge = (status: number) => {
-    switch (status) {
-      case 0:
-        return <span className="v2-badge badge-warning">待支付</span>;
-      case 1:
-        return <span className="v2-badge badge-info">开通中</span>;
-      case 2:
-        return <span className="v2-badge badge-danger">已取消</span>;
-      case 3:
-      case 4:
-        return <span className="v2-badge badge-success">已完成</span>;
-      default:
-        return <span className="v2-badge">未知</span>;
-    }
+  const handleCancel = () => {
+    const tradeNo = cancellingTradeNo;
+    if (!tradeNo) return;
+    void cancelGuard.run(async () => {
+      try {
+        await orderApi.cancelOrder(tradeNo);
+        showToast("订单已取消", "success");
+        setCancellingTradeNo(null);
+        ordersState.reload();
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "取消订单失败"), "error");
+      }
+    });
   };
 
   return (
@@ -350,16 +487,15 @@ export function ApiOrderPage() {
       <header className="v2-block-header" style={{ justifyContent: "space-between" }}>
         <h2>我的订单</h2>
         <div className="filter-tabs">
-          {[
-            { label: "全部", status: undefined },
-            { label: "待支付", status: 0 },
-            { label: "已完成", status: 3 },
-          ].map((tab) => (
+          {ORDER_FILTERS.map((tab) => (
             <button
               key={tab.label}
               type="button"
               className={filterStatus === tab.status ? "active" : ""}
-              onClick={() => setFilterStatus(tab.status)}
+              onClick={() => {
+                setFilterStatus(tab.status);
+                setPage(1);
+              }}
             >
               {tab.label}
             </button>
@@ -367,48 +503,55 @@ export function ApiOrderPage() {
         </div>
       </header>
 
-      {loading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          <p>加载订单列表中...</p>
-        </div>
-      ) : (
+      <AsyncBoundary
+        loading={ordersState.loading}
+        error={ordersState.error}
+        onRetry={ordersState.reload}
+        loadingText="加载订单列表中..."
+        empty={items.length === 0 ? "暂无订单，前往「购买订阅」创建您的第一笔订单。" : undefined}
+      >
         <div style={{ overflowX: "auto" }}>
           <table className="v2-table">
             <thead>
               <tr>
                 <th>订单号</th>
                 <th>订阅商品</th>
+                <th>类型</th>
                 <th>周期</th>
-                <th>金额</th>
+                <th>应付金额</th>
                 <th>订单状态</th>
                 <th>创建时间</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              {orders.length ? orders.map((o) => (
-                <tr key={o.trade_no || o.id}>
+              {items.map((order) => (
+                <tr key={order.id}>
                   <td className="mono" style={{ fontWeight: 500 }}>
-                    <Link className="table-link" href={`/order/${o.trade_no || (o as any).id}`}>
-                      {o.trade_no || (o as any).id}
+                    <Link className="table-link" href={`/order/${order.trade_no}`}>
+                      {order.trade_no}
                     </Link>
                   </td>
-                  <td>{o.plan?.name || (o as any).plan || "订阅套餐"}</td>
-                  <td>{o.period}</td>
-                  <td style={{ fontWeight: 600 }}>{formatAmount(o.total_amount)}</td>
-                  <td>{getStatusBadge(o.status ?? (o as any).status === "待支付" ? 0 : 3)}</td>
-                  <td>{o.created_at ? new Date(o.created_at * 1000).toLocaleString() : (o as any).time}</td>
+                  <td>{order.plan?.name ?? "订阅套餐"}</td>
+                  <td>
+                    <span className="v2-badge">{order.type_label ?? "新购"}</span>
+                  </td>
+                  <td>{order.period_label ?? PERIOD_LABELS[order.period] ?? order.period}</td>
+                  <td style={{ fontWeight: 600 }}>{formatAmount(order.total_amount)}</td>
+                  <td>
+                    <OrderStatusBadge status={order.status} label={order.status_label} />
+                  </td>
+                  <td>{formatTime(order.created_at)}</td>
                   <td>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <Link className="btn btn-primary btn-sm" href={`/order/${o.trade_no || (o as any).id}`}>
+                      <Link className="btn btn-primary btn-sm" href={`/order/${order.trade_no}`}>
                         详情
                       </Link>
-                      {o.status === 0 && (
+                      {order.status === 0 && (
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          onClick={() => setCancellingTradeNo(o.trade_no || (o as any).id)}
+                          onClick={() => setCancellingTradeNo(order.trade_no)}
                         >
                           取消
                         </button>
@@ -416,201 +559,375 @@ export function ApiOrderPage() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--v2-muted)", padding: 28 }}>暂无订单，前往「购买订阅」创建您的第一笔订单。</td></tr>}
+              ))}
             </tbody>
           </table>
         </div>
-      )}
 
-      {/* 取消订单确认 */}
+        {meta && meta.total > meta.page_size && (
+          <div className="pagination-bar">
+            <span>
+              共 {meta.total} 条 · 第 {meta.page} 页
+            </span>
+            <div className="pagination-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                上一页
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={!meta.has_more}
+                onClick={() => setPage((value) => value + 1)}
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        )}
+      </AsyncBoundary>
+
       <ConfirmModal
         open={!!cancellingTradeNo}
         title="确定取消该订单？"
-        content="取消后该订单将被关闭，如需购买请重新发起。"
+        content="取消后该订单将被关闭，已使用的优惠券会一并释放，如需购买请重新发起。"
         okText="确定取消"
         cancelText="稍后再说"
-        onOk={() => cancellingTradeNo && handleCancel(cancellingTradeNo)}
+        onOk={handleCancel}
         onCancel={() => setCancellingTradeNo(null)}
       />
     </section>
   );
 }
 
-// 订单详情与在线结账页面
+/* =========================================================================
+   3. 收银台
+   ========================================================================= */
+
+/** 轮询上限：约 5 分钟后停止，避免用户长时间停留在页面上空转请求。 */
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 100;
+
 export function ApiOrderDetailPage({ tradeNo }: { tradeNo: string }) {
-  const router = useRouter();
   const { showToast } = useToast();
-  const [order, setOrder] = useState<OrderItem | null>(null);
-  const [methods, setMethods] = useState<PaymentMethod[]>([]);
-  const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [paying, setPaying] = useState(false);
-  const [checkoutData, setCheckoutData] = useState<any>(null);
+  const { refreshUser } = useAuth();
 
+  const orderState = useAsyncData<OrderItem>(() => orderApi.fetchOrderDetail(tradeNo), [tradeNo], {
+    fallbackMessage: "订单加载失败，请稍后重试",
+  });
+  const methodsState = useAsyncData<PaymentMethod[]>(
+    async () => {
+      const data = await orderApi.getPaymentMethods();
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { fallbackMessage: "支付方式加载失败" },
+  );
+
+  const [selectedMethodState, setSelectedMethod] = useState<number | null>(null);
+  const [checkoutData, setCheckoutData] = useState<CheckoutResult | null>(null);
+  const [polling, setPolling] = useState(false);
+
+  const payGuard = useSubmitGuard();
+  const pollAttemptsRef = useRef(0);
+
+  const order = orderState.data;
+  const methods = methodsState.data ?? [];
+
+  // 未手动选择时默认使用第一个渠道；用派生值而非 effect 同步，避免级联渲染。
+  const selectedMethod = selectedMethodState ?? methods[0]?.id ?? null;
+
+  // 发起支付后订单仍为待支付时，轮询订单状态以捕获外部渠道的异步回调。
   useEffect(() => {
-    Promise.allSettled([orderApi.fetchOrderDetail(tradeNo), orderApi.getPaymentMethods()])
-      .then(([orderRes, methodRes]) => {
-        if (orderRes.status === "fulfilled") setOrder(orderRes.value);
-        if (methodRes.status === "fulfilled") {
-          setMethods(methodRes.value);
-          if (methodRes.value.length > 0) setSelectedMethod(methodRes.value[0].id);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [tradeNo]);
+    if (!polling) return;
+    pollAttemptsRef.current = 0;
+    const timer = setInterval(() => {
+      pollAttemptsRef.current += 1;
+      if (pollAttemptsRef.current > POLL_MAX_ATTEMPTS) {
+        setPolling(false);
+        return;
+      }
+      orderApi
+        .checkStatus(tradeNo)
+        .then(async (result) => {
+          if (result.status === 0) return;
+          setPolling(false);
+          orderState.reload();
+          await refreshUser();
+          showToast(`支付结果已确认：${result.status_label}`, "success");
+        })
+        .catch(() => {
+          // 轮询失败不打扰用户，交由下一轮重试
+        });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polling, tradeNo]);
 
-  // 发起支付
-  const handlePay = async () => {
+  const handlePay = () => {
     if (!selectedMethod) {
       showToast("请先选择支付方式", "warning");
       return;
     }
-    setPaying(true);
-    try {
-      const res = await orderApi.checkout({ trade_no: tradeNo, method: selectedMethod });
-      setCheckoutData(res);
-      showToast("已发起支付，请完成付款", "info");
-    } catch (err: any) {
-      showToast(err.message || "支付发起失败，请重试", "error");
-    } finally {
-      setPaying(false);
-    }
+    void payGuard.run(async () => {
+      try {
+        const result = await orderApi.checkout({ trade_no: tradeNo, method: selectedMethod });
+        setCheckoutData(result);
+        if (result.completed) {
+          setPolling(false);
+          await Promise.all([orderState.reload(), refreshUser()]);
+          showToast("余额支付成功，订阅已开通", "success");
+          return;
+        }
+        if (result.type === 1 && result.data) {
+          window.open(result.data, "_blank", "noopener,noreferrer");
+        }
+        showToast("已发起支付，请完成付款", "info");
+        setPolling(true);
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "支付发起失败，请重试"), "error");
+      }
+    });
   };
 
-  const handleMockConfirm = async () => {
-    if (!checkoutData?.transaction_id) return;
-    setPaying(true);
-    try {
-      const paidOrder = await orderApi.confirmMockPayment({ trade_no: tradeNo, transaction_id: checkoutData.transaction_id });
-      setOrder(paidOrder);
-      showToast("模拟支付已完成，订阅已开通", "success");
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : "模拟支付确认失败", "error");
-    } finally { setPaying(false); }
+  const handleMockConfirm = () => {
+    const transactionId = checkoutData?.transaction_id;
+    if (!transactionId) return;
+    void payGuard.run(async () => {
+      try {
+        const paid = await orderApi.confirmMockPayment({ trade_no: tradeNo, transaction_id: transactionId });
+        orderState.setData(paid);
+        setPolling(false);
+        setCheckoutData(null);
+        await refreshUser();
+        showToast("模拟支付已完成，订阅已开通", "success");
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "模拟支付确认失败"), "error");
+      }
+    });
   };
+
+  const refreshStatus = () => {
+    orderState.reload();
+    void refreshUser();
+  };
+
+  const subtotal =
+    order?.subtotal_amount ?? (order ? order.total_amount + (order.discount_amount ?? 0) + (order.surplus_amount ?? 0) : 0);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: "0 0 4px", fontSize: 22, color: "var(--v2-heading)" }}>收银台</h1>
           <p style={{ margin: 0, color: "var(--v2-muted)", fontSize: 13 }}>订单号：{tradeNo}</p>
         </div>
-        <Link href="/order" className="btn btn-secondary btn-sm">
-          返回订单列表
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={refreshStatus}>
+            <RotateCcw size={13} />
+            <span>刷新状态</span>
+          </button>
+          <Link href="/order" className="btn btn-secondary btn-sm">
+            返回订单列表
+          </Link>
+        </div>
       </div>
 
-      {loading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          <p>正在读取订单与支付渠道...</p>
-        </div>
-      ) : order ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
-          {/* 左侧商品明细与支付选择 */}
-          <div style={{ display: "grid", gap: 16 }}>
-            <section className="v2-block" style={{ padding: 20 }}>
-              <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>商品信息</h3>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
-                <span>{order.plan?.name || "订阅商品"}</span>
-                <strong>{formatAmount(order.total_amount)}</strong>
-              </div>
-            </section>
-
-            <section className="v2-block" style={{ padding: 20 }}>
-              <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>选择支付方式</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
-                {methods.length > 0 ? methods.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`payment-channel-item ${selectedMethod === m.id ? "active" : ""}`}
-                      onClick={() => setSelectedMethod(m.id)}
-                    >
-                      <CreditCard size={22} style={{ color: "var(--v2-primary)" }} />
-                      <span className="payment-channel-name">{m.name}</span>
+      <AsyncBoundary
+        loading={orderState.loading}
+        error={orderState.error}
+        onRetry={orderState.reload}
+        loadingText="正在读取订单与支付渠道..."
+      >
+        {order && (
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(260px, 1fr)", gap: 20 }}>
+            <div style={{ display: "grid", gap: 16 }}>
+              <section className="v2-block" style={{ padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>商品信息</h3>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="summary-row">
+                    <span>订阅商品</span>
+                    <strong>{order.plan?.name ?? "订阅商品"}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>购买类型</span>
+                    <span>{order.type_label ?? "新购"}</span>
+                  </div>
+                  <div className="summary-row">
+                    <span>付款周期</span>
+                    <span>{order.period_label ?? PERIOD_LABELS[order.period] ?? order.period}</span>
+                  </div>
+                  <div className="summary-row">
+                    <span>订单状态</span>
+                    <OrderStatusBadge status={order.status} label={order.status_label} />
+                  </div>
+                  <div className="summary-row">
+                    <span>创建时间</span>
+                    <span>{formatTime(order.created_at)}</span>
+                  </div>
+                  {order.paid_at ? (
+                    <div className="summary-row">
+                      <span>支付时间</span>
+                      <span>{formatTime(order.paid_at)}</span>
                     </div>
-                  )) : <p style={{ margin: 0, color: "var(--v2-muted)", fontSize: 13 }}>暂无可用支付方式。</p>}
-              </div>
-            </section>
-          </div>
+                  ) : null}
+                </div>
+              </section>
 
-          {/* 右侧金额汇总与结账按钮 */}
-          <section className="v2-block" style={{ padding: 20, height: "fit-content" }}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>支付汇总</h3>
-            <div style={{ display: "grid", gap: 10, fontSize: 14, marginBottom: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--v2-muted)" }}>订单金额</span>
-                <span>{formatAmount(order.total_amount)}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--v2-muted)" }}>抵扣金额</span>
-                <span style={{ color: "#52c41a" }}>-{formatAmount(order.discount_amount ?? 0)}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  paddingTop: 10,
-                  borderTop: "1px solid var(--v2-border)",
-                  fontSize: 16,
-                  fontWeight: 600,
-                }}
-              >
-                <span>实付金额</span>
-                <span style={{ color: "var(--v2-primary)" }}>{formatAmount(order.total_amount)}</span>
-              </div>
+              <section className="v2-block" style={{ padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>选择支付方式</h3>
+                <AsyncBoundary
+                  loading={methodsState.loading}
+                  error={methodsState.error}
+                  onRetry={methodsState.reload}
+                  loadingText="加载支付方式中..."
+                  minHeight={90}
+                  empty={methods.length === 0 ? "管理员尚未配置可用支付方式，请联系客服。" : undefined}
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
+                    {methods.map((method) => (
+                      <div
+                        key={method.id}
+                        className={`payment-channel-item ${selectedMethod === method.id ? "active" : ""}`}
+                        onClick={() => setSelectedMethod(method.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") setSelectedMethod(method.id);
+                        }}
+                      >
+                        <CreditCard size={22} style={{ color: "var(--v2-primary)" }} />
+                        <span className="payment-channel-name">{method.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </AsyncBoundary>
+              </section>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              style={{ width: "100%" }}
-              disabled={paying || order.status !== 0}
-              onClick={handlePay}
-            >
-              {paying ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : order.status === 0 ? (
-                "立即支付"
-              ) : (
-                "订单已支付"
-              )}
-            </button>
-            {checkoutData?.provider === "mock" && order.status === 0 && (
-              <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--v2-border)", borderRadius: 4, background: "var(--v2-header)", fontSize: 13 }}>
-                <strong style={{ display: "block", marginBottom: 5 }}>模拟支付收银台</strong>
-                <span style={{ color: "var(--v2-muted)" }}>当前为本地测试渠道，不会发起真实扣款。</span>
-                <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 10, width: "100%" }} disabled={paying} onClick={handleMockConfirm}>确认模拟支付成功</button>
+            <section className="v2-block" style={{ padding: 20, height: "fit-content" }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>支付汇总</h3>
+              <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
+                <div className="summary-row">
+                  <span>周期原价</span>
+                  <span>{formatAmount(subtotal)}</span>
+                </div>
+                {(order.discount_amount ?? 0) > 0 && (
+                  <div className="summary-row">
+                    <span>优惠券抵扣</span>
+                    <span style={{ color: "#52c41a" }}>-{formatAmount(order.discount_amount)}</span>
+                  </div>
+                )}
+                {(order.surplus_amount ?? 0) > 0 && (
+                  <div className="summary-row">
+                    <span>订阅剩余价值折抵</span>
+                    <span style={{ color: "#52c41a" }}>-{formatAmount(order.surplus_amount)}</span>
+                  </div>
+                )}
+                <div className="summary-row total">
+                  <span>应付金额</span>
+                  <span style={{ color: "var(--v2-primary)" }}>{formatAmount(order.total_amount)}</span>
+                </div>
+                {(order.refund_amount ?? 0) > 0 && (
+                  <div className="summary-row">
+                    <span>超额部分退回余额</span>
+                    <span style={{ color: "#52c41a" }}>+{formatAmount(order.refund_amount)}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </section>
-        </div>
-      ) : (
-        <p>未找到该订单。</p>
-      )}
+
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                style={{ width: "100%" }}
+                disabled={payGuard.pending || order.status !== 0}
+                onClick={handlePay}
+              >
+                {payGuard.pending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : order.status === 0 ? (
+                  "立即支付"
+                ) : (
+                  order.status_label ?? "订单已处理"
+                )}
+              </button>
+
+              {polling && order.status === 0 && (
+                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--v2-muted)" }}>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>正在等待支付结果，完成后将自动刷新...</span>
+                </div>
+              )}
+
+              {checkoutData?.provider === "mock" && order.status === 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    border: "1px solid var(--v2-border)",
+                    borderRadius: 4,
+                    background: "var(--v2-header)",
+                    fontSize: 13,
+                  }}
+                >
+                  <strong style={{ display: "block", marginBottom: 5 }}>模拟支付收银台</strong>
+                  <span style={{ color: "var(--v2-muted)" }}>当前为本地测试渠道，不会发起真实扣款。</span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ marginTop: 10, width: "100%" }}
+                    disabled={payGuard.pending}
+                    onClick={handleMockConfirm}
+                  >
+                    {payGuard.pending ? <Loader2 size={14} className="animate-spin" /> : "确认模拟支付成功"}
+                  </button>
+                </div>
+              )}
+
+              {order.status === 0 && !checkoutData && (
+                <p className="field-hint" style={{ marginTop: 10 }}>
+                  支付完成后如页面未自动刷新，可点击上方「刷新状态」。
+                </p>
+              )}
+            </section>
+          </div>
+        )}
+      </AsyncBoundary>
     </div>
   );
 }
 
-// =========================================================================
-// 3. 节点状态页面 (ApiNodePage)
-// =========================================================================
+/* =========================================================================
+   4. 节点状态
+   ========================================================================= */
+
 export function ApiNodePage() {
   const { showToast } = useToast();
-  const { subscribe } = useAuth();
-  const [servers, setServers] = useState<ServerNode[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { subscribe, refreshUser } = useAuth();
   const [subscribeDrawerOpen, setSubscribeDrawerOpen] = useState(false);
   const [resetSecurityConfirm, setResetSecurityConfirm] = useState(false);
+  const [resetResult, setResetResult] = useState<{ subscribe_url: string; uuid: string } | null>(null);
+  const resetGuard = useSubmitGuard();
 
-  useEffect(() => {
-    serverApi
-      .fetchServers()
-      .then((data) => setServers(Array.isArray(data) ? data : []))
-      .catch((error: unknown) => showToast(error instanceof Error ? error.message : "节点加载失败", "error"))
-      .finally(() => setLoading(false));
-  }, []);
+  const nodesState = useAsyncData<ServerNode[]>(
+    async () => {
+      const data = await serverApi.fetchServers();
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { fallbackMessage: "节点加载失败，请稍后重试" },
+  );
+
+  const servers = nodesState.data ?? [];
+
+  const handleCopy = async (text: string, successText: string) => {
+    const ok = await copyText(text);
+    showToast(ok ? successText : "复制失败，请手动选择文本复制", ok ? "success" : "error");
+  };
 
   const handleCopySubscribe = () => {
     const url = subscribe?.subscribe_url;
@@ -618,23 +935,25 @@ export function ApiNodePage() {
       showToast("订阅链接暂不可用，请先完成订阅开通", "warning");
       return;
     }
-    navigator.clipboard.writeText(url);
-    showToast("订阅链接已复制到剪贴板", "success");
+    void handleCopy(url, "订阅链接已复制到剪贴板");
   };
 
-  const handleResetSecurity = async () => {
-    try {
-      await userApi.resetSecurity();
-      showToast("订阅信息与 Token 已重置", "success");
-      setResetSecurityConfirm(false);
-    } catch (err: any) {
-      showToast(err.message || "重置失败", "error");
-    }
+  const handleResetSecurity = () => {
+    void resetGuard.run(async () => {
+      try {
+        const result = await userApi.resetSecurity();
+        setResetResult({ subscribe_url: result.subscribe_url, uuid: result.uuid });
+        setResetSecurityConfirm(false);
+        await refreshUser();
+        showToast("订阅信息与 Token 已重置", "success");
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "重置失败，请稍后重试"), "error");
+      }
+    });
   };
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {/* 顶部订阅操作横幅 */}
       <section className="v2-block" style={{ padding: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
@@ -660,26 +979,57 @@ export function ApiNodePage() {
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setResetSecurityConfirm(true)}
+              disabled={resetGuard.pending}
             >
               <RotateCcw size={14} />
               <span>重置订阅信息</span>
             </button>
           </div>
         </div>
+
+        {resetResult && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              border: "1px solid #cfe3b8",
+              background: "#f4faee",
+              borderRadius: 4,
+              fontSize: 13,
+            }}
+          >
+            <strong style={{ display: "block", marginBottom: 6, color: "#4f7f24" }}>
+              订阅信息已重置，请重新导入客户端
+            </strong>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <code className="mono" style={{ flex: 1, wordBreak: "break-all", fontSize: 12 }}>
+                {resetResult.subscribe_url}
+              </code>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void handleCopy(resetResult.subscribe_url, "新订阅链接已复制")}
+              >
+                复制
+              </button>
+            </div>
+            <small className="field-hint">UUID 已同步轮换：{resetResult.uuid}</small>
+          </div>
+        )}
       </section>
 
-      {/* 节点列表 */}
       <section className="v2-block">
         <header className="v2-block-header">
           <h2>可用节点线路</h2>
         </header>
 
-        {loading ? (
-          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-            <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-            <p>正在拉取可用节点...</p>
-          </div>
-        ) : (
+        <AsyncBoundary
+          loading={nodesState.loading}
+          error={nodesState.error}
+          onRetry={nodesState.reload}
+          loadingText="正在拉取可用节点..."
+          empty={servers.length === 0 ? "暂未配置可用节点。" : undefined}
+        >
           <div style={{ overflowX: "auto" }}>
             <table className="v2-table">
               <thead>
@@ -692,32 +1042,32 @@ export function ApiNodePage() {
                 </tr>
               </thead>
               <tbody>
-                {servers.length ? servers.map((s, idx) => (
-                  <tr key={s.id || idx}>
+                {servers.map((server) => (
+                  <tr key={server.id}>
                     <td>
-                      <span className={`status-dot ${s.is_online !== 0 ? "online" : ""}`} />
-                      <span>{s.is_online !== 0 ? "在线" : "维护"}</span>
+                      <span className={`status-dot ${server.is_online !== 0 ? "online" : ""}`} />
+                      <span>{server.is_online !== 0 ? "在线" : "维护"}</span>
                     </td>
                     <td className="node-name" style={{ fontWeight: 500 }}>
-                      {s.name}
+                      {server.name}
                     </td>
-                    <td style={{ textTransform: "uppercase", fontSize: 12 }}>{s.type}</td>
-                    <td style={{ fontWeight: 600 }}>{s.rate}x</td>
+                    <td style={{ textTransform: "uppercase", fontSize: 12 }}>{server.type}</td>
+                    <td style={{ fontWeight: 600 }}>{server.rate}x</td>
                     <td>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        {(s.tags || ["专线"]).map((t) => (
-                          <span key={t} className="v2-badge">
-                            {t}
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {(server.tags?.length ? server.tags : ["专线"]).map((tag) => (
+                          <span key={tag} className="v2-badge">
+                            {tag}
                           </span>
                         ))}
                       </div>
                     </td>
                   </tr>
-                )) : <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--v2-muted)", padding: 28 }}>暂未配置可用节点。</td></tr>}
+                ))}
               </tbody>
             </table>
           </div>
-        )}
+        </AsyncBoundary>
       </section>
 
       <OneClickSubscribeDrawer
@@ -739,143 +1089,222 @@ export function ApiNodePage() {
   );
 }
 
-// =========================================================================
-// 4. 我的邀请页面 (ApiInvitePage)
-// =========================================================================
+/* =========================================================================
+   5. 我的邀请
+   ========================================================================= */
+
 export function ApiInvitePage() {
   const { showToast } = useToast();
-  const [inviteData, setInviteData] = useState<InviteFetch | null>(null);
-  const [loading, setLoading] = useState(true);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
+  const [transferError, setTransferError] = useState<string | null>(null);
 
-  const loadData = () => {
-    setLoading(true);
-    inviteApi
-      .fetchInvite()
-      .then((data) => setInviteData(data))
-      .catch(() => null)
-      .finally(() => setLoading(false));
+  const generateGuard = useSubmitGuard();
+  const transferGuard = useSubmitGuard();
+
+  const inviteState = useAsyncData<InviteFetch>(() => inviteApi.fetchInvite(), [], {
+    fallbackMessage: "邀请数据加载失败，请稍后重试",
+  });
+  const detailsState = useAsyncData(() => inviteApi.fetchDetails(), [], {
+    fallbackMessage: "佣金明细加载失败",
+  });
+
+  const stat = inviteState.data?.stat ?? [0, 0, 0, 0];
+  const codes = inviteState.data?.codes ?? [];
+  const details = detailsState.data ?? [];
+
+  const copyInviteLink = async (code: string) => {
+    const ok = await copyText(`${window.location.origin}/register?code=${code}`);
+    showToast(ok ? "推广注册链接已复制" : "复制失败，请手动选择文本复制", ok ? "success" : "error");
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const handleGenerate = async () => {
-    try {
-      await inviteApi.generateCode();
-      showToast("已生成新的邀请码", "success");
-      loadData();
-    } catch (err: any) {
-      showToast(err.message || "生成失败", "error");
-    }
+  const handleGenerate = () => {
+    void generateGuard.run(async () => {
+      try {
+        await inviteApi.generateCode();
+        showToast("已生成新的邀请码", "success");
+        inviteState.reload();
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "生成邀请码失败"), "error");
+      }
+    });
   };
 
-  const handleTransfer = async () => {
-    const val = parseFloat(transferAmount);
-    if (!val || val <= 0) {
-      showToast("请输入有效金额", "warning");
+  const handleTransfer = () => {
+    const value = Number.parseFloat(transferAmount);
+    if (!Number.isFinite(value) || value <= 0) {
+      setTransferError("请输入大于 0 的划转金额");
       return;
     }
-    try {
-      await userApi.transfer(Math.round(val * 100));
-      showToast("划转成功，已存入账户可用余额", "success");
-      setTransferModalOpen(false);
-      setTransferAmount("");
-      loadData();
-    } catch (err: any) {
-      showToast(err.message || "划转失败", "error");
+    const cents = Math.round(value * 100);
+    if (cents > stat[3]) {
+      setTransferError(`待结算佣金为 ${formatAmount(stat[3])}，无法超额划转`);
+      return;
     }
+    setTransferError(null);
+    void transferGuard.run(async () => {
+      try {
+        await userApi.transfer(cents);
+        showToast("划转成功，已存入账户可用余额", "success");
+        setTransferModalOpen(false);
+        setTransferAmount("");
+        inviteState.reload();
+      } catch (error: unknown) {
+        setTransferError(toErrorMessage(error, "划转失败"));
+      }
+    });
   };
-
-  const stat = inviteData?.stat ?? [0, 0, 0];
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {/* 佣金统计卡片 */}
-      <div className="stat-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      <div className="stat-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
         <article>
-          <span style={{ fontSize: 13, color: "var(--v2-muted)" }}>累计邀请人数</span>
-          <strong>{stat[0]} 人</strong>
+          <small>累计邀请人数</small>
+          <strong>{stat[0]}</strong>
         </article>
         <article>
-          <span style={{ fontSize: 13, color: "var(--v2-muted)" }}>产生佣金总计</span>
+          <small>产生佣金总计</small>
           <strong>{formatAmount(stat[1])}</strong>
         </article>
         <article>
-          <span style={{ fontSize: 13, color: "var(--v2-muted)" }}>累计已提现/划转</span>
+          <small>累计已划转</small>
           <strong>{formatAmount(stat[2])}</strong>
+        </article>
+        <article>
+          <small>待结算佣金</small>
+          <strong>{formatAmount(stat[3])}</strong>
         </article>
       </div>
 
-      {/* 邀请码管理 */}
       <section className="v2-block">
         <header className="v2-block-header" style={{ justifyContent: "space-between" }}>
           <h2>我的邀请码</h2>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTransferModalOpen(true)}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setTransferAmount("");
+                setTransferError(null);
+                setTransferModalOpen(true);
+              }}
+            >
               <Wallet size={14} />
               <span>划转至余额</span>
             </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleGenerate}>
-              <Plus size={14} />
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleGenerate}
+              disabled={generateGuard.pending}
+            >
+              {generateGuard.pending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               <span>生成邀请码</span>
             </button>
           </div>
         </header>
 
-        {loading ? (
-          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-            <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-            <p>加载邀请数据中...</p>
-          </div>
-        ) : (
+        <AsyncBoundary
+          loading={inviteState.loading}
+          error={inviteState.error}
+          onRetry={inviteState.reload}
+          loadingText="加载邀请数据中..."
+          empty={codes.length === 0 ? "您还没有邀请码，点击右上角「生成邀请码」开始推广。" : undefined}
+        >
           <div style={{ overflowX: "auto" }}>
             <table className="v2-table">
               <thead>
                 <tr>
                   <th>邀请码</th>
                   <th>访问次数 (PV)</th>
+                  <th>使用情况</th>
+                  <th>有效期</th>
                   <th>状态</th>
                   <th>创建时间</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {(inviteData?.codes || []).map((c) => (
-                  <tr key={c.id}>
-                    <td className="mono" style={{ fontWeight: 600 }}>
-                      {c.code}
-                    </td>
-                    <td>{c.pv}</td>
+                {codes.map((code) => {
+                  const expired = code.expired === true;
+                  const usable = code.status === 0 && !expired;
+                  return (
+                    <tr key={code.id}>
+                      <td className="mono" style={{ fontWeight: 600 }}>
+                        {code.code}
+                      </td>
+                      <td>{code.pv}</td>
+                      <td>
+                        {code.used_count ?? 0}
+                        {code.max_uses ? ` / ${code.max_uses}` : " / 不限"}
+                      </td>
+                      <td>{code.expires_at ? formatTime(code.expires_at) : "长期有效"}</td>
+                      <td>
+                        <span className={`v2-badge ${usable ? "badge-success" : "badge-danger"}`}>
+                          {expired ? "已过期" : code.status === 0 ? "有效" : "已停用"}
+                        </span>
+                      </td>
+                      <td>{formatTime(code.created_at)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => void copyInviteLink(code.code)}
+                        >
+                          复制链接
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </AsyncBoundary>
+      </section>
+
+      <section className="v2-block">
+        <header className="v2-block-header">
+          <h2>佣金明细</h2>
+        </header>
+        <AsyncBoundary
+          loading={detailsState.loading}
+          error={detailsState.error}
+          onRetry={detailsState.reload}
+          loadingText="加载佣金明细中..."
+          empty={details.length === 0 ? "暂无佣金记录，邀请好友下单后即可在此查看。" : undefined}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>被邀请人</th>
+                  <th>订单金额</th>
+                  <th>获得佣金</th>
+                  <th>结算状态</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {details.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.invitee_email ?? `用户 #${item.user_id}`}</td>
+                    <td>{formatAmount(item.order_amount)}</td>
+                    <td style={{ fontWeight: 600, color: "var(--v2-primary)" }}>{formatAmount(item.get_amount)}</td>
                     <td>
-                      <span className={`v2-badge ${c.status === 0 ? "badge-success" : "badge-danger"}`}>
-                        {c.status === 0 ? "有效" : "已使用"}
+                      <span className={`v2-badge ${item.status === "settled" ? "badge-success" : "badge-warning"}`}>
+                        {item.status === "settled" ? "已结算" : "待结算"}
                       </span>
                     </td>
-                    <td>{new Date(c.created_at * 1000).toLocaleDateString()}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/register?code=${c.code}`);
-                          showToast("推广注册链接已复制", "success");
-                        }}
-                      >
-                        复制链接
-                      </button>
-                    </td>
+                    <td>{formatTime(item.created_at)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        </AsyncBoundary>
       </section>
 
-      {/* 佣金划转弹窗 */}
       <Modal
         open={transferModalOpen}
         title="划转佣金至余额"
@@ -883,59 +1312,78 @@ export function ApiInvitePage() {
         width={420}
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setTransferModalOpen(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setTransferModalOpen(false)}
+              disabled={transferGuard.pending}
+            >
               取消
             </button>
-            <button type="button" className="btn btn-primary" onClick={handleTransfer}>
-              确定划转
+            <button type="button" className="btn btn-primary" onClick={handleTransfer} disabled={transferGuard.pending}>
+              {transferGuard.pending ? <Loader2 size={15} className="animate-spin" /> : "确定划转"}
             </button>
           </div>
         }
       >
         <div>
-          <label style={{ display: "block", marginBottom: 8, fontSize: 14 }}>请输入划转金额 (元)</label>
+          <label style={{ display: "block", marginBottom: 8, fontSize: 14 }}>
+            请输入划转金额 (元)，当前待结算 {formatAmount(stat[3])}
+          </label>
           <input
             type="number"
+            min="0.01"
             step="0.01"
             placeholder="0.00"
             value={transferAmount}
-            onChange={(e) => setTransferAmount(e.target.value)}
+            onChange={(event) => {
+              setTransferAmount(event.target.value);
+              setTransferError(null);
+            }}
+            className={transferError ? "input-invalid" : undefined}
             style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
           />
+          <FieldError>{transferError}</FieldError>
+          <small className="field-hint">划转后金额将进入可用余额，可用于支付订单。</small>
         </div>
       </Modal>
     </div>
   );
 }
 
-// =========================================================================
-// 5. 流量明细 (ApiTrafficPage)
-// =========================================================================
-export function ApiTrafficPage() {
-  const [records, setRecords] = useState<TrafficRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+/* =========================================================================
+   6. 流量明细
+   ========================================================================= */
 
-  useEffect(() => {
-    userApi
-      .fetchTrafficLog()
-      .then((data) => {
-        if (Array.isArray(data)) setRecords(data);
-      })
-      .catch(() => null)
-      .finally(() => setLoading(false));
-  }, []);
+export function ApiTrafficPage() {
+  const trafficState = useAsyncData<TrafficRecord[]>(
+    async () => {
+      const data = await userApi.fetchTrafficLog(30);
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { fallbackMessage: "流量记录加载失败，请稍后重试" },
+  );
+
+  const records = trafficState.data ?? [];
+  const total = useMemo(
+    () => (trafficState.data ?? []).reduce((sum, item) => sum + item.u + item.d, 0),
+    [trafficState.data],
+  );
 
   return (
     <section className="v2-block">
-      <header className="v2-block-header">
+      <header className="v2-block-header" style={{ justifyContent: "space-between" }}>
         <h2>近期流量明细</h2>
+        {records.length > 0 && <span style={{ fontSize: 13, color: "var(--v2-muted)" }}>近 30 天合计 {formatBytes(total)}</span>}
       </header>
-      {loading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          <p>加载流量记录中...</p>
-        </div>
-      ) : records.length > 0 ? (
+      <AsyncBoundary
+        loading={trafficState.loading}
+        error={trafficState.error}
+        onRetry={trafficState.reload}
+        loadingText="加载流量记录中..."
+        empty={records.length === 0 ? "暂无历史流量消耗记录。" : undefined}
+      >
         <div style={{ overflowX: "auto" }}>
           <table className="v2-table">
             <thead>
@@ -947,191 +1395,232 @@ export function ApiTrafficPage() {
               </tr>
             </thead>
             <tbody>
-              {records.map((r, idx) => (
-                <tr key={idx}>
-                  <td>{new Date(r.record_at * 1000).toLocaleDateString()}</td>
-                  <td>{formatBytes(r.u)}</td>
-                  <td>{formatBytes(r.d)}</td>
-                  <td style={{ fontWeight: 600 }}>{formatBytes(r.u + r.d)}</td>
+              {records.map((record) => (
+                <tr key={record.record_at}>
+                  <td>{new Date(record.record_at * 1000).toLocaleDateString()}</td>
+                  <td>{formatBytes(record.u)}</td>
+                  <td>{formatBytes(record.d)}</td>
+                  <td style={{ fontWeight: 600 }}>{formatBytes(record.u + record.d)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      ) : (
-        <div style={{ padding: "30px 20px", color: "var(--v2-muted)", textAlign: "center" }}>
-          暂无历史流量消耗记录。
-        </div>
-      )}
+      </AsyncBoundary>
     </section>
   );
 }
 
-// =========================================================================
-// 6. 使用文档 (ApiKnowledgePage)
-// =========================================================================
+/* =========================================================================
+   7. 使用文档
+   ========================================================================= */
+
 export function ApiKnowledgePage() {
-  const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeArticle, setActiveArticle] = useState<KnowledgeArticle | null>(null);
 
-  useEffect(() => {
-    knowledgeApi
-      .fetchArticles()
-      .then((data) => {
-        if (Array.isArray(data)) setArticles(data);
-      })
-      .catch(() => null)
-      .finally(() => setLoading(false));
-  }, []);
+  const knowledgeState = useAsyncData<KnowledgeArticle[]>(
+    async () => {
+      const data = await knowledgeApi.fetchArticles();
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { fallbackMessage: "文档加载失败，请稍后重试" },
+  );
 
+  const articles = knowledgeState.data ?? [];
   const filtered = useMemo(() => {
-    if (!search.trim()) return articles;
-    return articles.filter(
-      (a) => a.title.includes(search) || a.category.includes(search),
+    const source = knowledgeState.data ?? [];
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return source;
+    return source.filter(
+      (article) =>
+        article.title.toLowerCase().includes(keyword) || article.category.toLowerCase().includes(keyword),
     );
-  }, [articles, search]);
+  }, [knowledgeState.data, search]);
+
+  const articleHtml = useMemo(() => (activeArticle ? sanitizeHtml(activeArticle.body) : ""), [activeArticle]);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {/* 搜索栏 */}
       <div className="knowledge-search">
         <Search size={18} style={{ color: "var(--v2-muted)" }} />
         <input
           type="text"
           placeholder="搜索配置指引或常见问题..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(event) => setSearch(event.target.value)}
           style={{ width: "100%", border: 0, outline: 0 }}
         />
       </div>
 
-      {/* 文章列表 */}
       <section className="v2-block">
         <header className="v2-block-header">
           <h2>文档中心</h2>
         </header>
 
-        {loading ? (
-          <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-            <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-            <p>加载文档中...</p>
-          </div>
-        ) : filtered.length > 0 ? (
+        <AsyncBoundary
+          loading={knowledgeState.loading}
+          error={knowledgeState.error}
+          onRetry={knowledgeState.reload}
+          loadingText="加载文档中..."
+          empty={
+            filtered.length === 0
+              ? articles.length === 0
+                ? "管理员尚未发布任何文档。"
+                : "未找到与关键词匹配的文档。"
+              : undefined
+          }
+        >
           <div className="article-list" style={{ padding: "10px 0" }}>
-            {filtered.map((a) => (
-              <div
-                key={a.id}
-                onClick={() => setActiveArticle(a)}
+            {filtered.map((article) => (
+              <button
+                key={article.id}
+                type="button"
+                onClick={() => setActiveArticle(article)}
                 style={{
+                  width: "100%",
                   padding: "12px 20px",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  gap: 12,
                   cursor: "pointer",
+                  textAlign: "left",
+                  background: "transparent",
+                  border: 0,
                   borderBottom: "1px solid var(--v2-border)",
+                  color: "inherit",
                 }}
               >
-                <div>
-                  <span className="v2-badge" style={{ marginRight: 8 }}>
-                    {a.category}
-                  </span>
-                  <strong style={{ color: "var(--v2-heading)" }}>{a.title}</strong>
-                </div>
-                <ArrowRight size={15} style={{ color: "var(--v2-muted)" }} />
-              </div>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span className="v2-badge">{article.category}</span>
+                  <strong style={{ color: "var(--v2-heading)" }}>{article.title}</strong>
+                </span>
+                <ArrowRight size={15} style={{ color: "var(--v2-muted)", flexShrink: 0 }} />
+              </button>
             ))}
           </div>
-        ) : (
-          <div style={{ padding: "30px 20px", color: "var(--v2-muted)", textAlign: "center" }}>
-            未找到相关文档教程。
-          </div>
-        )}
+        </AsyncBoundary>
       </section>
 
-      {/* 文档详情模态框 */}
       {activeArticle && (
-        <Modal
-          open={!!activeArticle}
-          title={activeArticle.title}
-          onClose={() => setActiveArticle(null)}
-          width={640}
-        >
-          <div
-            dangerouslySetInnerHTML={{ __html: activeArticle.body }}
-            style={{ fontSize: 14, lineHeight: 1.8, color: "var(--v2-text)" }}
-          />
+        <Modal open={!!activeArticle} title={activeArticle.title} onClose={() => setActiveArticle(null)} width={640}>
+          {articleHtml ? (
+            <div
+              dangerouslySetInnerHTML={{ __html: articleHtml }}
+              style={{ fontSize: 14, lineHeight: 1.8, color: "var(--v2-text)" }}
+            />
+          ) : (
+            <EmptyState>该文档暂无正文内容。</EmptyState>
+          )}
         </Modal>
       )}
     </div>
   );
 }
 
-// =========================================================================
-// 7. 工单系统 (ApiTicketPage)
-// =========================================================================
+/* =========================================================================
+   8. 工单列表
+   ========================================================================= */
+
 export function ApiTicketPage() {
+  const router = useRouter();
   const { showToast } = useToast();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(true);
   const [newModalOpen, setNewModalOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [level, setLevel] = useState(1);
   const [message, setMessage] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<{ subject?: string; message?: string }>({});
+  const [filterStatus, setFilterStatus] = useState<number | undefined>(undefined);
 
-  const loadTickets = () => {
-    setLoading(true);
-    ticketApi
-      .fetchTickets()
-      .then((data) => {
-        if (Array.isArray(data)) setTickets(data);
-      })
-      .catch(() => null)
-      .finally(() => setLoading(false));
-  };
+  const createGuard = useSubmitGuard();
 
-  useEffect(() => {
-    loadTickets();
-  }, []);
+  const ticketsState = useAsyncData<Ticket[]>(
+    async () => {
+      const data = await ticketApi.fetchTickets();
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { fallbackMessage: "工单加载失败，请稍后重试" },
+  );
 
-  const handleCreate = async () => {
-    if (!subject.trim() || !message.trim()) {
-      showToast("请填写完整的工单主题与问题描述", "warning");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await ticketApi.saveTicket({ subject, level, message });
-      showToast("工单已提交，技术支持将尽快处理", "success");
-      setNewModalOpen(false);
-      setSubject("");
-      setMessage("");
-      loadTickets();
-    } catch (err: any) {
-      showToast(err.message || "提交工单失败", "error");
-    } finally {
-      setSubmitting(false);
-    }
+  const tickets = (ticketsState.data ?? []).filter((ticket) =>
+    filterStatus === undefined ? true : ticket.status === filterStatus,
+  );
+
+  const handleCreate = () => {
+    const nextErrors: { subject?: string; message?: string } = {};
+    if (subject.trim().length < 2) nextErrors.subject = "工单主题至少 2 个字符";
+    if (subject.trim().length > 255) nextErrors.subject = "工单主题不能超过 255 个字符";
+    if (message.trim().length < 5) nextErrors.message = "请至少填写 5 个字符的问题描述";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    void createGuard.run(async () => {
+      try {
+        const ticketId = await ticketApi.saveTicket({ subject: subject.trim(), level, message: message.trim() });
+        showToast("工单已提交，技术支持将尽快处理", "success");
+        setNewModalOpen(false);
+        setSubject("");
+        setMessage("");
+        setLevel(1);
+        ticketsState.reload();
+        if (ticketId) router.push(`/ticket/${ticketId}`);
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "提交工单失败"), "error");
+      }
+    });
   };
 
   return (
     <section className="v2-block">
       <header className="v2-block-header" style={{ justifyContent: "space-between" }}>
         <h2>我的工单</h2>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setNewModalOpen(true)}>
-          <Plus size={14} />
-          <span>新建工单</span>
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="filter-tabs">
+            {[
+              { label: "全部", status: undefined },
+              { label: "处理中", status: 0 },
+              { label: "已关闭", status: 1 },
+            ].map((tab) => (
+              <button
+                key={tab.label}
+                type="button"
+                className={filterStatus === tab.status ? "active" : ""}
+                onClick={() => setFilterStatus(tab.status)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setErrors({});
+              setNewModalOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            <span>新建工单</span>
+          </button>
+        </div>
       </header>
 
-      {loading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}>
-          <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-          <p>加载工单列表中...</p>
-        </div>
-      ) : tickets.length > 0 ? (
+      <AsyncBoundary
+        loading={ticketsState.loading}
+        error={ticketsState.error}
+        onRetry={ticketsState.reload}
+        loadingText="加载工单列表中..."
+        empty={
+          tickets.length === 0
+            ? filterStatus === undefined
+              ? "您当前没有工单记录。遇到网络问题可随时点击右上角新建工单。"
+              : "该状态下暂无工单。"
+            : undefined
+        }
+      >
         <div style={{ overflowX: "auto" }}>
           <table className="v2-table">
             <thead>
@@ -1144,37 +1633,33 @@ export function ApiTicketPage() {
               </tr>
             </thead>
             <tbody>
-              {tickets.map((t) => (
-                <tr key={t.id}>
-                  <td className="mono">#{t.id}</td>
-                  <td>
-                    <Link className="table-link" href={`/ticket/${t.id}`}>
-                      {t.subject}
-                    </Link>
-                  </td>
-                  <td>
-                    <span className={`v2-badge ${t.level === 2 ? "badge-danger" : t.level === 1 ? "badge-warning" : "badge-info"}`}>
-                      {t.level === 2 ? "高" : t.level === 1 ? "中" : "低"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`v2-badge ${t.status === 0 ? "badge-warning" : "badge-success"}`}>
-                      {t.status === 0 ? "待处理" : "已关闭"}
-                    </span>
-                  </td>
-                  <td>{new Date(t.updated_at * 1000).toLocaleString()}</td>
-                </tr>
-              ))}
+              {tickets.map((ticket) => {
+                const levelMeta = TICKET_LEVEL_META[ticket.level] ?? { label: "低", tone: "badge-info" };
+                return (
+                  <tr key={ticket.id}>
+                    <td className="mono">#{ticket.id}</td>
+                    <td>
+                      <Link className="table-link" href={`/ticket/${ticket.id}`}>
+                        {ticket.subject}
+                      </Link>
+                    </td>
+                    <td>
+                      <span className={`v2-badge ${levelMeta.tone}`}>{levelMeta.label}</span>
+                    </td>
+                    <td>
+                      <span className={`v2-badge ${ticket.status === 0 ? "badge-warning" : "badge-success"}`}>
+                        {ticket.status === 0 ? (ticket.reply_status === 1 ? "已回复" : "待处理") : "已关闭"}
+                      </span>
+                    </td>
+                    <td>{formatTime(ticket.updated_at)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      ) : (
-        <div style={{ padding: "30px 20px", color: "var(--v2-muted)", textAlign: "center" }}>
-          您当前没有处于处理中的工单。遇到网络问题可随时点击右上角新建工单。
-        </div>
-      )}
+      </AsyncBoundary>
 
-      {/* 新建工单弹窗 */}
       <Modal
         open={newModalOpen}
         title="新建工单"
@@ -1182,11 +1667,16 @@ export function ApiTicketPage() {
         width={500}
         footer={
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setNewModalOpen(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setNewModalOpen(false)}
+              disabled={createGuard.pending}
+            >
               取消
             </button>
-            <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={submitting}>
-              {submitting ? <Loader2 size={15} className="animate-spin" /> : "立即提交"}
+            <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={createGuard.pending}>
+              {createGuard.pending ? <Loader2 size={15} className="animate-spin" /> : "立即提交"}
             </button>
           </div>
         }
@@ -1198,15 +1688,21 @@ export function ApiTicketPage() {
               type="text"
               placeholder="简要概括您遇到的问题"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              maxLength={255}
+              onChange={(event) => {
+                setSubject(event.target.value);
+                if (errors.subject) setErrors((prev) => ({ ...prev, subject: undefined }));
+              }}
+              className={errors.subject ? "input-invalid" : undefined}
               style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
             />
+            <FieldError>{errors.subject}</FieldError>
           </div>
           <div>
             <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: 500 }}>优先级</label>
             <select
               value={level}
-              onChange={(e) => setLevel(parseInt(e.target.value, 10))}
+              onChange={(event) => setLevel(Number.parseInt(event.target.value, 10))}
               style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
             >
               <option value={0}>低（一般性咨询）</option>
@@ -1220,9 +1716,14 @@ export function ApiTicketPage() {
               rows={4}
               placeholder="请尽可能详细提供您的客户端平台、节点名称及报错截图或提示信息"
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(event) => {
+                setMessage(event.target.value);
+                if (errors.message) setErrors((prev) => ({ ...prev, message: undefined }));
+              }}
+              className={errors.message ? "input-invalid" : undefined}
               style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
             />
+            <FieldError>{errors.message}</FieldError>
           </div>
         </div>
       </Modal>
@@ -1230,90 +1731,275 @@ export function ApiTicketPage() {
   );
 }
 
+/* =========================================================================
+   9. 工单详情
+   ========================================================================= */
+
 export function ApiTicketDetailPage({ ticketId }: { ticketId: number }) {
-  const { showToast } = useToast();
   const router = useRouter();
-  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const { showToast } = useToast();
   const [reply, setReply] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [closeConfirm, setCloseConfirm] = useState(false);
+  const threadRef = useRef<HTMLDivElement | null>(null);
 
-  const loadTicket = async () => {
-    setLoading(true);
-    try { setTicket(await ticketApi.fetchTicket(ticketId)); }
-    catch (error: unknown) { showToast(error instanceof Error ? error.message : "工单加载失败", "error"); }
-    finally { setLoading(false); }
+  const replyGuard = useSubmitGuard();
+  const closeGuard = useSubmitGuard();
+
+  const ticketState = useAsyncData<Ticket>(() => ticketApi.fetchTicket(ticketId), [ticketId], {
+    fallbackMessage: "工单加载失败，请稍后重试",
+  });
+
+  const ticket = ticketState.data;
+  const messages = ticket?.message ?? [];
+
+  // 新回复到达后滚到底部，避免用户以为消息没发出去。
+  useEffect(() => {
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  }, [messages.length]);
+
+  const submitReply = () => {
+    const text = reply.trim();
+    if (!text) {
+      showToast("请输入回复内容", "warning");
+      return;
+    }
+    void replyGuard.run(async () => {
+      try {
+        await ticketApi.replyTicket({ id: ticketId, message: text });
+        setReply("");
+        ticketState.reload();
+        showToast("回复已发送", "success");
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "回复失败"), "error");
+      }
+    });
   };
 
-  useEffect(() => { void loadTicket(); }, [ticketId]);
-
-  const submitReply = async () => {
-    if (!reply.trim()) return;
-    setSubmitting(true);
-    try { await ticketApi.replyTicket({ id: ticketId, message: reply }); setReply(""); await loadTicket(); showToast("回复已发送", "success"); }
-    catch (error: unknown) { showToast(error instanceof Error ? error.message : "回复失败", "error"); }
-    finally { setSubmitting(false); }
-  };
-  const closeTicket = async () => {
-    setSubmitting(true);
-    try { await ticketApi.closeTicket(ticketId); await loadTicket(); showToast("工单已关闭", "success"); }
-    catch (error: unknown) { showToast(error instanceof Error ? error.message : "关闭失败", "error"); }
-    finally { setSubmitting(false); }
+  const handleClose = () => {
+    void closeGuard.run(async () => {
+      try {
+        await ticketApi.closeTicket(ticketId);
+        setCloseConfirm(false);
+        ticketState.reload();
+        showToast("工单已关闭", "success");
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "关闭工单失败"), "error");
+      }
+    });
   };
 
-  if (loading) return <div style={{ padding: "40px 0", textAlign: "center", color: "var(--v2-muted)" }}><Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} /><p>加载工单中...</p></div>;
-  if (!ticket) return <div className="v2-block" style={{ padding: 24, textAlign: "center", color: "var(--v2-muted)" }}>未找到该工单。</div>;
-  return <div style={{ display: "grid", gap: 16 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h1 style={{ margin: 0, fontSize: 22 }}>{ticket.subject}</h1><p style={{ margin: "5px 0 0", color: "var(--v2-muted)", fontSize: 13 }}>工单 #{ticket.id} · {ticket.status === 0 ? "处理中" : "已关闭"}</p></div><button type="button" className="btn btn-secondary btn-sm" onClick={() => router.push("/ticket")}>返回工单列表</button></div>
-    <section className="v2-block" style={{ padding: 20 }}><div style={{ display: "grid", gap: 14 }}>{ticket.message?.map((item) => <div key={item.id} style={{ padding: "12px 14px", border: "1px solid var(--v2-border)", borderRadius: 4, background: item.is_me ? "var(--v2-header)" : "var(--v2-surface)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6, fontSize: 12, color: "var(--v2-muted)" }}><strong style={{ color: "var(--v2-text)" }}>{item.is_me ? "我" : "客服"}</strong><span>{new Date(item.created_at * 1000).toLocaleString()}</span></div><div style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{item.message}</div></div>)}</div></section>
-    {ticket.status === 0 && <section className="v2-block" style={{ padding: 20 }}><label style={{ display: "block", marginBottom: 7, fontSize: 14, fontWeight: 500 }}>补充回复</label><textarea rows={4} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="补充问题或反馈" style={{ width: "100%", padding: "9px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }} /><div style={{ display: "flex", gap: 10, marginTop: 10 }}><button type="button" className="btn btn-primary" disabled={submitting || !reply.trim()} onClick={submitReply}>{submitting ? "提交中..." : "发送回复"}</button><button type="button" className="btn btn-secondary" disabled={submitting} onClick={closeTicket}>关闭工单</button></div></section>}
-  </div>;
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22 }}>{ticket?.subject ?? `工单 #${ticketId}`}</h1>
+          <p style={{ margin: "5px 0 0", color: "var(--v2-muted)", fontSize: 13 }}>
+            工单 #{ticketId}
+            {ticket ? ` · ${ticket.status === 0 ? "处理中" : "已关闭"}` : ""}
+            {ticket ? ` · 优先级 ${TICKET_LEVEL_META[ticket.level]?.label ?? "低"}` : ""}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={ticketState.reload}>
+            <RotateCcw size={13} />
+            <span>刷新</span>
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => router.push("/ticket")}>
+            返回工单列表
+          </button>
+        </div>
+      </div>
+
+      <AsyncBoundary
+        loading={ticketState.loading}
+        error={ticketState.error}
+        onRetry={ticketState.reload}
+        loadingText="加载工单中..."
+      >
+        {ticket && (
+          <>
+            <section className="v2-block" style={{ padding: 20 }}>
+              {messages.length === 0 ? (
+                <EmptyState>该工单暂无对话记录。</EmptyState>
+              ) : (
+                <div className="ticket-thread" ref={threadRef}>
+                  {messages.map((item) => (
+                    <div key={item.id} className={`ticket-bubble ${item.is_me ? "mine" : ""}`}>
+                      <div className="ticket-bubble-meta">
+                        <strong style={{ color: "var(--v2-text)" }}>
+                          {item.is_me ? "我" : item.sender_role === "staff" ? "客服" : "对方"}
+                        </strong>
+                        <span>{formatTime(item.created_at)}</span>
+                      </div>
+                      <div className="ticket-bubble-body">{item.message}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {ticket.status === 0 ? (
+              <section className="v2-block" style={{ padding: 20 }}>
+                <label style={{ display: "block", marginBottom: 7, fontSize: 14, fontWeight: 500 }}>补充回复</label>
+                <textarea
+                  rows={4}
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  placeholder="补充问题或反馈"
+                  style={{ width: "100%", padding: "9px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+                />
+                <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={replyGuard.pending || !reply.trim()}
+                    onClick={submitReply}
+                  >
+                    {replyGuard.pending ? <Loader2 size={14} className="animate-spin" /> : "发送回复"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={closeGuard.pending}
+                    onClick={() => setCloseConfirm(true)}
+                  >
+                    关闭工单
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <section className="v2-block" style={{ padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--v2-muted)", fontSize: 14 }}>
+                  <Lock size={15} />
+                  <span>该工单已关闭，如需继续沟通请新建工单。</span>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </AsyncBoundary>
+
+      <ConfirmModal
+        open={closeConfirm}
+        title="确定关闭该工单？"
+        content="关闭后将无法继续回复，如问题仍未解决请重新提交工单。"
+        okText="确定关闭"
+        cancelText="取消"
+        onOk={handleClose}
+        onCancel={() => setCloseConfirm(false)}
+      />
+    </div>
+  );
 }
 
-// =========================================================================
-// 8. 个人中心设置 (ApiProfilePage)
-// =========================================================================
+/* =========================================================================
+   10. 个人中心
+   ========================================================================= */
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 72;
+
 export function ApiProfilePage() {
+  const router = useRouter();
   const { showToast } = useToast();
   const { user, refreshUser } = useAuth();
+
+  // null 表示「跟随服务端值」，用户输入后才有本地草稿，避免用 effect 同步 state。
+  const [nicknameDraft, setNicknameDraft] = useState<string | null>(null);
+  const nickname = nicknameDraft ?? user?.nickname ?? "";
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const nicknameGuard = useSubmitGuard();
+
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [rePassword, setRePassword] = useState("");
-  const [submittingPassword, setSubmittingPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
+  const passwordGuard = useSubmitGuard();
+  const [rechargeCode, setRechargeCode] = useState("");
+  const rechargeGuard = useSubmitGuard();
+  const walletState = useAsyncData<WalletTransaction[]>(
+    async () => (await walletApi.transactions()).items,
+    [],
+    { fallbackMessage: "余额流水加载失败" },
+  );
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!oldPassword || !newPassword) {
-      showToast("请填写完整旧密码与新密码", "warning");
+  const handleRecharge = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = rechargeCode.trim();
+    if (!code) {
+      showToast("请输入卡密", "warning");
       return;
     }
-    if (newPassword !== rePassword) {
-      showToast("两次输入的新密码不一致", "warning");
+    void rechargeGuard.run(async () => {
+      try {
+        const result = await walletApi.redeem(code);
+        setRechargeCode("");
+        await Promise.all([refreshUser(), walletState.reload()]);
+        showToast(`充值成功，已到账 ${formatAmount(result.credited_amount)}`, "success");
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "卡密充值失败"), "error");
+      }
+    });
+  };
+
+  const handleSaveNickname = () => {
+    const value = nickname.trim();
+    if (value.length < 1 || value.length > 50) {
+      setNicknameError("昵称长度需在 1 到 50 个字符之间");
       return;
     }
-    setSubmittingPassword(true);
-    try {
-      await userApi.changePassword({ old_password: oldPassword, new_password: newPassword });
-      showToast("密码修改成功，请妥善保管", "success");
-      setOldPassword("");
-      setNewPassword("");
-      setRePassword("");
-    } catch (err: any) {
-      showToast(err.message || "密码修改失败，请核对旧密码", "error");
-    } finally {
-      setSubmittingPassword(false);
-    }
+    setNicknameError(null);
+    void nicknameGuard.run(async () => {
+      try {
+        await userApi.update({ nickname: value });
+        await refreshUser();
+        showToast("昵称已更新", "success");
+      } catch (error: unknown) {
+        setNicknameError(toErrorMessage(error, "昵称更新失败"));
+      }
+    });
+  };
+
+  const handleChangePassword = (event: React.FormEvent) => {
+    event.preventDefault();
+    const nextErrors: Record<string, string> = {};
+    if (!oldPassword) nextErrors.oldPassword = "请输入当前密码";
+    if (newPassword.length < PASSWORD_MIN_LENGTH) nextErrors.newPassword = `新密码长度不能少于 ${PASSWORD_MIN_LENGTH} 位`;
+    else if (newPassword.length > PASSWORD_MAX_LENGTH) nextErrors.newPassword = `新密码长度不能超过 ${PASSWORD_MAX_LENGTH} 位`;
+    else if (!newPassword.trim()) nextErrors.newPassword = "新密码不能为空白字符";
+    else if (newPassword === oldPassword) nextErrors.newPassword = "新密码不能与旧密码相同";
+    if (newPassword !== rePassword) nextErrors.rePassword = "两次输入的新密码不一致";
+    setPasswordErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    void passwordGuard.run(async () => {
+      try {
+        await userApi.changePassword({ old_password: oldPassword, new_password: newPassword });
+        setOldPassword("");
+        setNewPassword("");
+        setRePassword("");
+        setPasswordErrors({});
+        showToast("密码修改成功，请使用新密码重新登录", "success");
+        // 服务端已撤销全部会话，这里跳回登录页避免停留在已失效的页面。
+        setTimeout(() => router.replace("/login"), 900);
+      } catch (error: unknown) {
+        setPasswordErrors({ form: toErrorMessage(error, "密码修改失败，请核对旧密码") });
+      }
+    });
   };
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {/* 账户概览 */}
       <section className="v2-block" style={{ padding: 20 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>账户基础资料</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, fontSize: 14 }}>
           <div>
             <span style={{ color: "var(--v2-muted)" }}>登录邮箱：</span>
-            <strong>{user?.email || "未登录"}</strong>
+            <strong>{user?.email ?? "未登录"}</strong>
+          </div>
+          <div>
+            <span style={{ color: "var(--v2-muted)" }}>账户角色：</span>
+            <strong>{user?.role ?? "—"}</strong>
           </div>
           <div>
             <span style={{ color: "var(--v2-muted)" }}>可用余额：</span>
@@ -1324,46 +2010,133 @@ export function ApiProfilePage() {
             <strong>{formatAmount(user?.commission_balance)}</strong>
           </div>
           <div>
+            <span style={{ color: "var(--v2-muted)" }}>订阅到期：</span>
+            <strong>{user?.is_permanent ? "长期有效" : formatTime(user?.expired_at)}</strong>
+          </div>
+          <div>
             <span style={{ color: "var(--v2-muted)" }}>UUID：</span>
             <span className="mono" style={{ fontSize: 12 }}>
-              {user?.uuid || "—"}
+              {user?.uuid ?? "—"}
             </span>
           </div>
         </div>
       </section>
 
-      {/* 修改密码 */}
+      <section className="v2-block" style={{ padding: 20 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>余额充值</h3>
+        <p className="field-hint" style={{ marginTop: 0 }}>输入管理员发放的卡密后，余额将即时到账，可在订单收银台选择「余额支付」。</p>
+        <form onSubmit={handleRecharge} style={{ display: "flex", gap: 10, maxWidth: 520, alignItems: "flex-start" }}>
+          <input
+            value={rechargeCode}
+            onChange={(event) => setRechargeCode(event.target.value.toUpperCase())}
+            placeholder="例如 ANX-ABCD-EFGH-IJKM-NPQR-STUV"
+            autoComplete="off"
+            maxLength={128}
+            style={{ flex: 1, padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+          />
+          <button type="submit" className="btn btn-primary" disabled={rechargeGuard.pending || !rechargeCode.trim()}>
+            {rechargeGuard.pending ? <Loader2 size={14} className="animate-spin" /> : "充值"}
+          </button>
+        </form>
+        <AsyncBoundary loading={walletState.loading} error={walletState.error} onRetry={walletState.reload} loadingText="正在读取余额流水..." minHeight={80}>
+          <div className="table-wrap" style={{ marginTop: 18 }}>
+            <table className="v2-table">
+              <thead><tr><th>时间</th><th>说明</th><th>变动</th><th>余额</th></tr></thead>
+              <tbody>{(walletState.data ?? []).length ? (walletState.data ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td>{formatTime(item.created_at)}</td><td>{item.description ?? item.transaction_type}</td>
+                  <td style={{ color: item.amount >= 0 ? "#52c41a" : "var(--v2-text)" }}>{item.amount >= 0 ? "+" : ""}{formatAmount(item.amount)}</td>
+                  <td>{formatAmount(item.balance_after)}</td>
+                </tr>
+              )) : <tr><td colSpan={4} className="admin-empty">暂无余额流水</td></tr>}</tbody>
+            </table>
+          </div>
+        </AsyncBoundary>
+      </section>
+
+      <section className="v2-block" style={{ padding: 20 }}>
+        <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>昵称</h3>
+        <div style={{ display: "flex", gap: 10, maxWidth: 420, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <input
+              type="text"
+              placeholder="设置一个昵称"
+              value={nickname}
+              maxLength={50}
+              onChange={(event) => {
+                setNicknameDraft(event.target.value);
+                if (nicknameError) setNicknameError(null);
+              }}
+              className={nicknameError ? "input-invalid" : undefined}
+              style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+            />
+            <FieldError>{nicknameError}</FieldError>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSaveNickname}
+            disabled={nicknameGuard.pending || nickname.trim() === (user?.nickname ?? "")}
+          >
+            {nicknameGuard.pending ? <Loader2 size={14} className="animate-spin" /> : "保存"}
+          </button>
+        </div>
+      </section>
+
       <section className="v2-block" style={{ padding: 20 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>修改登入密码</h3>
         <form onSubmit={handleChangePassword} style={{ display: "grid", gap: 12, maxWidth: 420 }}>
-          <input
-            type="password"
-            placeholder="当前旧密码"
-            value={oldPassword}
-            onChange={(e) => setOldPassword(e.target.value)}
-            style={{ padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
-            required
-          />
-          <input
-            type="password"
-            placeholder="设置新密码"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            style={{ padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
-            required
-          />
-          <input
-            type="password"
-            placeholder="确认新密码"
-            value={rePassword}
-            onChange={(e) => setRePassword(e.target.value)}
-            style={{ padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
-            required
-          />
           <div>
-            <button type="submit" className="btn btn-primary" disabled={submittingPassword}>
-              {submittingPassword ? <Loader2 size={14} className="animate-spin" /> : "更新密码"}
+            <input
+              type="password"
+              placeholder="当前旧密码"
+              autoComplete="current-password"
+              value={oldPassword}
+              onChange={(event) => {
+                setOldPassword(event.target.value);
+                if (passwordErrors.oldPassword) setPasswordErrors((prev) => ({ ...prev, oldPassword: "" }));
+              }}
+              className={passwordErrors.oldPassword ? "input-invalid" : undefined}
+              style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+            />
+            <FieldError>{passwordErrors.oldPassword}</FieldError>
+          </div>
+          <div>
+            <input
+              type="password"
+              placeholder={`设置新密码（至少 ${PASSWORD_MIN_LENGTH} 位）`}
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(event) => {
+                setNewPassword(event.target.value);
+                if (passwordErrors.newPassword) setPasswordErrors((prev) => ({ ...prev, newPassword: "" }));
+              }}
+              className={passwordErrors.newPassword ? "input-invalid" : undefined}
+              style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+            />
+            <FieldError>{passwordErrors.newPassword}</FieldError>
+          </div>
+          <div>
+            <input
+              type="password"
+              placeholder="确认新密码"
+              autoComplete="new-password"
+              value={rePassword}
+              onChange={(event) => {
+                setRePassword(event.target.value);
+                if (passwordErrors.rePassword) setPasswordErrors((prev) => ({ ...prev, rePassword: "" }));
+              }}
+              className={passwordErrors.rePassword ? "input-invalid" : undefined}
+              style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+            />
+            <FieldError>{passwordErrors.rePassword}</FieldError>
+          </div>
+          <FieldError>{passwordErrors.form}</FieldError>
+          <div>
+            <button type="submit" className="btn btn-primary" disabled={passwordGuard.pending}>
+              {passwordGuard.pending ? <Loader2 size={14} className="animate-spin" /> : "更新密码"}
             </button>
+            <small className="field-hint">修改密码后所有设备上的登录会话都会失效，需要重新登录。</small>
           </div>
         </form>
       </section>

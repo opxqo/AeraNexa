@@ -19,6 +19,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+interface SessionSnapshot {
+  user: UserInfo | null;
+  subscribe: UserSubscribe | null;
+  stat: UserStat | null;
+}
+
+/**
+ * 拉取用户、订阅与统计三份数据。
+ * 定义在组件外，只做请求与聚合，不触碰任何 React 状态，
+ * 由调用方决定如何写入（effect 中首次加载 / 事件回调中刷新）。
+ */
+async function fetchSessionSnapshot(): Promise<SessionSnapshot> {
+  const [userInfo, subInfo, statInfo] = await Promise.allSettled([
+    userApi.fetchInfo(),
+    userApi.fetchSubscribe(),
+    userApi.fetchStat(),
+  ]);
+
+  return {
+    user: userInfo.status === "fulfilled" ? userInfo.value : null,
+    subscribe: subInfo.status === "fulfilled" ? subInfo.value : null,
+    stat: statInfo.status === "fulfilled" ? statInfo.value : null,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -26,37 +51,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [subscribe, setSubscribe] = useState<UserSubscribe | null>(null);
   const [stat, setStat] = useState<UserStat | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingState, setIsLoading] = useState(true);
 
   const isDemo = pathname.startsWith("/demo");
+  // Demo 路由不请求真实接口，直接视为加载完成。
+  const isLoading = isDemo ? false : isLoadingState;
+
+  /** 把快照写入状态；失败的单项保留原值，避免界面被清空。 */
+  const applySnapshot = useCallback((snapshot: SessionSnapshot) => {
+    setUser((prev) => snapshot.user ?? prev);
+    setSubscribe((prev) => snapshot.subscribe ?? prev);
+    setStat((prev) => snapshot.stat ?? prev);
+  }, []);
 
   const refreshUser = useCallback(async () => {
-    if (isDemo) {
-      setIsLoading(false);
-      return;
-    }
-
+    if (isDemo) return;
     setIsLoading(true);
     try {
-      const [userInfo, subInfo, statInfo] = await Promise.allSettled([
-        userApi.fetchInfo(),
-        userApi.fetchSubscribe(),
-        userApi.fetchStat(),
-      ]);
-
-      if (userInfo.status === "fulfilled") setUser(userInfo.value);
-      if (subInfo.status === "fulfilled") setSubscribe(subInfo.value);
-      if (statInfo.status === "fulfilled") setStat(statInfo.value);
-    } catch {
-      // 忽略单个失败
+      applySnapshot(await fetchSessionSnapshot());
     } finally {
       setIsLoading(false);
     }
-  }, [isDemo]);
+  }, [isDemo, applySnapshot]);
 
   useEffect(() => {
-    refreshUser();
-
     const handleUnauthorized = () => {
       clearAuthToken();
       setUser(null);
@@ -66,8 +84,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener("v2:unauthorized", handleUnauthorized);
+
+    // isLoading 初值即为 true，首屏加载结果只在异步回调中写入状态。
+    if (!isDemo) {
+      void fetchSessionSnapshot().then((snapshot) => {
+        applySnapshot(snapshot);
+        setIsLoading(false);
+      });
+    }
+
     return () => window.removeEventListener("v2:unauthorized", handleUnauthorized);
-  }, [refreshUser, router]);
+  }, [isDemo, applySnapshot, router]);
 
   const logout = async () => {
     await authApi.logout().catch(() => undefined);

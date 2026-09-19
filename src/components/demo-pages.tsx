@@ -11,17 +11,13 @@ import {
   CircleDollarSign,
   Copy,
   CreditCard,
-  ExternalLink,
   Gift,
-  HelpCircle,
   Link2,
-  Lock,
   MessageSquarePlus,
   QrCode,
   RotateCcw,
   Send,
   ShieldCheck,
-  Smartphone,
   Wallet,
   XCircle,
 } from "lucide-react";
@@ -442,7 +438,6 @@ export function OrderPage() {
 }
 
 export function OrderDetailPage({ id }: { id: string }) {
-  const router = useRouter();
   const { showToast } = useToast();
   const order = initialOrders.find((item) => item.id === id) ?? initialOrders[0];
 

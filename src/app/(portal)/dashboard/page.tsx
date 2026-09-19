@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,48 +22,50 @@ import { noticeApi } from "@/lib/api/notice";
 import type { Notice } from "@/lib/api/types";
 import { OneClickSubscribeDrawer } from "@/components/one-click-subscribe";
 import { ConfirmModal, Modal } from "@/components/v2-modal";
+import { ErrorState, sanitizeHtml, useAsyncData } from "@/components/api-ui";
 
 export default function ApiDashboardPage() {
   const router = useRouter();
   const { user, subscribe, stat, isLoading, isAuthenticated } = useAuth();
 
-  const [notices, setNotices] = useState<Notice[]>([]);
-  const [noticesLoading, setNoticesLoading] = useState(false);
   const [subscribeDrawerOpen, setSubscribeDrawerOpen] = useState(false);
   const [resetTrafficModalOpen, setResetTrafficModalOpen] = useState(false);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    setNoticesLoading(true);
-    noticeApi
-      .fetchNotices()
-      .then((data) => setNotices(data))
-      .catch(() => setNotices([]))
-      .finally(() => setNoticesLoading(false));
-  }, [isAuthenticated]);
+  const noticesState = useAsyncData<Notice[]>(
+    async () => {
+      const data = await noticeApi.fetchNotices();
+      return Array.isArray(data) ? data : [];
+    },
+    [],
+    { enabled: isAuthenticated, fallbackMessage: "公告加载失败，请稍后重试" },
+  );
 
-  // 计算订阅与流量数据
+  const notices = noticesState.data ?? [];
+  const noticesLoading = noticesState.loading;
+
+  // 计算订阅与流量数据。优先使用服务端下发的聚合值，避免前后端口径不一致。
   const planName = subscribe?.plan?.name || "尚未订阅套餐";
   const u = subscribe?.u ?? 0;
   const d = subscribe?.d ?? 0;
   const totalBytes = subscribe?.transfer_enable ?? 0;
-  const usedBytes = u + d;
+  const usedBytes = subscribe?.used_bytes ?? u + d;
 
   const usedGB = (usedBytes / 1073741824).toFixed(2);
   const totalGB = (totalBytes / 1073741824).toFixed(2);
-  const usagePercent = totalBytes > 0 ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : 0;
+  const usagePercent =
+    subscribe?.usage_percent ??
+    (totalBytes > 0 ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : 0);
+  const remainGB = ((subscribe?.remain_bytes ?? Math.max(0, totalBytes - usedBytes)) / 1073741824).toFixed(2);
 
   const expiredDateStr = subscribe?.expired_at
     ? new Date(subscribe.expired_at * 1000).toLocaleDateString()
     : "长期有效";
 
-  const daysLeft = subscribe?.expired_at
-    ? Math.max(0, Math.ceil((subscribe.expired_at * 1000 - Date.now()) / (86400 * 1000)))
-    : null;
+  const daysLeft = subscribe?.days_remaining ?? null;
 
-  const unpaidOrders = stat ? stat[0] : 0;
-  const pendingTickets = stat ? stat[1] : 0;
+  const unpaidOrders = stat?.unpaid_orders ?? 0;
+  const pendingTickets = stat?.open_tickets ?? 0;
 
   return (
     <div className="v2-dashboard">
@@ -165,13 +167,15 @@ export default function ApiDashboardPage() {
               <Loader2 size={16} className="animate-spin" />
               <span>正在加载最新公告...</span>
             </div>
+          ) : noticesState.error ? (
+            <ErrorState message={noticesState.error} onRetry={noticesState.reload} minHeight={80} />
           ) : notices.length > 0 ? (
             <div style={{ display: "grid", gap: 12 }}>
               {notices.map((item) => (
                 <div key={item.id}>
                   <strong style={{ color: "var(--v2-heading)" }}>{item.title}</strong>
                   <div
-                    dangerouslySetInnerHTML={{ __html: item.content }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.content) }}
                     style={{ marginTop: 4, color: "var(--v2-text)" }}
                   />
                   <small style={{ color: "var(--v2-muted)" }}>
@@ -218,7 +222,7 @@ export default function ApiDashboardPage() {
                 }}
               >
                 <strong>
-                  已用 {usedGB} GB / 总计 {totalGB} GB
+                  已用 {usedGB} GB / 剩余 {remainGB} GB / 总计 {totalGB} GB
                 </strong>
                 <div style={{ display: "flex", gap: 10 }}>
                   <Link href="/node" className="btn btn-secondary btn-sm">
