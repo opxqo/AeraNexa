@@ -10,7 +10,10 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:user": "node --env-file=.env.local --test tests/user-system/*.test.mjs"
+    "test:user": "node --env-file=.env.local --test tests/user-system/*.test.mjs",
+    "test:acceptance": "node --env-file=.env.local --test tests/acceptance/*.test.mjs",
+    "test": "node --env-file=.env.local --test tests/schema/*.test.mjs tests/user-system/*.test.mjs tests/acceptance/*.test.mjs",
+    "test:schema": "node --test tests/schema/*.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

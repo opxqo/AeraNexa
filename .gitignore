@@ -11,3 +11,6 @@ coverage/
 
 # Local upstream references are separate repositories, not part of AeraNexa.
 /source/
+
+# WorkBuddy AI 会话与项目记忆数据
+.workbuddy-ai/

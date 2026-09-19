@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { assertApiError } from "./helpers.mjs";
 
 const baseUrl = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
@@ -11,7 +12,7 @@ test("注册接口将损坏的 JSON 识别为客户端请求错误", async () =>
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { message: "请求格式不正确" });
+  await assertApiError(response, { message: "请求格式不正确", code: "invalid_request" });
 });
 
 test("登录接口将损坏的 JSON 识别为客户端请求错误", async () => {
@@ -22,7 +23,7 @@ test("登录接口将损坏的 JSON 识别为客户端请求错误", async () =>
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { message: "请求格式不正确" });
+  await assertApiError(response, { message: "请求格式不正确", code: "invalid_request" });
 });
 
 test("未配置 SMTP 时发送接口返回默认验证码提示", async () => {

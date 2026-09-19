@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
-import { after, test } from "node:test";
+import { after, before, test } from "node:test";
 import mysql from "mysql2/promise";
+import { assertApiError, enableMockPaymentForTests, restoreMockPaymentMethod } from "./helpers.mjs";
 
 const baseUrl = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 const testEmails = [];
 const testPlanIds = [];
 
+// 支付方式是全局可变状态（后台可随时关掉模拟支付），本文件有支付链路用例依赖它。
+let mockPaymentWasEnabled = null;
+
+before(async () => {
+  mockPaymentWasEnabled = await enableMockPaymentForTests();
+});
+
 after(async () => {
+  await restoreMockPaymentMethod(mockPaymentWasEnabled);
   if (!testEmails.length) return;
 
   const connection = await mysql.createConnection({
@@ -17,8 +26,31 @@ after(async () => {
     password: process.env.DB_PASSWORD,
   });
   try {
-    await connection.query("DELETE FROM orders WHERE user_id IN (SELECT id FROM (SELECT id FROM users WHERE email IN (?)) AS test_users)", [testEmails]);
-    await connection.query("DELETE FROM users WHERE email IN (?)", [testEmails]);
+    const [users] = await connection.query("SELECT id FROM users WHERE email IN (?)", [testEmails]);
+    const userIds = users.map((row) => row.id);
+
+    if (userIds.length) {
+      // 顺序很重要：audit_logs.user_id 是 ON DELETE SET NULL，
+      // 必须先按 user_id 清理，否则删除用户后这些行会变成无法归属的孤儿。
+      await connection.query("DELETE FROM audit_logs WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM commission_logs WHERE inviter_user_id IN (?) OR invited_user_id IN (?)", [userIds, userIds]);
+      await connection.query("DELETE FROM wallet_transactions WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM coupon_usages WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE user_id IN (?))", [userIds]);
+      await connection.query("DELETE FROM tickets WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM payment_transactions WHERE order_id IN (SELECT id FROM orders WHERE user_id IN (?))", [userIds]);
+      await connection.query("DELETE FROM orders WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM invite_codes WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM auth_sessions WHERE user_id IN (?)", [userIds]);
+      await connection.query("DELETE FROM users WHERE id IN (?)", [userIds]);
+    }
+
+    // 兜底：登录失败等路径下 user_id 可能为 null，需按 context.email 清理。
+    await connection.query(
+      "DELETE FROM audit_logs WHERE JSON_UNQUOTE(JSON_EXTRACT(context, '$.email')) IN (?)",
+      [testEmails],
+    );
+
     if (testPlanIds.length) await connection.query("DELETE FROM plans WHERE id IN (?)", [testPlanIds]);
   } finally {
     await connection.end();
@@ -66,7 +98,7 @@ test("偏好更新拒绝 0 和 1 之外的值", async () => {
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { message: "提醒设置格式不正确" });
+  await assertApiError(response, { message: "提醒设置格式不正确", code: "invalid_request" });
 });
 
 test("修改密码接口将损坏的 JSON 识别为客户端请求错误", async () => {
@@ -81,7 +113,7 @@ test("修改密码接口将损坏的 JSON 识别为客户端请求错误", async
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { message: "请求格式不正确" });
+  await assertApiError(response, { message: "请求格式不正确", code: "invalid_request" });
 });
 
 test("用户不存在后有效签名的旧会话也不能访问生产面板", async () => {
@@ -194,7 +226,7 @@ test("修改密码拒绝继续使用原密码", async () => {
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { message: "新密码不能与旧密码相同" });
+  await assertApiError(response, { message: "新密码不能与旧密码相同", code: "invalid_request" });
 });
 
 test("注册必须提交默认邮箱验证码", async () => {
@@ -211,7 +243,7 @@ test("注册必须提交默认邮箱验证码", async () => {
   });
 
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { message: "邮箱验证码错误" });
+  await assertApiError(response, { message: "邮箱验证码错误", code: "invalid_request" });
 });
 
 test("客户面板通过本地接口完成模拟支付并开通套餐", async () => {
