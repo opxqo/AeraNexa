@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "db:migrate": "node --env-file=.env.local scripts/migrate-database.mjs",
+    "db:create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

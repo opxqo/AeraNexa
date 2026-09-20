@@ -15,6 +15,16 @@ pnpm dev
 
 首次运行前，请复制 `.env.example` 为 `.env.local` 并填写本地 MySQL 密码、会话密钥、各加密主密钥（SMTP / 支付 / 系统设置）和哈希 pepper。环境变量只放这些必须与数据库分离的配置；3x-ui 连接、订阅域名、佣金比例、Worker 调度等在后台 `/admin/settings`「系统设置」中调整，保存后数秒内生效。用户系统使用新建的 `aeranexa` 数据库，表结构见 [`database/schema.sql`](database/schema.sql)。SMTP 主机、账号、发件人由 `/admin/mail` 配置；服务未启用时注册和找回密码会安全拒绝，不会回显验证码。
 
+首次部署且尚未配置 SMTP 时，注册流程需要的邮箱验证码无法发出，界面上也没有入口能直接建立第一个管理员账号。为此服务启动时（见 [`src/instrumentation.ts`](src/instrumentation.ts) 与 [`src/lib/server/bootstrap-admin.ts`](src/lib/server/bootstrap-admin.ts)）会自动检测 `users` 表：一旦发现一个用户都没有，就会创建默认管理员账号 `admin@admin.com` / `admin123456`（`role = 'admin'`）。执行 `pnpm db:migrate` 建好表结构后，正常 `pnpm dev` / `pnpm start` 启动即可，无需手动操作；表里只要出现任意用户，之后启动都会自动跳过，不会覆盖已有数据。**登录后请立即在「个人中心」修改密码**，并在 `/admin/settings` 补齐 3x-ui、SMTP 等运行时配置。
+
+如果 `users` 表已经非空，但仍想手动创建或重置某个管理员账号，可以运行：
+
+```bash
+ADMIN_EMAIL=admin@admin.com ADMIN_PASSWORD=admin123456 pnpm db:create-admin
+```
+
+不传环境变量时同样默认 `admin@admin.com` / `admin123456`；邮箱已存在则升级为管理员并重置密码，否则新建。
+
 支付仍以“卡密充值 → 余额支付”为正式路径。退款、回调沙箱和 CSV 对账由后台管理：部署时需额外配置 `PAYMENT_CONFIG_ENCRYPTION_KEY`（Base64 编码 32 字节）；本地 mock 回调可配置 `PAYMENT_SANDBOX_WEBHOOK_SECRET`。真实支付宝、微信等渠道尚未接入。
 
 生产面板路由会在服务端校验用户与会话；注销会撤销当前数据库会话，旧 Cookie 无法重放。启动开发服务器后可运行用户系统 HTTP 集成测试：
