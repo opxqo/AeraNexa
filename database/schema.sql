@@ -1,8 +1,5 @@
-CREATE DATABASE IF NOT EXISTS aeranexa
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE aeranexa;
+-- 建库与选库交给 scripts/migrate-database.mjs 按 DB_NAME 环境变量动态执行，
+-- 这样部署方可以用任意库名（不强制叫 aeranexa），这里只保留纯表结构。
 
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

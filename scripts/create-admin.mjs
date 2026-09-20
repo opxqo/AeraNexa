@@ -2,11 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 
-const databaseName = process.env.DB_NAME;
-
-if (databaseName !== "aeranexa") {
-  throw new Error(`Refusing to run against unexpected database: ${databaseName || "<missing>"}`);
-}
+const databaseName = process.env.DB_NAME || "aeranexa";
 
 // 首次启动服务时（见 src/lib/server/bootstrap-admin.ts）会在 users 表为空时自动创建同样的默认账号；
 // 这个脚本用于手动重置密码，或者在 users 表已经非空时仍想强制指定/升级某个管理员账号。
@@ -25,6 +21,7 @@ const connection = await mysql.createConnection({
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
+  database: databaseName,
 });
 
 try {

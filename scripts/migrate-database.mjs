@@ -1,10 +1,12 @@
 import { readFile } from "node:fs/promises";
 import mysql from "mysql2/promise";
 
-const databaseName = process.env.DB_NAME;
+const databaseName = process.env.DB_NAME || "aeranexa";
 
-if (databaseName !== "aeranexa") {
-  throw new Error(`Refusing to migrate unexpected database: ${databaseName || "<missing>"}`);
+// 库名会被直接拼进 DDL（CREATE DATABASE / USE），标识符在 mysql2 里不能用 ? 占位符转义，
+// 所以这里自己校验字符集，而不是依赖 SQL 参数化。
+if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(databaseName)) {
+  throw new Error(`Invalid DB_NAME (must match [A-Za-z_][A-Za-z0-9_]*): ${databaseName}`);
 }
 
 const schemaUrl = new URL("../database/schema.sql", import.meta.url);
@@ -18,6 +20,10 @@ const connection = await mysql.createConnection({
 });
 
 try {
+  await connection.query(
+    `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+  );
+  await connection.query(`USE \`${databaseName}\``);
   await connection.query(schema);
   const [tables] = await connection.query(
     `SELECT TABLE_NAME
@@ -26,7 +32,7 @@ try {
       ORDER BY TABLE_NAME`,
     [databaseName],
   );
-  console.log(`AeraNexa database is ready (${tables.length} tables).`);
+  console.log(`AeraNexa database "${databaseName}" is ready (${tables.length} tables).`);
 } finally {
   await connection.end();
 }
