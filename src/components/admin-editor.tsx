@@ -282,7 +282,7 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
                   <td><RoleBadge role={row.role} /></td>
                   <td>{row.planName}</td>
                   <td>{row.expiredAt}</td>
-                  <td>{row.usedGb} / {row.transferEnableGb} GB</td>
+                  <td>{formatBytes(row.usedBytes)} / {row.transferEnableGb} GB</td>
                   <td>{money(row.balance)}</td>
                   <td>
                     <span className={`v2-badge ${row.isActive ? "badge-success" : "badge-danger"}`}>
@@ -351,7 +351,7 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
                 </div>
               </div>
             </div>
-            <small className="admin-hint">已用流量 {selected.usedGb} GB，由节点 worker 每分钟从 3x-ui 采集累加。</small>
+            <small className="admin-hint">已用流量 {formatBytes(selected.usedBytes)}，由节点 worker 每分钟从 3x-ui 采集累加。</small>
             <label className="admin-check-row">
               <input name="isActive" type="checkbox" defaultChecked={selected.isActive} />
               <span>账户正常启用（取消勾选将禁止登录）</span>
@@ -2000,10 +2000,14 @@ function SettingsEditor({ rows, encryptionReady }: { rows: Extract<AdminEditorDa
                     placeholder={row.configured ? `已配置（来源：${SETTING_SOURCE_LABELS[row.source]}），留空不修改` : "未配置"}
                     disabled={!encryptionReady}
                   />
+                ) : row.kind === "select" ? (
+                  <select name={row.key} defaultValue={row.value}>
+                    {row.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
                 ) : (
                   <input
                     name={row.key}
-                    type={row.kind === "url" ? "url" : "number"}
+                    type={row.kind === "url" ? "url" : row.kind === "text" ? "text" : "number"}
                     defaultValue={row.source === "admin" ? row.value : ""}
                     placeholder={row.value ? `当前：${row.value}` : "未配置"}
                     min={row.min ?? undefined}

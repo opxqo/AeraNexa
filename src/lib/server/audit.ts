@@ -20,6 +20,9 @@ export type AuditAction =
   | "ticket.created"
   | "ticket.replied"
   | "ticket.closed"
+  | "invite.created"
+  | "invite.enabled"
+  | "invite.disabled"
   | "admin.user_updated"
   | "admin.plan_saved"
   | "admin.plan_deleted"
@@ -52,7 +55,10 @@ export type AuditAction =
   | "admin.payment_refunded"
   | "admin.payment_sandbox_callback"
   | "admin.reconciliation_imported"
-  | "admin.reconciliation_resolved";
+  | "admin.reconciliation_resolved"
+  | "telegram.bind_code_created"
+  | "telegram.bound"
+  | "telegram.unbound";
 
 export type AuditInput = {
   action: AuditAction;

@@ -8,6 +8,8 @@ import {
   buildInboundSnapshot,
   defaultPublicHost,
   hashSnapshot,
+  inboundManagedNodeFieldsMatch,
+  inboundManagedNodeFields,
   parseInbound,
 } from "../../src/lib/server/panel/inbounds.ts";
 
@@ -112,6 +114,31 @@ test("协议统一小写，remark 去空白", () => {
   const inbound = parseInbound(realityInbound({ protocol: "VLESS", remark: "  HK-01  " }));
   assert.equal(inbound.protocol, "vless");
   assert.equal(inbound.remark, "HK-01");
+});
+
+test("同步入站时，3x-ui 管理节点名称、协议和服务端口；对外地址不在此模型中", () => {
+  const inbound = parseInbound(realityInbound({
+    remark: "  🇺🇸 Static Residential N  ",
+    protocol: "VLESS",
+    port: 27205,
+  }));
+  assert.ok(inbound);
+
+  assert.deepEqual(inboundManagedNodeFields(inbound), {
+    name: "🇺🇸 Static Residential N",
+    protocol: "vless",
+    serverPort: 27205,
+  });
+  assert.equal(inboundManagedNodeFieldsMatch({
+    name: "旧名称",
+    protocol: "vless",
+    serverPort: 27205,
+  }, inbound), false, "旧名称不能因快照哈希相同而被跳过");
+  assert.equal(inboundManagedNodeFieldsMatch({
+    name: "🇺🇸 Static Residential N",
+    protocol: "vless",
+    serverPort: 27205,
+  }, inbound), true);
 });
 
 test("默认对外地址：分享地址 → 具体监听地址 → 主控公网 IP（仅主控本机入站）→ 空", () => {

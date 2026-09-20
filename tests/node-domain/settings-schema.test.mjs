@@ -43,6 +43,11 @@ test("小数比例", () => {
   assert.equal(normalizeSettingValue(def("commission.rate_percent"), "-1").ok, false);
 });
 
+test("Clash / Mihomo 规则来源只能选择受支持的渲染器", () => {
+  assert.deepEqual(normalizeSettingValue(def("subscribe.clash_provider"), "3x-ui"), { ok: true, value: "3x-ui" });
+  assert.equal(normalizeSettingValue(def("subscribe.clash_provider"), "unknown").ok, false);
+});
+
 test("密钥：长度与空白", () => {
   assert.equal(normalizeSettingValue(def("panel.api_token"), "short").ok, false);
   assert.equal(normalizeSettingValue(def("panel.api_token"), "has space inside").ok, false);

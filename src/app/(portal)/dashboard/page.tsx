@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,7 +10,6 @@ import {
   BookOpen,
   LifeBuoy,
   Rss,
-  Send,
   ShoppingBag,
   RotateCcw,
   Network,
@@ -23,14 +22,33 @@ import type { Notice } from "@/lib/api/types";
 import { OneClickSubscribeDrawer } from "@/components/one-click-subscribe";
 import { ConfirmModal, Modal } from "@/components/v2-modal";
 import { ErrorState, sanitizeHtml, useAsyncData } from "@/components/api-ui";
+import { localApiRequest } from "@/lib/api/client";
+import { TelegramIcon } from "@/components/telegram-icon";
 
 export default function ApiDashboardPage() {
   const router = useRouter();
-  const { user, subscribe, stat, isLoading, isAuthenticated } = useAuth();
+  const { user, subscribe, stat, isLoading, isAuthenticated, refreshUser } = useAuth();
 
   const [subscribeDrawerOpen, setSubscribeDrawerOpen] = useState(false);
   const [resetTrafficModalOpen, setResetTrafficModalOpen] = useState(false);
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
+  const [telegramCode, setTelegramCode] = useState<string | null>(null);
+  const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [telegramError, setTelegramError] = useState<string | null>(null);
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const openTelegramBinding = async () => {
+    setTelegramModalOpen(true); setTelegramError(null);
+    try { const data = await localApiRequest<{ enabled: boolean; username: string }>("user/telegram/bind-code"); setTelegramUsername(data.username); if (!data.enabled) setTelegramError("Telegram Bot 当前未启用，请联系管理员。"); }
+    catch (error) { setTelegramError(error instanceof Error ? error.message : "无法读取 Telegram Bot 配置"); }
+  };
+  const createTelegramCode = async () => { setTelegramBusy(true); setTelegramError(null); try { const data = await localApiRequest<{ code: string; username: string }>("user/telegram/bind-code", { method: "POST" }); setTelegramCode(data.code); setTelegramUsername(data.username); } catch (error) { setTelegramError(error instanceof Error ? error.message : "生成绑定码失败，请稍后重试"); } finally { setTelegramBusy(false); } };
+
+  useEffect(() => {
+    if (user?.telegram_id) return;
+    const refreshTelegramStatus = () => { void refreshUser(); };
+    window.addEventListener("focus", refreshTelegramStatus);
+    return () => window.removeEventListener("focus", refreshTelegramStatus);
+  }, [refreshUser, user?.telegram_id]);
 
   const noticesState = useAsyncData<Notice[]>(
     async () => {
@@ -109,22 +127,19 @@ export default function ApiDashboardPage() {
       )}
 
       {/* 顶部系统状态提示横幅 */}
-      <div className="v2-alert-container">
+      {(!user?.telegram_id || unpaidOrders > 0 || pendingTickets > 0) && <div className="v2-alert-container">
         {/* Telegram 绑定提示 */}
-        <div className="v2-alert-bar v2-alert-telegram">
-          <div className="v2-alert-left">
-            <Send size={16} />
-            <span>绑定 Telegram 获取更多服务</span>
+        {!user?.telegram_id && (
+          <div className="v2-alert-bar v2-alert-telegram">
+            <div className="v2-alert-left">
+              <TelegramIcon size={17} />
+              <span>绑定 Telegram 获取更多服务</span>
+            </div>
+            <button type="button" className="v2-alert-action" onClick={() => { void openTelegramBinding(); }} style={{ background: "transparent", border: 0, color: "inherit" }}>
+              点击这里进行绑定
+            </button>
           </div>
-          <button
-            type="button"
-            className="v2-alert-action"
-            onClick={() => setTelegramModalOpen(true)}
-            style={{ background: "transparent", border: 0, color: "inherit" }}
-          >
-            点击这里进行绑定
-          </button>
-        </div>
+        )}
 
         {/* 未支付订单告警 */}
         {unpaidOrders > 0 && (
@@ -151,7 +166,7 @@ export default function ApiDashboardPage() {
             </Link>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* 公告板块 */}
       <section className="v2-block">
@@ -334,8 +349,8 @@ export default function ApiDashboardPage() {
         }
       >
         <div style={{ display: "grid", gap: 14, fontSize: 14, color: "var(--v2-text)" }}>
-          <p style={{ margin: 0 }}>第一步：在 Telegram 中搜索并私聊机器人 <code>@AeraNexaBot</code></p>
-          <p style={{ margin: 0 }}>第二步：向机器人发送以下绑定指令：</p>
+          <p style={{ margin: 0 }}>第一步：在 Telegram 中搜索并私聊机器人 <code>@{telegramUsername || "AeraNexaBot"}</code></p>
+          <p style={{ margin: 0 }}>第二步：生成一次性绑定码后，向机器人发送以下绑定指令：</p>
           <div
             style={{
               padding: "10px 14px",
@@ -348,10 +363,12 @@ export default function ApiDashboardPage() {
               userSelect: "all",
             }}
           >
-            /bind {user?.telegram_id ? `已绑定ID: ${user.telegram_id}` : (subscribe?.token ? `tg_token_${subscribe.token.slice(0, 10)}` : "请先开通订阅")}
+            /bind {user?.telegram_id ? `已绑定 ID: ${user.telegram_id}` : (telegramCode ?? "请生成绑定码")}
           </div>
+          {!user?.telegram_id ? <button type="button" className="btn btn-primary" disabled={telegramBusy} onClick={() => { void createTelegramCode(); }}>{telegramBusy ? "正在生成…" : "生成 10 分钟有效绑定码"}</button> : null}
+          {telegramError ? <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--v2-danger, #c53030)" }}>{telegramError}</p> : null}
           <p style={{ margin: 0, fontSize: 12, color: "var(--v2-muted)" }}>
-            * 发送成功后机器人将自动同步您的订阅到期提醒与节点变动通知。
+            * 绑定码只可使用一次；绑定成功后可在 Bot 内查询订阅、流量、余额、订单与工单。
           </p>
         </div>
       </Modal>

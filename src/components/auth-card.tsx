@@ -22,7 +22,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function AuthCard({ mode }: { mode: AuthMode }) {
+export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; initialInviteCode?: string }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -38,7 +38,8 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
   const [password, setPassword] = useState("");
   const [rePassword, setRePassword] = useState("");
   const [emailCode, setEmailCode] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(initialInviteCode);
+  const [inviteMessage, setInviteMessage] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(true);
 
   const [countdown, setCountdown] = useState(0);
@@ -55,6 +56,35 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [countdown]);
+
+  useEffect(() => {
+    if (!isRegister || typeof window === "undefined") return;
+    const code = initialInviteCode.trim();
+    if (!code) return;
+    if (isDemo) {
+      queueMicrotask(() => setInviteMessage("演示邀请码已自动填入"));
+      return;
+    }
+
+    const controller = new AbortController();
+    fetch(`/api/auth/invite?code=${encodeURIComponent(code)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { data?: { valid?: boolean; message?: string } };
+        if (payload.data?.valid) {
+          setInviteMessage("邀请链接有效，注册后将自动绑定邀请关系");
+          return;
+        }
+        // 推广链接里的码可能已被停用或过期。留着它会让用户被服务端一句
+        // 「邀请码无效」挡在注册之外，还得自己想明白要手动清空——这里直接清掉，
+        // 保留提示说明原因，用户不必为推广方的问题买单。
+        setInviteCode("");
+        setInviteMessage(payload.data?.message ?? "邀请链接无效或已失效");
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setInviteMessage("暂时无法校验邀请码，提交注册时将再次验证");
+      });
+    return () => controller.abort();
+  }, [initialInviteCode, isDemo, isRegister]);
 
   // 发送邮箱验证码
   const handleSendCode = async () => {
@@ -293,6 +323,7 @@ export function AuthCard({ mode }: { mode: AuthMode }) {
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                 />
+                {inviteMessage && <small className="field-hint" style={{ textAlign: "left" }}>{inviteMessage}</small>}
                 <label className="terms">
                   <input
                     type="checkbox"

@@ -74,7 +74,11 @@ function countReferences(source) {
 
   const patterns = [
     [/\b(?:FROM|JOIN)\s+`?(\w+)`?/gi, reads],
-    [/\bINSERT\s+(?:INTO\s+)?`?(\w+)`?/gi, writes],
+    // `INSERT IGNORE INTO t` / `INSERT INTO t` / `INSERT t` 都要算作 t 的写入方。
+    // 早先只写了 `INSERT\s+(?:INTO\s+)?`，于是 `INSERT IGNORE INTO` 会把 IGNORE
+    // 当成表名，telegram_updates 这类幂等去重写入被误判成「只读不写」。
+    [/\bINSERT\s+(?:IGNORE\s+)?(?:INTO\s+)?`?(\w+)`?/gi, writes],
+    [/\bREPLACE\s+(?:INTO\s+)?`?(\w+)`?/gi, writes],
     [/\bUPDATE\s+`?(\w+)`?/gi, writes],
     [/\bDELETE\s+FROM\s+`?(\w+)`?/gi, writes],
   ];

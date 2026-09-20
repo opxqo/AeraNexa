@@ -28,8 +28,8 @@ type EditorUser = {
   id: number; email: string; nickname: string; role: "admin" | "user"; isActive: boolean;
   planName: string; createdAt: string; expiredAt: string; transferEnableGb: number;
   balance: number; commissionBalance: number; uuid: string;
-  /** 已用流量（GB，节点域流量采集回写）。 */
-  usedGb: number;
+  /** 已用流量（字节，节点域流量采集回写）。 */
+  usedBytes: number;
   /** 单用户设备数覆盖；null 跟随套餐，0 不限。 */
   deviceLimitOverride: number | null;
   /** 订阅层已登记设备数。 */
@@ -376,7 +376,7 @@ export async function getAdminEditorData(
           balance: asNumber(row.balance),
           commissionBalance: asNumber(row.commission_balance),
           uuid: String(row.uuid),
-          usedGb: Math.round((asNumber(row.used_bytes) / 1073741824) * 100) / 100,
+          usedBytes: asNumber(row.used_bytes),
           deviceLimitOverride: row.device_limit_override === null ? null : asNumber(row.device_limit_override),
           deviceCount: asNumber(row.device_count),
         })),

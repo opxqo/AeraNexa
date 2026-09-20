@@ -4,6 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  ArrowUndo20Regular,
+  BookOpen20Regular,
+  Box20Regular,
+  ClipboardTask20Regular,
+  DataUsage20Regular,
+  DocumentCheckmark20Regular,
+  Home20Regular,
+  Key20Regular,
+  Mail20Regular,
+  Megaphone20Regular,
+  Money20Regular,
+  People20Regular,
+  Receipt20Regular,
+  Server20Regular,
+  Settings20Regular,
+  TicketDiagonal20Regular,
+} from "@fluentui/react-icons";
+import {
   ChevronDown,
   ExternalLink,
   LogOut,
@@ -14,10 +32,29 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-import { adminSections } from "@/lib/admin-navigation";
+import { adminSections, type AdminIcon } from "@/lib/admin-navigation";
 import { authApi } from "@/lib/api/auth";
 import { clearAuthToken } from "@/lib/api/client";
 import { ToastProvider, useToast } from "@/components/v2-modal";
+
+const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number; "aria-hidden"?: boolean }>> = {
+  dashboard: Home20Regular,
+  users: People20Regular,
+  plans: Box20Regular,
+  orders: ClipboardTask20Regular,
+  coupons: Money20Regular,
+  payments: Receipt20Regular,
+  refunds: ArrowUndo20Regular,
+  reconciliation: DocumentCheckmark20Regular,
+  rechargeCards: Key20Regular,
+  nodes: Server20Regular,
+  tickets: TicketDiagonal20Regular,
+  notices: Megaphone20Regular,
+  knowledge: BookOpen20Regular,
+  traffic: DataUsage20Regular,
+  mail: Mail20Regular,
+  settings: Settings20Regular,
+};
 
 function AdminShellInner({ children, userEmail }: { children: React.ReactNode; userEmail: string }) {
   const pathname = usePathname();
@@ -94,7 +131,8 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
               {group && <p className="nav-label">{group}</p>}
               {adminSections
                 .filter((section) => section.group === group)
-                .map(({ href, label, icon: Icon }) => {
+                .map(({ href, label, icon }) => {
+                  const Icon = adminIconByKey[icon];
                   const active = pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
                   return (
                     <Link
@@ -104,7 +142,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
                       aria-current={active ? "page" : undefined}
                       onClick={() => setOpen(false)}
                     >
-                      <Icon size={17} strokeWidth={1.55} />
+                      <Icon fontSize={18} aria-hidden />
                       <span>{label}</span>
                     </Link>
                   );

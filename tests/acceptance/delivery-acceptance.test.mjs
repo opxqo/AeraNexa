@@ -269,6 +269,8 @@ const jsonHeaders = (cookie) => ({ "content-type": "application/json", cookie })
 const get = (path, cookie) => fetch(`${baseUrl}${path}`, { headers: cookie ? { cookie } : {} });
 const post = (path, cookie, body) =>
   fetch(`${baseUrl}${path}`, { method: "POST", headers: jsonHeaders(cookie), body: JSON.stringify(body) });
+const patch = (path, cookie, body) =>
+  fetch(`${baseUrl}${path}`, { method: "PATCH", headers: jsonHeaders(cookie), body: JSON.stringify(body) });
 
 async function expectStatus(response, status, label) {
   const text = await response.text();
@@ -743,6 +745,83 @@ test("[邀请] 同时保留的可用邀请码超过 5 个时被 409 拒绝", asy
   assert.equal(body.code, "conflict");
 });
 
+test("[邀请] 推广链接可校验并统计访问，邀请码支持限制与停用恢复", async () => {
+  const { cookie } = await register();
+  const createdCode = await expectStatus(
+    await post("/api/client/invites", cookie, { max_uses: 2, expires_in_days: 7 }),
+    201,
+    "生成有限邀请码",
+  );
+
+  const before = await expectStatus(await get("/api/client/invites", cookie), 200, "查询邀请码");
+  const code = before.data.codes.find((item) => item.code === createdCode.data);
+  assert.ok(code, "新邀请码应出现在列表中");
+  assert.equal(code.max_uses, 2);
+  assert.ok(code.expires_at > Math.floor(Date.now() / 1000), "邀请码应带未来过期时间");
+
+  const lookup = await expectStatus(
+    await get(`/api/auth/invite?code=${encodeURIComponent(createdCode.data)}`),
+    200,
+    "访问推广链接",
+  );
+  assert.equal(lookup.data.valid, true);
+
+  const afterVisit = await expectStatus(await get("/api/client/invites", cookie), 200, "查询访问统计");
+  assert.equal(afterVisit.data.codes.find((item) => item.code === createdCode.data).pv, code.pv + 1);
+
+  await expectStatus(await patch(`/api/client/invites/${code.id}`, cookie, { status: 1 }), 200, "停用邀请码");
+  const disabledLookup = await expectStatus(
+    await get(`/api/auth/invite?code=${encodeURIComponent(createdCode.data)}`),
+    200,
+    "校验已停用邀请码",
+  );
+  assert.equal(disabledLookup.data.valid, false);
+
+  await expectStatus(await patch(`/api/client/invites/${code.id}`, cookie, { status: 0 }), 200, "恢复邀请码");
+  const restored = await expectStatus(await get("/api/client/invites", cookie), 200, "查询恢复状态");
+  assert.equal(restored.data.codes.find((item) => item.id === code.id).status, 0);
+
+  const other = await register();
+  await expectStatus(
+    await patch(`/api/client/invites/${code.id}`, other.cookie, { status: 1 }),
+    404,
+    "其他用户不能停用该邀请码",
+  );
+});
+
+test("[邀请] 创建邀请码拒绝非法使用次数和有效期", async () => {
+  const { cookie } = await register();
+  await expectStatus(
+    await post("/api/client/invites", cookie, { max_uses: 0 }),
+    400,
+    "使用次数不能为零",
+  );
+  await expectStatus(
+    await post("/api/client/invites", cookie, { expires_in_days: 366 }),
+    400,
+    "有效期不能超过一年",
+  );
+});
+
+test("[邀请] 概览返回可划转余额、返佣规则与受邀用户明细", async () => {
+  const { email, cookie } = await register();
+  const inviteCode = (await expectStatus(
+    await post("/api/client/invites", cookie, {}),
+    201,
+    "生成邀请码",
+  )).data;
+  const invited = await registerWithInvite(inviteCode);
+
+  const connection = await getDb();
+  await connection.execute("UPDATE users SET commission_balance = 1234 WHERE email = ?", [email]);
+
+  const overview = await expectStatus(await get("/api/client/invites", cookie), 200, "邀请概览");
+  assert.equal(overview.data.available_commission, 1234);
+  assert.equal(typeof overview.data.commission_rate, "number");
+  assert.equal(typeof overview.data.available_after_days, "number");
+  assert.ok(overview.data.referrals.some((item) => item.email === invited.email), "应列出已注册的受邀用户");
+});
+
 test("[邀请] 佣金划转拒绝非法金额", async () => {
   const { cookie } = await register();
   const response = await post("/api/client/commission/transfer", cookie, { transfer_amount: -100 });
@@ -873,7 +952,7 @@ test("[门户] 文档按可见性过滤并汇总分类", async () => {
   );
 });
 
-test("[后台] 优惠券管理页展示核销与发行统计", async () => {
+test("[后台] 惠券管理页展示核销与发行统计", async () => {
   const code = await createCoupon({ discountValue: 300, name: "验收展示券" });
   const { email, cookie } = await register();
   await promoteToAdmin(email);
@@ -881,7 +960,7 @@ test("[后台] 优惠券管理页展示核销与发行统计", async () => {
   const response = await fetch(`${baseUrl}/admin/coupons`, { headers: { cookie } });
   const html = await response.text();
   assert.equal(response.status, 200);
-  assert.ok(html.includes("优惠券管理"), "页面应包含板块标题");
+  assert.ok(html.includes("惠券管理"), "页面应包含板块标题");
   assert.ok(html.includes(code), "页面应列出新建的优惠券");
 });
 

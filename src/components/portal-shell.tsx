@@ -4,6 +4,17 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  BookOpen20Regular,
+  Cart20Regular,
+  DataBarVertical20Regular,
+  Gift20Regular,
+  Home20Regular,
+  PersonCircle20Regular,
+  Receipt20Regular,
+  Server20Regular,
+  TicketDiagonal20Regular,
+} from "@fluentui/react-icons";
+import {
   ChevronDown,
   Languages,
   LogOut,
@@ -15,7 +26,7 @@ import {
   X,
   Check,
 } from "lucide-react";
-import { portalSections } from "@/lib/navigation";
+import { portalSections, type PortalIcon } from "@/lib/navigation";
 import { useToast } from "@/components/v2-modal";
 
 const languages = [
@@ -27,6 +38,18 @@ const languages = [
   { code: "ko-KR", label: "한국어" },
   { code: "fa-IR", label: "فارسی" },
 ];
+
+const portalIconByKey: Record<PortalIcon, React.ComponentType<{ fontSize?: number; "aria-hidden"?: boolean }>> = {
+  dashboard: Home20Regular,
+  knowledge: BookOpen20Regular,
+  plans: Cart20Regular,
+  nodes: Server20Regular,
+  orders: Receipt20Regular,
+  invite: Gift20Regular,
+  profile: PersonCircle20Regular,
+  tickets: TicketDiagonal20Regular,
+  traffic: DataBarVertical20Regular,
+};
 
 interface PortalShellProps {
   children: React.ReactNode;
@@ -139,7 +162,8 @@ export function PortalShell({
               {group && <p className="nav-label">{group}</p>}
               {portalSections
                 .filter((section) => section.group === group)
-                .map(({ href, label, icon: Icon }) => {
+                .map(({ href, label, icon }) => {
+                  const Icon = portalIconByKey[icon];
                   const targetHref = `${effectiveBasePath}${href}`;
                   const active =
                     pathname === targetHref ||
@@ -154,7 +178,7 @@ export function PortalShell({
                       aria-current={active ? "page" : undefined}
                       onClick={() => setOpen(false)}
                     >
-                      <Icon size={17} strokeWidth={1.55} />
+                      <Icon fontSize={18} aria-hidden />
                       <span>{label}</span>
                     </Link>
                   );

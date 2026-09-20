@@ -22,6 +22,35 @@ export type PanelInbound = {
   snapshotHash: string;
 };
 
+/**
+ * 已导入节点中由 3x-ui 作为唯一事实来源的字段。
+ *
+ * `host` / `port` 是 AeraNexa 对客户发布的地址，可能经过中转，因此始终由本地维护；
+ * 而名称、协议和服务端口必须随入站同步，避免后台显示与 3x-ui 不一致。
+ */
+export function inboundManagedNodeFields(inbound: PanelInbound): {
+  name: string;
+  protocol: string;
+  serverPort: number;
+} {
+  return {
+    name: (inbound.remark || `${inbound.protocol}-${inbound.port}`).slice(0, 255),
+    protocol: inbound.protocol,
+    serverPort: inbound.port,
+  };
+}
+
+/** 旧快照也可能已经写入；只有所有 3x-ui 管理字段一致时才允许跳过更新。 */
+export function inboundManagedNodeFieldsMatch(
+  current: { name: string; protocol: string; serverPort: number | null },
+  inbound: PanelInbound,
+): boolean {
+  const managed = inboundManagedNodeFields(inbound);
+  return current.name === managed.name
+    && current.protocol === managed.protocol
+    && current.serverPort === managed.serverPort;
+}
+
 type JsonObject = Record<string, unknown>;
 
 function isObject(value: unknown): value is JsonObject {

@@ -3,13 +3,19 @@ import "server-only";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getDbPool } from "../db";
 import { getServerStatus, listRawInbounds, PanelError } from "./client";
-import { defaultPublicHost, parseInbound, type PanelInbound } from "./inbounds";
+import {
+  defaultPublicHost,
+  inboundManagedNodeFields,
+  inboundManagedNodeFieldsMatch,
+  parseInbound,
+  type PanelInbound,
+} from "./inbounds";
 
 /**
  * 把 3x-ui 主控上的入站导入为 `nodes`（docs/node-domain-design.md §4.5）。
  *
  * - 新入站：插入为「未启用 + 隐藏」，等管理员配置对外地址与分组后再启用；
- * - 已有入站：刷新协议、服务端口、快照；名称 / 对外地址 / 排序等由后台维护，不覆盖；
+ * - 已有入站：刷新名称、协议、服务端口与快照；对外地址 / 端口、排序等由后台维护，不覆盖；
  * - 3x-ui 中已不存在：只置 `missing_since`，从不自动删除。
  *
  * 对 3x-ui 只读。可由后台按钮与 worker 同时调用，靠 MySQL 命名锁串行化。
@@ -31,6 +37,9 @@ export type InboundImportResult = {
 
 type ExistingNode = RowDataPacket & {
   id: number;
+  name: string;
+  protocol: string;
+  server_port: number | null;
   external_inbound_id: string;
   snapshot_hash: string | null;
   missing_since: Date | null;
@@ -60,7 +69,7 @@ export async function importInbounds(): Promise<InboundImportResult> {
 
     await connection.beginTransaction();
     const [existingRows] = await connection.query<ExistingNode[]>(
-      `SELECT id, external_inbound_id, snapshot_hash, missing_since
+      `SELECT id, name, protocol, server_port, external_inbound_id, snapshot_hash, missing_since
          FROM nodes
         WHERE external_panel = ? AND external_inbound_id IS NOT NULL
         FOR UPDATE`,
@@ -91,6 +100,7 @@ export async function importInbounds(): Promise<InboundImportResult> {
       seen.add(externalId);
       const existing = existingById.get(externalId);
       const snapshotJson = JSON.stringify(inbound.snapshot);
+      const managed = inboundManagedNodeFields(inbound);
 
       if (!existing) {
         await connection.execute(
@@ -102,10 +112,10 @@ export async function importInbounds(): Promise<InboundImportResult> {
             PANEL_NAME,
             externalId,
             inbound.originNodeGuid || null,
-            (inbound.remark || `${inbound.protocol}-${inbound.port}`).slice(0, 255),
-            inbound.protocol,
+            managed.name,
+            managed.protocol,
             defaultPublicHost(inbound, { panelGuid: status.panelGuid, publicIp: status.publicIpv4 }).slice(0, 255),
-            inbound.port,
+            managed.serverPort,
             inbound.port,
             snapshotJson,
             inbound.snapshotHash,
@@ -116,17 +126,23 @@ export async function importInbounds(): Promise<InboundImportResult> {
       }
 
       const wasMissing = existing.missing_since !== null;
-      if (!wasMissing && existing.snapshot_hash === inbound.snapshotHash) {
+      if (!wasMissing
+        && existing.snapshot_hash === inbound.snapshotHash
+        && inboundManagedNodeFieldsMatch({
+          name: existing.name,
+          protocol: existing.protocol,
+          serverPort: existing.server_port === null ? null : Number(existing.server_port),
+        }, inbound)) {
         result.unchanged += 1;
         continue;
       }
 
       await connection.execute(
         `UPDATE nodes
-            SET protocol = ?, server_port = ?, origin_node_guid = ?, inbound_snapshot = ?, snapshot_hash = ?,
+            SET name = ?, protocol = ?, server_port = ?, origin_node_guid = ?, inbound_snapshot = ?, snapshot_hash = ?,
                 missing_since = NULL, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
-        [inbound.protocol, inbound.port, inbound.originNodeGuid || null, snapshotJson, inbound.snapshotHash, existing.id],
+        [managed.name, managed.protocol, managed.serverPort, inbound.originNodeGuid || null, snapshotJson, inbound.snapshotHash, existing.id],
       );
       if (wasMissing) result.restored += 1;
       else result.updated += 1;

@@ -29,7 +29,7 @@ const TITLES: Record<string, string> = {
   users: "用户管理",
   plans: "套餐管理",
   orders: "订单管理",
-  coupons: "优惠券管理",
+  coupons: "惠券管理",
   payments: "支付管理",
   refunds: "退款管理",
   reconciliation: "对账管理",

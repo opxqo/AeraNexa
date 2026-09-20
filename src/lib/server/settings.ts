@@ -100,6 +100,13 @@ export async function getSubscribeBaseUrl(): Promise<string> {
   return (await getSetting("subscribe.base_url")).replace(/\/+$/, "");
 }
 
+export type ClashSubscriptionProvider = "aeranexa" | "3x-ui";
+
+/** Clash / Mihomo 内容的渲染来源；未知值安全回退到 AeraNexa。 */
+export async function getClashSubscriptionProvider(): Promise<ClashSubscriptionProvider> {
+  return (await getSetting("subscribe.clash_provider")) === "3x-ui" ? "3x-ui" : "aeranexa";
+}
+
 export type AdminSettingView = {
   key: string;
   group: SettingGroup;
@@ -108,6 +115,7 @@ export type AdminSettingView = {
   kind: SettingKind;
   env: string | null;
   unit: string | null;
+  options: readonly { value: string; label: string }[] | null;
   min: number | null;
   max: number | null;
   defaultValue: string;
@@ -132,6 +140,7 @@ export async function listSettingsForAdmin(): Promise<AdminSettingView[]> {
       kind: def.kind,
       env: def.env ?? null,
       unit: def.unit ?? null,
+      options: def.options ?? null,
       min: def.min ?? null,
       max: def.max ?? null,
       defaultValue: def.defaultValue,

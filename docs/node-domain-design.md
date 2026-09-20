@@ -65,7 +65,7 @@ ALTER TABLE nodes
   ADD COLUMN missing_since DATETIME NULL;                                 -- 3x-ui 中已不存在时置位，不自动删
 ```
 
-- `host / port` 仍由后台维护（订阅里对外展示的地址可能与入站 listen 不同，例如经过中转）；导入时仅在为空时用入站 `port` 填充。
+- `name / protocol / server_port` 由 3x-ui 导入并在后续同步中覆盖；`host / port` 仍由后台维护（订阅里对外展示的地址可能与入站 listen 不同，例如经过中转）。
 - `protocol` 由导入写入，后台只读。
 
 ### 3.2 `panel_clients`（新增，一个用户一行）
@@ -211,7 +211,7 @@ type DesiredClient = {
 ### 4.6 订阅输出
 
 - 路由：`GET /api/client/subscribe?token=…`（替换当前指向 V2Board 代理的 `/api/v1/client/subscribe`，`getSubscribe` 同步改地址）。
-- 数据全部来自本地库：用户 → 可用节点（`nodes.inbound_snapshot` 提供 streamSettings / reality / tls 参数）→ 按客户端 UA 或 `flag` 参数渲染 Base64（V2RayN/Shadowrocket）/ Clash(Mihomo) YAML / sing-box JSON。
+- Base64（V2RayN/Shadowrocket）始终由本地库渲染。Clash / Mihomo 可由后台「系统设置 → 订阅 → Clash / Mihomo 规则来源」选择：`AeraNexa` 使用本地节点快照渲染；`3x-ui` 则在完成 AeraNexa 用户资格与设备限制校验后，由服务端代理该用户 `subId` 对应的 3x-ui YAML。选择 3x-ui 时须填写面板「订阅 → Clash URI」的完整前缀；留空才尝试 `/mihomo/` 兼容路径。
 - 不合格用户返回仅含提示节点（"已到期/流量用尽"）的订阅，而不是 403，避免客户端报错后清空配置。
 - 响应头 `subscription-userinfo: upload=…; download=…; total=…; expire=…`。
 - `node-sync` token 无权调用 3x-ui 的 `clients/links`，所以链接必须自己拼，渲染器放在 `src/lib/server/subscription-render/`，一种协议一个文件，用 3x-ui 的 `allLinks` 输出做测试夹具对照。
@@ -282,5 +282,5 @@ src/worker/
 4. ✅ `src/lib/server/panel/reconcile.ts` + `src/worker/index.ts`（主锁、串行循环、失败退避、面板不可达暂停、SIGINT/SIGTERM 优雅退出）
 5. ✅ `src/lib/server/panel/collect-traffic.ts`（纯函数 `traffic-model.ts`）：每分钟读 `inbounds/list` 的 clientStats / 入站计数，按游标（`panel_traffic_cursors`，迁移 `20260920_004`）求增量；首次见到从 0 起算、计数变小视为重置。用户明细按东八区自然日、`node_id = NULL` 归档（3x-ui 只给客户端合计）。`/api/node/traffic` 推送接口保留给非 3x-ui 节点，**不参与计费**，避免与采集器重复计数
 6. ✅ 设备数限制：`plans.device_limit` / `users.device_limit_override`，连接层下发 limitIp（需节点启用 fail2ban，本地 Docker 版 3x-ui 已启用），订阅层 `src/lib/server/devices.ts` + `user_devices`；门户个人中心「我的设备」，后台用户可设覆盖值、清空设备。
-7. 🟡 订阅：Base64 与 Clash / Mihomo 已完成（`/api/client/subscribe`，旧路径 `/api/v1/client/subscribe` 兼容保留；`flag=clash|meta|mihomo|stash` 或 Clash 系 UA 返回 YAML，门户 Clash / Stash 导入按钮自动带 `flag=clash`）。Clash 由 AeraNexa 自己生成（`src/lib/server/panel/clash.ts`），**不转发 3x-ui 自带的 Clash 订阅**：后者输出 `server: localhost`、节点名带 `-u{id}|⏳29D`、额度显示为 0。Clash 第一版不下发 xhttp / kcp 传输。待做：sing-box、Surge / Quantumult X
+7. 🟡 订阅：Base64 与 Clash / Mihomo 已完成（`/api/client/subscribe`，旧路径 `/api/v1/client/subscribe` 兼容保留；`flag=clash|meta|mihomo|stash` 或 Clash 系 UA 返回 YAML，门户 Clash / Stash 导入按钮自动带 `flag=clash`）。Clash 默认由 AeraNexa 生成（`src/lib/server/panel/clash.ts`），也可在系统设置中切换为 3x-ui 规则：AeraNexa 保留用户鉴权、权限组、流量、设备限制和响应头，服务端只代理合格且已同步用户的 3x-ui YAML。Clash 第一版不下发 xhttp / kcp 传输。待做：sing-box、Surge / Quantumult X
 8. 后台可观测性：节点页展示挂载数/同步失败数，用户详情展示 `sync_status/last_error`，"立即重同步"按钮

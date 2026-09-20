@@ -24,6 +24,7 @@ import { inviteApi } from "@/lib/api/invite";
 import { knowledgeApi } from "@/lib/api/knowledge";
 import { userApi, type UserDevice, type UserDevices } from "@/lib/api/user";
 import { walletApi } from "@/lib/api/wallet";
+import { localApiRequest } from "@/lib/api/client";
 import type {
   CheckoutResult,
   InviteFetch,
@@ -155,6 +156,7 @@ export function ApiPlanPage() {
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string>("");
+  const [planFilter, setPlanFilter] = useState<"all" | "renew" | "traffic">("all");
   const [couponCode, setCouponCode] = useState("");
   const [coupon, setCoupon] = useState<{ status: "idle" | "applied" | "invalid"; message: string; discount: number }>({
     status: "idle",
@@ -244,6 +246,7 @@ export function ApiPlanPage() {
   };
 
   const plans = plansState.data ?? [];
+  const visiblePlans = plans.filter((plan) => planFilter === "all" || (planFilter === "renew" ? Boolean(plan.renew) : !plan.renew));
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -254,6 +257,11 @@ export function ApiPlanPage() {
         <p style={{ margin: 0, color: "var(--v2-muted)", fontSize: 14 }}>
           优质全球线路，全平台通用客户端，畅享极速网络。
         </p>
+        <div className="plan-filter-tabs" role="tablist" aria-label="套餐类型筛选">
+          {([ ["all", "全部"], ["renew", "按周期"], ["traffic", "按流量"] ] as const).map(([value, label]) => (
+            <button key={value} type="button" role="tab" aria-selected={planFilter === value} className={planFilter === value ? "active" : ""} onClick={() => setPlanFilter(value)}>{label}</button>
+          ))}
+        </div>
       </div>
 
       <AsyncBoundary
@@ -263,30 +271,22 @@ export function ApiPlanPage() {
         loadingText="正在拉取最新套餐与资费..."
         empty={plans.length === 0 ? "暂未配置可购买套餐，请等待管理员发布。" : undefined}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
-          {plans.map((plan) => {
+        <div className="plan-catalog">
+          {visiblePlans.map((plan) => {
             const periods = planPeriods(plan);
             const leadPeriod = periods[0];
             const leadPrice = leadPeriod ? planPeriodPrice(plan, leadPeriod) : null;
             const isOneTime = periods.length === 1 && leadPeriod === "onetime_price";
             return (
-              <div key={plan.id} className="plan-card" style={{ display: "flex", flexDirection: "column" }}>
-                <span className="v2-badge badge-success" style={{ alignSelf: "flex-start", marginBottom: 12 }}>
-                  {plan.renew ? "周期订阅" : "按流量"}
-                </span>
-                <h2 style={{ margin: "0 0 8px", fontSize: 20 }}>{plan.name}</h2>
-                <div style={{ margin: "0 0 16px" }}>
-                  <span style={{ fontSize: 28, fontWeight: 600, color: "var(--v2-heading)" }}>
-                    {formatAmount(leadPrice)}
-                  </span>
-                  <span style={{ fontSize: 13, color: "var(--v2-muted)", marginLeft: 4 }}>
-                    / {leadPeriod ? PERIOD_LABELS[leadPeriod] ?? leadPeriod : "—"}
-                  </span>
+              <div key={plan.id} className="plan-card api-plan-card">
+                <header className="api-plan-card-header">
+                  <h2>{plan.name}</h2>
+                </header>
+                <div className="api-plan-price-band">
+                  <strong>{formatAmount(leadPrice)}</strong>
+                  <span>{periods.length > 1 ? "起" : (leadPeriod ? PERIOD_LABELS[leadPeriod] ?? leadPeriod : "—")}</span>
                 </div>
-                <div style={{ fontSize: 13, color: "var(--v2-muted)", marginBottom: 12 }}>
-                  {plan.transfer_enable} GB 流量 · {plan.speed_limit ? `${plan.speed_limit} Mbps` : "不限速"}
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                <div className="api-plan-periods" aria-label="可选付款周期">
                   {periods.map((period) => (
                     <span key={period} className="v2-badge">
                       {PERIOD_LABELS[period] ?? period}
@@ -295,21 +295,14 @@ export function ApiPlanPage() {
                 </div>
                 {plan.content && (
                   <div
-                    style={{ fontSize: 13, color: "var(--v2-muted)", marginBottom: 16 }}
+                    className="api-plan-description"
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(plan.content) }}
                   />
                 )}
-                <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 8, fontSize: 13 }}>
-                  <li>· 全球优质专线加速</li>
-                  <li>· 支持全平台主流客户端</li>
-                  <li>· 流媒体多区域解锁</li>
-                  <li>· 专业客服与工单支持</li>
-                </ul>
-                <div style={{ marginTop: "auto", paddingTop: 24 }}>
+                <div className="api-plan-action">
                   <button
                     type="button"
                     className="btn btn-primary"
-                    style={{ width: "100%" }}
                     onClick={() => handleOpenPurchase(plan)}
                   >
                     立即购买{isOneTime ? "" : ""}
@@ -318,6 +311,7 @@ export function ApiPlanPage() {
               </div>
             );
           })}
+          {!visiblePlans.length && <p className="plan-filter-empty">该分类下暂未配置可购买套餐。</p>}
         </div>
       </AsyncBoundary>
 
@@ -348,10 +342,13 @@ export function ApiPlanPage() {
             </div>
           }
         >
-          <div style={{ display: "grid", gap: 16, fontSize: 14 }}>
+          <div className="api-plan-order-form">
+            {selectedPlan.content && (
+              <div className="api-plan-modal-description" dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedPlan.content) }} />
+            )}
             <div>
               <label style={{ display: "block", marginBottom: 6, fontWeight: 500 }}>选择付款周期</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              <div className="api-plan-period-grid">
                 {availablePeriods.map((period) => (
                   <button
                     key={period}
@@ -369,7 +366,7 @@ export function ApiPlanPage() {
 
             <div>
               <label style={{ display: "block", marginBottom: 6, fontWeight: 500 }}>折价优惠券</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="api-plan-coupon-row">
                 <input
                   type="text"
                   placeholder="请输入优惠码"
@@ -381,8 +378,7 @@ export function ApiPlanPage() {
                       handleCheckCoupon();
                     }
                   }}
-                  className={coupon.status === "invalid" ? "input-invalid" : undefined}
-                  style={{ flex: 1, padding: "8px 10px", border: "1px solid var(--v2-border)", borderRadius: 4 }}
+                  className={`api-plan-coupon-input${coupon.status === "invalid" ? " input-invalid" : ""}`}
                 />
                 <button
                   type="button"
@@ -412,7 +408,7 @@ export function ApiPlanPage() {
               )}
             </div>
 
-            <div style={{ padding: "12px 14px", background: "var(--v2-header)", borderRadius: 4, display: "grid", gap: 8 }}>
+            <div className="api-plan-order-summary">
               <div className="summary-row">
                 <span>周期原价</span>
                 <span>{formatAmount(subtotal)}</span>
@@ -1070,11 +1066,16 @@ export function ApiNodePage() {
 
 export function ApiInvitePage() {
   const { showToast } = useToast();
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [maxUses, setMaxUses] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("");
+  const [selectedCode, setSelectedCode] = useState<{ id: number; code: string; status: 0 | 1 } | null>(null);
 
   const generateGuard = useSubmitGuard();
+  const statusGuard = useSubmitGuard();
   const transferGuard = useSubmitGuard();
 
   const inviteState = useAsyncData<InviteFetch>(() => inviteApi.fetchInvite(), [], {
@@ -1085,7 +1086,11 @@ export function ApiInvitePage() {
   });
 
   const stat = inviteState.data?.stat ?? [0, 0, 0, 0];
+  const availableCommission = inviteState.data?.available_commission ?? 0;
+  const commissionRate = inviteState.data?.commission_rate ?? 0;
+  const availableAfterDays = inviteState.data?.available_after_days ?? 0;
   const codes = inviteState.data?.codes ?? [];
+  const referrals = inviteState.data?.referrals ?? [];
   const details = detailsState.data ?? [];
 
   const copyInviteLink = async (code: string) => {
@@ -1094,13 +1099,34 @@ export function ApiInvitePage() {
   };
 
   const handleGenerate = () => {
+    const parsedMaxUses = maxUses.trim() ? Number(maxUses) : undefined;
+    const parsedExpires = expiresInDays.trim() ? Number(expiresInDays) : undefined;
     void generateGuard.run(async () => {
       try {
-        await inviteApi.generateCode();
+        const code = await inviteApi.generateCode({ maxUses: parsedMaxUses, expiresInDays: parsedExpires });
         showToast("已生成新的邀请码", "success");
-        inviteState.reload();
+        setGenerateModalOpen(false);
+        setMaxUses("");
+        setExpiresInDays("");
+        await inviteState.reload();
+        await copyInviteLink(code);
       } catch (error: unknown) {
         showToast(toErrorMessage(error, "生成邀请码失败"), "error");
+      }
+    });
+  };
+
+  const handleCodeStatus = () => {
+    if (!selectedCode) return;
+    const nextStatus: 0 | 1 = selectedCode.status === 0 ? 1 : 0;
+    void statusGuard.run(async () => {
+      try {
+        await inviteApi.updateCodeStatus(selectedCode.id, nextStatus);
+        showToast(nextStatus === 0 ? "邀请码已启用" : "邀请码已停用", "success");
+        setSelectedCode(null);
+        await inviteState.reload();
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "更新邀请码失败"), "error");
       }
     });
   };
@@ -1112,8 +1138,8 @@ export function ApiInvitePage() {
       return;
     }
     const cents = Math.round(value * 100);
-    if (cents > stat[3]) {
-      setTransferError(`待结算佣金为 ${formatAmount(stat[3])}，无法超额划转`);
+    if (cents > availableCommission) {
+      setTransferError(`当前可划转佣金为 ${formatAmount(availableCommission)}，无法超额划转`);
       return;
     }
     setTransferError(null);
@@ -1132,7 +1158,7 @@ export function ApiInvitePage() {
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <div className="stat-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <div className="stat-grid invite-stat-grid">
         <article>
           <small>累计邀请人数</small>
           <strong>{stat[0]}</strong>
@@ -1142,14 +1168,26 @@ export function ApiInvitePage() {
           <strong>{formatAmount(stat[1])}</strong>
         </article>
         <article>
-          <small>累计已划转</small>
-          <strong>{formatAmount(stat[2])}</strong>
+          <small>可划转佣金</small>
+          <strong>{formatAmount(availableCommission)}</strong>
         </article>
         <article>
           <small>待结算佣金</small>
           <strong>{formatAmount(stat[3])}</strong>
         </article>
       </div>
+
+      <section className="invite-program-note">
+        <div>
+          <strong>返佣比例 {commissionRate}%</strong>
+          <span>
+            {commissionRate > 0
+              ? `好友完成支付后产生佣金${availableAfterDays > 0 ? `，${availableAfterDays} 天后可划转` : "，确认后即可划转"}`
+              : "当前返佣已关闭，邀请码仍可用于统计邀请关系"}
+          </span>
+        </div>
+        <span>累计已划转 {formatAmount(stat[2])}</span>
+      </section>
 
       <section className="v2-block">
         <header className="v2-block-header" style={{ justifyContent: "space-between" }}>
@@ -1163,6 +1201,8 @@ export function ApiInvitePage() {
                 setTransferError(null);
                 setTransferModalOpen(true);
               }}
+              disabled={availableCommission <= 0}
+              title={availableCommission <= 0 ? "当前没有可划转佣金" : undefined}
             >
               <Wallet size={14} />
               <span>划转至余额</span>
@@ -1170,7 +1210,7 @@ export function ApiInvitePage() {
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              onClick={handleGenerate}
+              onClick={() => setGenerateModalOpen(true)}
               disabled={generateGuard.pending}
             >
               {generateGuard.pending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
@@ -1202,7 +1242,9 @@ export function ApiInvitePage() {
               <tbody>
                 {codes.map((code) => {
                   const expired = code.expired === true;
-                  const usable = code.status === 0 && !expired;
+                  const exhausted = code.max_uses != null && (code.used_count ?? 0) >= code.max_uses;
+                  const usable = code.status === 0 && !expired && !exhausted;
+                  const canEnable = code.status === 1 && !expired && !exhausted;
                   return (
                     <tr key={code.id}>
                       <td className="mono" style={{ fontWeight: 600 }}>
@@ -1216,18 +1258,25 @@ export function ApiInvitePage() {
                       <td>{code.expires_at ? formatTime(code.expires_at) : "长期有效"}</td>
                       <td>
                         <span className={`v2-badge ${usable ? "badge-success" : "badge-danger"}`}>
-                          {expired ? "已过期" : code.status === 0 ? "有效" : "已停用"}
+                          {expired ? "已过期" : exhausted ? "已用尽" : code.status === 0 ? "有效" : "已停用"}
                         </span>
                       </td>
                       <td>{formatTime(code.created_at)}</td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => void copyInviteLink(code.code)}
-                        >
-                          复制链接
-                        </button>
+                        <div className="invite-code-actions">
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copyInviteLink(code.code)}>
+                            复制链接
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${code.status === 0 ? "btn-danger" : "btn-secondary"}`}
+                            onClick={() => setSelectedCode({ id: code.id, code: code.code, status: code.status })}
+                            disabled={code.status === 1 && !canEnable}
+                            title={code.status === 1 && !canEnable ? "邀请码已过期或达到使用上限，不能重新启用" : undefined}
+                          >
+                            {code.status === 0 ? "停用" : canEnable ? "启用" : "不可启用"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1236,6 +1285,36 @@ export function ApiInvitePage() {
             </table>
           </div>
         </AsyncBoundary>
+      </section>
+
+      <section className="v2-block">
+        <header className="v2-block-header"><h2>受邀用户</h2></header>
+        {referrals.length === 0 ? (
+          <EmptyState>暂无受邀用户，复制推广链接邀请好友注册。</EmptyState>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>用户</th><th>使用邀请码</th><th>完成订单</th><th>实付总额</th><th>贡献佣金</th><th>注册时间</th><th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {referrals.map((referral) => (
+                  <tr key={referral.id}>
+                    <td>{referral.email}</td>
+                    <td className="mono">{referral.invite_code ?? "—"}</td>
+                    <td>{referral.completed_orders}</td>
+                    <td>{formatAmount(referral.paid_amount)}</td>
+                    <td>{formatAmount(referral.commission_amount)}</td>
+                    <td>{formatTime(referral.created_at)}</td>
+                    <td><span className={`v2-badge ${referral.is_active ? "badge-success" : "badge-danger"}`}>{referral.is_active ? "正常" : "停用"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="v2-block">
@@ -1281,6 +1360,43 @@ export function ApiInvitePage() {
       </section>
 
       <Modal
+        open={generateModalOpen}
+        title="生成邀请码"
+        onClose={() => setGenerateModalOpen(false)}
+        width={440}
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setGenerateModalOpen(false)} disabled={generateGuard.pending}>取消</button>
+            <button type="button" className="btn btn-primary" onClick={handleGenerate} disabled={generateGuard.pending}>
+              {generateGuard.pending ? <Loader2 size={15} className="animate-spin" /> : "生成并复制链接"}
+            </button>
+          </div>
+        }
+      >
+        <div className="invite-create-form">
+          <label>
+            <span>最多使用次数</span>
+            <input type="number" min="1" max="10000" step="1" placeholder="不填表示不限" value={maxUses} onChange={(event) => setMaxUses(event.target.value)} />
+          </label>
+          <label>
+            <span>有效天数</span>
+            <input type="number" min="1" max="365" step="1" placeholder="不填表示长期有效" value={expiresInDays} onChange={(event) => setExpiresInDays(event.target.value)} />
+          </label>
+          <small className="field-hint">生成后可随时停用；重新启用时仍会检查有效期和使用上限。</small>
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={Boolean(selectedCode)}
+        title={selectedCode?.status === 0 ? "停用邀请码？" : "重新启用邀请码？"}
+        content={selectedCode?.status === 0 ? "停用后该推广链接将不能用于新用户注册，已有邀请关系不受影响。" : "启用后推广链接将恢复使用。"}
+        okText={selectedCode?.status === 0 ? "确认停用" : "确认启用"}
+        okType={selectedCode?.status === 0 ? "danger" : "primary"}
+        onCancel={() => setSelectedCode(null)}
+        onOk={handleCodeStatus}
+      />
+
+      <Modal
         open={transferModalOpen}
         title="划转佣金至余额"
         onClose={() => setTransferModalOpen(false)}
@@ -1303,7 +1419,7 @@ export function ApiInvitePage() {
       >
         <div>
           <label style={{ display: "block", marginBottom: 8, fontSize: 14 }}>
-            请输入划转金额 (元)，当前待结算 {formatAmount(stat[3])}
+            请输入划转金额 (元)，当前可划转 {formatAmount(availableCommission)}
           </label>
           <input
             type="number"
@@ -1964,6 +2080,8 @@ export function ApiProfilePage() {
   const passwordGuard = useSubmitGuard();
   const [rechargeCode, setRechargeCode] = useState("");
   const rechargeGuard = useSubmitGuard();
+  const telegramGuard = useSubmitGuard();
+  const [confirmTelegramUnbind, setConfirmTelegramUnbind] = useState(false);
   const walletState = useAsyncData<WalletTransaction[]>(
     async () => (await walletApi.transactions()).items,
     [],
@@ -2035,6 +2153,19 @@ export function ApiProfilePage() {
     });
   };
 
+  const handleTelegramUnbind = () => {
+    void telegramGuard.run(async () => {
+      try {
+        await localApiRequest("user/telegram/unbind", { method: "POST" });
+        await refreshUser();
+        setConfirmTelegramUnbind(false);
+        showToast("Telegram 已解绑", "success");
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "Telegram 解绑失败"), "error");
+      }
+    });
+  };
+
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <section className="v2-block" style={{ padding: 20 }}>
@@ -2067,6 +2198,20 @@ export function ApiProfilePage() {
             </span>
           </div>
         </div>
+      </section>
+
+      <section className="v2-block" style={{ padding: 20 }}>
+        <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>Telegram 绑定</h3>
+        {user?.telegram_id ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gap: 4, fontSize: 14 }}>
+              <strong style={{ color: "#3898ec" }}>已绑定</strong>
+              <span style={{ color: "var(--v2-muted)" }}>Telegram ID：<span className="mono">{user.telegram_id}</span></span>
+              <small className="field-hint">可通过 AeraNexaBot 查询订阅、流量、余额、订单与工单。</small>
+            </div>
+            <button type="button" className="btn btn-danger" onClick={() => setConfirmTelegramUnbind(true)}>解绑</button>
+          </div>
+        ) : <p className="field-hint" style={{ margin: 0 }}>尚未绑定 Telegram，请在仪表盘生成一次性绑定码后发送给 Bot。</p>}
       </section>
 
       <DevicesSection />
@@ -2102,6 +2247,15 @@ export function ApiProfilePage() {
           </div>
         </AsyncBoundary>
       </section>
+      <ConfirmModal
+        open={confirmTelegramUnbind}
+        title="解除 Telegram 绑定？"
+        content="解绑后 Bot 将不能继续查询该账户或接收提醒；后续可重新绑定。"
+        okText="确认解绑"
+        okType="danger"
+        onCancel={() => setConfirmTelegramUnbind(false)}
+        onOk={handleTelegramUnbind}
+      />
 
       <section className="v2-block" style={{ padding: 20 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>昵称</h3>

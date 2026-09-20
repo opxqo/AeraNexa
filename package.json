@@ -15,9 +15,11 @@
     "test": "node --env-file=.env.local --import ./scripts/ts-register.mjs --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/schema/*.test.mjs tests/node-domain/*.test.mjs tests/user-system/*.test.mjs tests/acceptance/*.test.mjs",
     "test:schema": "node --test tests/schema/*.test.mjs",
     "worker": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/node-worker.mjs",
+    "bot": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bot-worker.mjs",
     "test:node": "node --import ./scripts/ts-register.mjs --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/node-domain/*.test.mjs"
   },
   "dependencies": {
+    "@fluentui/react-icons": "^2.0.341",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.12",
     "lucide-react": "^0.468.0",

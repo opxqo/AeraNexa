@@ -24,6 +24,7 @@ import {
   listTraffic,
   replyTicket,
   transferCommission,
+  updateInviteCodeStatus,
   verifyCoupon,
 } from "@/lib/server/client-portal";
 import { listWalletTransactions, redeemRechargeCard } from "@/lib/server/recharge-cards";
@@ -209,7 +210,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (key === "invites") {
-      return NextResponse.json({ data: await createInviteCode(user.id) }, { status: 201 });
+      const maxUses = body.max_uses === undefined || body.max_uses === null || body.max_uses === "" ? null : Number(body.max_uses);
+      const expiresInDays = body.expires_in_days === undefined || body.expires_in_days === null || body.expires_in_days === ""
+        ? null
+        : Number(body.expires_in_days);
+      const code = await createInviteCode(user.id, { maxUses, expiresInDays });
+      await recordAudit({
+        action: "invite.created",
+        userId: user.id,
+        resourceType: "invite_code",
+        request,
+        context: { maxUses, expiresInDays },
+      });
+      return NextResponse.json({
+        data: code,
+      }, { status: 201 });
     }
 
     if (key === "commission/transfer") {
@@ -227,5 +242,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: "接口不存在", code: "not_found" }, { status: 404 });
   } catch (error) {
     return failure(error, "client POST");
+  }
+}
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  try {
+    const user = await requireUser();
+    const body = await readJsonBody(request);
+    const { path } = await context.params;
+    if (path[0] !== "invites" || path.length !== 2) {
+      return NextResponse.json({ message: "接口不存在", code: "not_found" }, { status: 404 });
+    }
+
+    const inviteId = asInt(path[1]);
+    const status = Number(body.status);
+    if (!inviteId) throw badRequest("邀请码编号不正确");
+    if (status !== 0 && status !== 1) throw badRequest("邀请码状态不正确");
+    const result = await updateInviteCodeStatus(user.id, inviteId, status);
+    await recordAudit({
+      action: status === 0 ? "invite.enabled" : "invite.disabled",
+      userId: user.id,
+      resourceType: "invite_code",
+      resourceId: inviteId,
+      request,
+    });
+    return NextResponse.json({ data: result });
+  } catch (error) {
+    return failure(error, "client PATCH");
   }
 }

@@ -40,7 +40,7 @@ export async function commissionRatePercent(): Promise<number> {
  * 留出冷静期是为了退款：订单退款后应把佣金置为 invalid，而一旦已经结算进余额就追不回来了。
  * 默认 0（立即可结算），因为当前项目还没有退款写路径，留着只会让「待结算」永远是 0。
  */
-async function commissionAvailableAfterDays(): Promise<number> {
+export async function commissionAvailableAfterDays(): Promise<number> {
   const raw = await getNumberSetting("commission.available_after_days");
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   return Math.min(Math.floor(raw), 365);

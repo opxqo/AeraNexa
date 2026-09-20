@@ -3,7 +3,12 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
-import { recordCommissionForOrder, settleMaturedCommissions } from "./commission";
+import {
+  commissionAvailableAfterDays,
+  commissionRatePercent,
+  recordCommissionForOrder,
+  settleMaturedCommissions,
+} from "./commission";
 import { getDbPool } from "./db";
 import { markPanelClientDirty } from "./node-sync";
 import {
@@ -1452,7 +1457,7 @@ export async function getInvites(userId: number) {
   await settleMaturedCommissions(userId);
 
   const pool = getDbPool();
-  const [codesResult, referralsResult, commissionsResult, transferredResult, pendingResult] = await Promise.all([
+  const [codesResult, referralsResult, commissionsResult, transferredResult, pendingResult, userResult, referralItemsResult, commissionRate, availableAfterDays] = await Promise.all([
     pool.execute<RowDataPacket[]>(
       `SELECT id, user_id, code, status, page_views, max_uses, used_count, expires_at, created_at, updated_at
          FROM invite_codes WHERE user_id = ? ORDER BY id DESC`,
@@ -1477,6 +1482,39 @@ export async function getInvites(userId: number) {
         WHERE inviter_user_id = ? AND status = 'pending'`,
       [userId],
     ),
+    pool.execute<RowDataPacket[]>(
+      `SELECT commission_balance FROM users WHERE id = ? LIMIT 1`,
+      [userId],
+    ),
+    pool.execute<RowDataPacket[]>(
+      `SELECT r.id, r.invited_user_id, r.created_at, u.email, u.is_active, c.code AS invite_code,
+              COALESCE(o.completed_orders, 0) AS completed_orders,
+              COALESCE(o.paid_amount, 0) AS paid_amount,
+              COALESCE(cl.commission_amount, 0) AS commission_amount
+         FROM user_referrals r
+         JOIN users u ON u.id = r.invited_user_id
+         LEFT JOIN invite_codes c ON c.id = r.invite_code_id
+         LEFT JOIN (
+           SELECT user_id,
+                  COUNT(*) AS completed_orders,
+                  COALESCE(SUM(GREATEST(total_amount - refund_amount, 0)), 0) AS paid_amount
+             FROM orders
+            WHERE status IN (3, 4)
+            GROUP BY user_id
+         ) o ON o.user_id = r.invited_user_id
+         LEFT JOIN (
+           SELECT invited_user_id, COALESCE(SUM(commission_amount), 0) AS commission_amount
+             FROM commission_logs
+            WHERE status <> 'invalid'
+            GROUP BY invited_user_id
+         ) cl ON cl.invited_user_id = r.invited_user_id
+        WHERE r.inviter_user_id = ?
+        ORDER BY r.id DESC
+        LIMIT 500`,
+      [userId],
+    ),
+    commissionRatePercent(),
+    commissionAvailableAfterDays(),
   ]);
 
   return {
@@ -1504,6 +1542,20 @@ export async function getInvites(userId: number) {
       Math.abs(asNumber(transferredResult[0][0]?.total)),
       asNumber(pendingResult[0][0]?.total),
     ],
+    available_commission: asNumber(userResult[0][0]?.commission_balance),
+    commission_rate: commissionRate,
+    available_after_days: availableAfterDays,
+    referrals: referralItemsResult[0].map((row) => ({
+      id: asNumber(row.id),
+      user_id: asNumber(row.invited_user_id),
+      email: String(row.email),
+      is_active: Boolean(row.is_active),
+      invite_code: row.invite_code === null ? null : String(row.invite_code),
+      completed_orders: asNumber(row.completed_orders),
+      paid_amount: asNumber(row.paid_amount),
+      commission_amount: asNumber(row.commission_amount),
+      created_at: unix(row.created_at as Date),
+    })),
   };
 }
 
@@ -1542,21 +1594,126 @@ export async function getInviteDetails(userId: number, limit = 100) {
  * 但调用方拿不到刚生成的码，只能再多查一次 invites 才知道是哪条。
  * 返回码本身后调用方可直接使用（例如立刻拼推广链接），不必再回查。
  */
-export async function createInviteCode(userId: number): Promise<string> {
+export async function createInviteCode(
+  userId: number,
+  options: { maxUses?: number | null; expiresInDays?: number | null } = {},
+): Promise<string> {
+  const maxUses = options.maxUses ?? null;
+  const expiresInDays = options.expiresInDays ?? null;
+  if (maxUses !== null && (!Number.isSafeInteger(maxUses) || maxUses < 1 || maxUses > 10000)) {
+    throw badRequest("邀请码使用次数需为 1 至 10000");
+  }
+  if (expiresInDays !== null && (!Number.isSafeInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 365)) {
+    throw badRequest("邀请码有效期需为 1 至 365 天");
+  }
+
   const connection = await getDbPool().getConnection();
   try {
     await connection.beginTransaction();
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) AS total FROM invite_codes WHERE user_id = ? AND status = 0 FOR UPDATE`,
+      `SELECT COUNT(*) AS total FROM invite_codes
+        WHERE user_id = ? AND status = 0
+          AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+          AND (max_uses IS NULL OR used_count < max_uses)
+        FOR UPDATE`,
       [userId],
     );
     if (asNumber(rows[0]?.total) >= 5) {
       throw conflict("最多同时保留 5 个可用的邀请码，请先停用不用的邀请码");
     }
     const code = randomBytes(16).toString("hex");
-    await connection.execute(`INSERT INTO invite_codes (user_id, code) VALUES (?, ?)`, [userId, code]);
+    const expiresAt = expiresInDays === null ? null : new Date(Date.now() + expiresInDays * 86400000);
+    await connection.execute(
+      `INSERT INTO invite_codes (user_id, code, max_uses, expires_at) VALUES (?, ?, ?, ?)`,
+      [userId, code, maxUses, expiresAt],
+    );
     await connection.commit();
     return code;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function updateInviteCodeStatus(userId: number, inviteId: number, status: 0 | 1): Promise<boolean> {
+  const connection = await getDbPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      `SELECT id, status, max_uses, used_count, expires_at
+         FROM invite_codes WHERE id = ? AND user_id = ? LIMIT 1 FOR UPDATE`,
+      [inviteId, userId],
+    );
+    const invite = rows[0];
+    if (!invite) throw notFound("邀请码不存在");
+
+    if (status === 0) {
+      if (invite.expires_at && new Date(invite.expires_at as Date).getTime() <= Date.now()) {
+        throw conflict("已过期的邀请码不能重新启用");
+      }
+      if (invite.max_uses !== null && asNumber(invite.used_count) >= asNumber(invite.max_uses)) {
+        throw conflict("已达到使用上限的邀请码不能重新启用");
+      }
+      const [activeRows] = await connection.execute<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total FROM invite_codes
+          WHERE user_id = ? AND id <> ? AND status = 0
+            AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+            AND (max_uses IS NULL OR used_count < max_uses)
+          FOR UPDATE`,
+        [userId, inviteId],
+      );
+      if (asNumber(activeRows[0]?.total) >= 5) {
+        throw conflict("最多同时保留 5 个可用的邀请码，请先停用不用的邀请码");
+      }
+    }
+
+    await connection.execute(
+      `UPDATE invite_codes SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`,
+      [status, inviteId, userId],
+    );
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function inspectInviteCode(code: string, recordVisit = false) {
+  const normalized = code.trim().toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(normalized)) {
+    return { valid: false, code: "", message: "邀请链接无效或已失效" };
+  }
+
+  const connection = await getDbPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      `SELECT id, code, status, max_uses, used_count, expires_at
+         FROM invite_codes WHERE code = ? LIMIT 1 FOR UPDATE`,
+      [normalized],
+    );
+    const invite = rows[0];
+    const valid = Boolean(
+      invite
+      && asNumber(invite.status) === 0
+      && (!invite.expires_at || new Date(invite.expires_at as Date).getTime() > Date.now())
+      && (invite.max_uses === null || asNumber(invite.used_count) < asNumber(invite.max_uses)),
+    );
+    if (valid && recordVisit) {
+      await connection.execute(
+        `UPDATE invite_codes SET page_views = page_views + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [invite.id],
+      );
+    }
+    await connection.commit();
+    return valid
+      ? { valid: true, code: String(invite.code), message: "邀请码有效" }
+      : { valid: false, code: "", message: "邀请链接无效或已失效" };
   } catch (error) {
     await connection.rollback();
     throw error;

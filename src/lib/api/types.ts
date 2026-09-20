@@ -248,6 +248,22 @@ export interface InviteFetch {
   codes: InviteCode[];
   /** [邀请人数, 累计佣金（分）, 已划转（分）, 待结算（分）] */
   stat: [number, number, number, number];
+  available_commission: number;
+  commission_rate: number;
+  available_after_days: number;
+  referrals: InviteReferral[];
+}
+
+export interface InviteReferral {
+  id: number;
+  user_id: number;
+  email: string;
+  is_active: boolean;
+  invite_code: string | null;
+  completed_orders: number;
+  paid_amount: number;
+  commission_amount: number;
+  created_at: number;
 }
 
 export interface InviteCode {

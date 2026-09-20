@@ -959,3 +959,47 @@ VALUES ('20260920_004', 'traffic collection cursors, device limits (plans/users)
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260920_005', 'system_settings: runtime-adjustable configuration moved out of environment variables');
+
+-- 20260920_006：AeraNexaBot 绑定、更新幂等与通知投递账本。
+CREATE TABLE IF NOT EXISTS telegram_binding_codes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  code_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id), UNIQUE KEY telegram_binding_codes_hash_unique (code_hash),
+  KEY telegram_binding_codes_user_created_index (user_id, created_at),
+  CONSTRAINT telegram_binding_codes_user_foreign FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS telegram_updates (
+  update_id BIGINT NOT NULL,
+  received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (update_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS telegram_notification_deliveries (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  notification_key VARCHAR(128) NOT NULL,
+  kind VARCHAR(32) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_error VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  sent_at DATETIME NULL,
+  PRIMARY KEY (id), UNIQUE KEY telegram_notification_key_unique (notification_key),
+  KEY telegram_notification_pending_index (status, next_attempt_at),
+  CONSTRAINT telegram_notification_user_foreign FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET @users_telegram_unique_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'users_telegram_id_unique');
+SET @users_telegram_unique_sql = IF(@users_telegram_unique_exists = 0, 'ALTER TABLE users ADD UNIQUE KEY users_telegram_id_unique (telegram_id)', 'SELECT 1');
+PREPARE users_telegram_unique_statement FROM @users_telegram_unique_sql;
+EXECUTE users_telegram_unique_statement;
+DEALLOCATE PREPARE users_telegram_unique_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260920_006', 'AeraNexaBot binding, deduplicated updates and notification delivery ledger');

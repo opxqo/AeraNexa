@@ -5,8 +5,10 @@ import { getDbPool } from "./db";
 import { deviceGateHeaders, gateDevice, type DeviceInfo } from "./devices";
 import { PANEL_NAME } from "./panel/import-inbounds";
 import { buildClashProxy, clashNoticeProxy, renderClashConfig } from "./panel/clash";
+import { fetchPanelClashSubscription, PanelSubscriptionError } from "./panel/subscription";
 import { buildLink, noticeLink, type LinkNode } from "./panel/links";
 import { isEligible, SYNC_PROTOCOLS } from "./panel/sync-model";
+import { getClashSubscriptionProvider } from "./settings";
 
 /**
  * 用户订阅（docs/node-domain-design.md §4.6）。
@@ -39,6 +41,8 @@ type UserRow = RowDataPacket & {
   download_bytes: number;
   group_id: number | null;
   device_limit: number;
+  sub_id: string | null;
+  sync_status: string | null;
 };
 
 function reasonFor(user: UserRow, nowSeconds: number, hasNodes: boolean): string {
@@ -62,10 +66,11 @@ export async function getSubscriptionFeed(
   const pool = getDbPool();
   const [users] = await pool.execute<UserRow[]>(
     `SELECT u.id, u.uuid, u.is_active, u.plan_id, u.expired_at, u.transfer_enable,
-            u.upload_bytes, u.download_bytes, p.group_id,
+            u.upload_bytes, u.download_bytes, p.group_id, pc.sub_id, pc.sync_status,
             COALESCE(u.device_limit_override, p.device_limit, 0) AS device_limit
        FROM users u
        LEFT JOIN plans p ON p.id = u.plan_id
+       LEFT JOIN panel_clients pc ON pc.user_id = u.id
       WHERE u.subscription_token = ?
       LIMIT 1`,
     [token],
@@ -137,6 +142,18 @@ export async function getSubscriptionFeed(
   const notice = () => deviceNotice ?? reasonFor(user, nowSeconds, nodes.length > 0);
 
   if (format === "clash") {
+    if (await getClashSubscriptionProvider() === "3x-ui" && eligible && nodes.length) {
+      const subId = String(user.sub_id ?? "");
+      if (!subId || user.sync_status !== "synced") {
+        throw new PanelSubscriptionError("3x-ui 客户端尚未同步，请稍后重试");
+      }
+      return {
+        body: await fetchPanelClashSubscription(subId),
+        contentType: "text/yaml; charset=utf-8",
+        headers,
+        userInfo,
+      };
+    }
     const proxies = nodes.map((node) => buildClashProxy(node, uuid)).filter((proxy) => proxy !== null);
     return {
       body: renderClashConfig(proxies.length ? proxies : [clashNoticeProxy(notice())]),

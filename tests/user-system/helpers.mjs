@@ -68,3 +68,21 @@ export async function restoreMockPaymentMethod(original) {
     await connection.end();
   }
 }
+
+/**
+ * 邮件服务是否已在后台启用。
+ *
+ * 「未启用 SMTP 时返回 503」这类断言只对没有配置邮件服务的部署成立：
+ * 运营方一旦在后台打开邮件服务，同一个请求就会真的发信（202/429）。
+ * 所以先问一次真实配置，让用例在两种环境下都能给出正确结论，
+ * 而不是把现网配置当成测试前提。
+ */
+export async function isEmailServiceEnabled() {
+  const connection = await mysql.createConnection(dbConfig);
+  try {
+    const [rows] = await connection.query("SELECT is_enabled FROM smtp_settings WHERE id = 1");
+    return Boolean(rows.length) && Number(rows[0].is_enabled) === 1;
+  } finally {
+    await connection.end();
+  }
+}

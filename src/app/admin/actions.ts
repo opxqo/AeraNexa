@@ -27,6 +27,7 @@ import { markAllPanelClientsDirty, markPanelClientDirty } from "@/lib/server/nod
 import { removeUserDevices } from "@/lib/server/devices";
 import { saveSettings } from "@/lib/server/settings";
 import { findSettingDef, SETTING_DEFS } from "@/lib/server/settings-schema";
+import { enqueueTelegramNotification } from "@/lib/server/telegram";
 
 type ActionResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -80,7 +81,7 @@ function dateToEpochSeconds(value: FormDataEntryValue | null): number | null | u
 }
 
 function refreshAdmin() {
-  for (const path of ["/admin", "/admin/users", "/admin/plans", "/admin/orders", "/admin/refunds", "/admin/reconciliation", "/admin/coupons", "/admin/payments", "/admin/recharge-cards", "/admin/nodes", "/admin/tickets", "/admin/notices", "/admin/knowledge", "/admin/mail", "/admin/settings"]) {
+  for (const path of ["/admin", "/admin/users", "/admin/plans", "/admin/orders", "/admin/refunds", "/admin/reconciliation", "/admin/coupons", "/admin/payments", "/admin/recharge-cards", "/admin/nodes", "/admin/tickets", "/admin/notices", "/admin/knowledge", "/admin/mail", "/admin/telegram", "/admin/settings"]) {
     revalidatePath(path);
   }
 }
@@ -968,11 +969,12 @@ export async function replyTicketAction(formData: FormData): Promise<ActionResul
 
     const pool = getDbPool();
     const connection = await pool.getConnection();
+    let ticketUserId = 0;
     try {
       await connection.beginTransaction();
 
       const [tickets] = await connection.execute<RowDataPacket[]>(
-        "SELECT id, status FROM tickets WHERE id = ? LIMIT 1 FOR UPDATE",
+        "SELECT id, user_id, status FROM tickets WHERE id = ? LIMIT 1 FOR UPDATE",
         [id],
       );
       const ticket = tickets[0];
@@ -984,6 +986,7 @@ export async function replyTicketAction(formData: FormData): Promise<ActionResul
         await connection.rollback();
         return fail("工单已关闭，请先恢复为「处理中」再回复");
       }
+      ticketUserId = Number(ticket.user_id);
 
       await connection.execute(
         `INSERT INTO ticket_messages (ticket_id, user_id, sender_role, message) VALUES (?, ?, 'staff', ?)`,
@@ -1004,6 +1007,7 @@ export async function replyTicketAction(formData: FormData): Promise<ActionResul
     }
 
     await audit("admin.ticket_replied", "ticket", id, { length: message.length }, admin.id);
+    if (ticketUserId) await enqueueTelegramNotification(ticketUserId, `ticket-reply:${id}:${Date.now()}`, "ticket_reply");
     refreshAdmin();
     return ok("回复已发送");
   } catch (error) {

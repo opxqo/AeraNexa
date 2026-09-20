@@ -13,17 +13,17 @@
 }
 
 [data-theme="dark"] {
-  --v2-primary: #4e6fe8;
-  --v2-primary-dark: #191c20;
-  --v2-primary-soft: rgba(78, 111, 232, 0.22);
-  --v2-body: #121417;
-  --v2-surface: #1b1e22;
-  --v2-header: #22262c;
-  --v2-text: #b6bec8;
-  --v2-heading: #f0f3f6;
-  --v2-muted: #79838f;
-  --v2-border: #2b3038;
-  --v2-success: #73a840;
+  --v2-primary: #2f68a7;
+  --v2-primary-dark: #245e9f;
+  --v2-primary-soft: rgba(67, 126, 184, 0.16);
+  --v2-body: #202020;
+  --v2-surface: #252525;
+  --v2-header: #222222;
+  --v2-text: #c7c7c7;
+  --v2-heading: #e4e4e4;
+  --v2-muted: #8e8e8e;
+  --v2-border: #303030;
+  --v2-success: #8aae55;
 }
 
 
@@ -230,6 +230,38 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .plan-card li svg { color: var(--v2-success); }
 .plan-card .button { width: 100%; margin-top: auto; }
 
+/* 客户端套餐目录：信息按价格、规格、周期、权益、行动顺序阅读。 */
+.plan-filter-tabs { margin-top: 12px; display: inline-flex; padding: 2px; border: 1px solid var(--v2-primary); border-radius: 999px; }
+.plan-filter-tabs button { min-width: 54px; padding: 4px 10px; border: 0; border-radius: 999px; color: var(--v2-primary); background: transparent; font-size: 12px; cursor: pointer; }
+.plan-filter-tabs button.active { color: #fff; background: var(--v2-primary); }
+.plan-catalog { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+.api-plan-card { min-height: 470px; padding: 0; border: 1px solid var(--v2-border); border-top: 0; border-radius: 3px; box-shadow: 0 1px 3px rgba(39, 67, 112, .08); transition: box-shadow .18s ease, border-color .18s ease; }
+.api-plan-card:hover { border-color: #b9c9e3; box-shadow: 0 3px 10px rgba(39, 67, 112, .1); }
+.api-plan-card-header { padding: 16px 16px 12px; background: var(--v2-surface); border-bottom: 1px solid var(--v2-border); }
+.api-plan-card-header h2 { font-size: 16px; line-height: 1.35; }
+.api-plan-price-band { min-height: 94px; padding: 20px 16px; display: grid; align-content: center; gap: 5px; background: var(--v2-header); }
+.api-plan-price-band strong { color: var(--v2-heading); font-size: 28px; line-height: 1; letter-spacing: -.02em; }
+.api-plan-price-band span { color: var(--v2-muted); font-size: 13px; }
+.api-plan-periods { min-height: 28px; margin: 14px 16px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.api-plan-description { margin: 0 16px 14px; color: var(--v2-muted); font-size: 13px; line-height: 1.75; }
+.api-plan-description > :first-child { margin-top: 0; }
+.api-plan-description > :last-child { margin-bottom: 0; }
+.api-plan-action { margin: auto 16px 16px; padding-top: 18px; }
+.api-plan-action .btn { min-width: 86px; }
+.plan-filter-empty { margin: 0; color: var(--v2-muted); font-size: 14px; }
+.api-plan-modal-description { padding: 11px 13px; color: var(--v2-muted); background: var(--v2-header); border-left: 3px solid var(--v2-primary); font-size: 13px; line-height: 1.65; }
+.api-plan-modal-description > :first-child { margin-top: 0; }
+.api-plan-modal-description > :last-child { margin-bottom: 0; }
+.api-plan-order-form { display: grid; gap: 16px; font-size: 14px; }
+.api-plan-order-form label { display: block; margin-bottom: 6px; color: var(--v2-heading); font-weight: 500; }
+.api-plan-period-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.api-plan-coupon-row { display: flex; gap: 8px; }
+.api-plan-coupon-input { min-width: 0; flex: 1; padding: 8px 10px; border: 1px solid var(--v2-border); border-radius: 4px; color: var(--v2-text); background: var(--v2-surface); }
+.api-plan-order-summary { padding: 12px 14px; display: grid; gap: 8px; background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 4px; }
+@media (max-width: 1100px) { .plan-catalog { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .plan-catalog { grid-template-columns: 1fr; } .api-plan-card { min-height: 0; } }
+@media (max-width: 520px) { .api-plan-period-grid { grid-template-columns: 1fr; } .api-plan-coupon-row { align-items: stretch; flex-direction: column; } }
+
 .split-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(290px, .75fr); gap: 28px; align-items: start; }
 .form-body { padding: 22px 20px 24px; display: grid; gap: 21px; }
 .narrow-form { max-width: 720px; }
@@ -338,6 +370,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .invite-code small { display: block; color: #8b949d; }
 .invite-code strong { display: block; margin: 4px 0; color: #343b42; font-size: 20px; font-weight: 500; }
 .invite-code p { margin: 0; overflow: hidden; color: #7a838c; text-overflow: ellipsis; }
+.invite-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.invite-program-note { min-height: 58px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; color: var(--v2-text); background: var(--v2-surface); border: 1px solid var(--v2-border); border-left: 3px solid var(--v2-primary); border-radius: 3px; }
+.invite-program-note div { display: grid; gap: 2px; }
+.invite-program-note strong { color: var(--v2-heading); font-weight: 500; }
+.invite-program-note span { color: var(--v2-muted); font-size: 12px; }
+.invite-code-actions { display: flex; gap: 6px; }
+.invite-create-form { display: grid; gap: 14px; }
+.invite-create-form label { display: grid; gap: 6px; color: var(--v2-heading); font-size: 13px; }
+.invite-create-form input { width: 100%; padding: 9px 11px; color: var(--v2-text); background: var(--v2-surface); border: 1px solid var(--v2-border); border-radius: 3px; }
 
 .knowledge-search { padding: 15px 18px; display: flex; align-items: center; gap: 11px; background: #fff; border-radius: 3px; box-shadow: 0 1px 3px rgba(219, 226, 239, .6); }
 .knowledge-search svg { color: #9ca4ab; }
@@ -591,6 +632,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .page-stack { gap: 18px; }
   .plan-grid, .knowledge-grid, .profile-grid, .split-layout { grid-template-columns: 1fr; gap: 18px; }
   .stat-grid, .traffic-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .invite-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .invite-program-note { align-items: flex-start; flex-direction: column; }
   .stat-grid article { min-height: 98px; padding: 15px; }
   .admin-page-heading { align-items: flex-start; }
   .admin-topbar-heading { gap: 7px; }
@@ -1345,6 +1388,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme="dark"] .invite-code strong {
   color: var(--v2-heading);
 }
+[data-theme="dark"] .invite-program-note { background: #252525; border-color: #303030; border-left-color: var(--v2-primary); }
+[data-theme="dark"] .invite-create-form input { color: #e4e4e4; background: #1e1e1e; border-color: #353535; }
 [data-theme="dark"] .block-description,
 [data-theme="dark"] .formula {
   background: var(--v2-header);
@@ -1842,3 +1887,100 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme="dark"] .admin-pager-page { color: var(--v2-text); }
 [data-theme="dark"] .recharge-batch-row.is-active, [data-theme="dark"] .recharge-batch-row.is-active:hover { background: #202637; }
 [data-theme="dark"] .recharge-detail-header, [data-theme="dark"] .recharge-detail-pager { background: #1c2029; }
+
+/* 深色模式：参照控制台式深灰层级，蓝色仅用于全局导航与主要操作。 */
+[data-theme="dark"] .sidebar { background: #1d1d1d; box-shadow: 1px 0 0 #292929; }
+[data-theme="dark"] .brand { background: #225894; border-bottom-color: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .82); }
+[data-theme="dark"] .nav-label { color: #757575; }
+[data-theme="dark"] .nav-item { color: #a6a6a6; }
+[data-theme="dark"] .nav-item svg { color: #6687ad; }
+[data-theme="dark"] .nav-item:hover,
+[data-theme="dark"] .nav-item-active { color: #e1e1e1; background: #292929; }
+[data-theme="dark"] .nav-item-active svg { color: #7aa4d2; }
+[data-theme="dark"] .topbar { background: #245e9f; border-bottom-color: rgba(0, 0, 0, .16); }
+[data-theme="dark"] .icon-button:hover,
+[data-theme="dark"] .account-button:hover { background: rgba(0, 0, 0, .13); }
+
+[data-theme="dark"] .v2-block,
+[data-theme="dark"] .admin-page-heading,
+[data-theme="dark"] .stat-grid article,
+[data-theme="dark"] .plan-card:not(.api-plan-card) { background: #252525; border-color: #303030; box-shadow: none; }
+[data-theme="dark"] .v2-block-header,
+[data-theme="dark"] .v2-table th,
+[data-theme="dark"] .admin-audit-note,
+[data-theme="dark"] .block-description,
+[data-theme="dark"] .formula { background: #222222; border-color: #303030; }
+[data-theme="dark"] .shortcut-row,
+[data-theme="dark"] .period,
+[data-theme="dark"] .payment-channel-item,
+[data-theme="dark"] .oneclick-item { background: #252525; border-color: #303030; }
+[data-theme="dark"] .shortcut-row:hover,
+[data-theme="dark"] .v2-table tbody tr:hover,
+[data-theme="dark"] .article-list a:hover,
+[data-theme="dark"] .oneclick-item:hover { background: #2a2a2a; }
+[data-theme="dark"] .product-summary,
+[data-theme="dark"] .placeholder-boundary,
+[data-theme="dark"] .filter-tabs { background: #1f1f1f; border-color: #303030; }
+[data-theme="dark"] .v2-field input,
+[data-theme="dark"] .v2-field select,
+[data-theme="dark"] .v2-field textarea,
+[data-theme="dark"] .reply-box textarea,
+[data-theme="dark"] .inline-control input,
+[data-theme="dark"] .login-card input { background: #1e1e1e; border-color: #353535; color: #e2e2e2; }
+[data-theme="dark"] .admin-search-box,
+[data-theme="dark"] .admin-readonly-row,
+[data-theme="dark"] .admin-ticket-message,
+[data-theme="dark"] .recharge-batch-row.is-active,
+[data-theme="dark"] .recharge-batch-row.is-active:hover { background: #292929; border-color: #353535; }
+[data-theme="dark"] .admin-ticket-thread { background: #202020; border-color: #303030; }
+[data-theme="dark"] .message { background: #292929; border-color: #353535; }
+[data-theme="dark"] .message.mine { background: #222c36; border-color: #31475a; }
+[data-theme="dark"] .ant-modal-content,
+[data-theme="dark"] .ant-drawer-content,
+[data-theme="dark"] .login-card { background: #252525; border-color: #353535; }
+[data-theme="dark"] .ant-modal-header,
+[data-theme="dark"] .ant-drawer-header,
+[data-theme="dark"] .login-card-footer { background: #222222; border-color: #303030; }
+[data-theme="dark"] .ant-message-notice-content { background: #2a2a2a; border-color: #383838; color: #e4e4e4; }
+[data-theme="dark"] .button-secondary,
+[data-theme="dark"] .btn-secondary { background: #2a2a2a; border-color: #3a3a3a; color: #d0d0d0; }
+[data-theme="dark"] .button-secondary:hover,
+[data-theme="dark"] .btn-secondary:hover { background: #333333; border-color: #4a4a4a; color: #fff; }
+[data-theme="dark"] .v2-badge { background: #303030; color: #b8b8b8; }
+[data-theme="dark"] .admin-action-button { color: #93b8dd; background: #282828; border-color: #3a3a3a; }
+[data-theme="dark"] .admin-action-button:hover:not(:disabled) { border-color: #4d78a4; background: #2b3540; }
+[data-theme="dark"] .recharge-detail-header,
+[data-theme="dark"] .recharge-detail-pager { background: #222222; }
+
+/* 套餐目录暗色层级：名称、价格、正文使用不同表面，蓝色只承担交互。 */
+[data-theme="dark"] .plan-filter-tabs { border-color: #2f68a7; background: transparent; }
+[data-theme="dark"] .plan-filter-tabs button { color: #78a8d4; }
+[data-theme="dark"] .plan-filter-tabs button:hover { color: #a7c8e7; background: #252b31; }
+[data-theme="dark"] .plan-filter-tabs button.active { color: #fff; background: #2f68a7; }
+[data-theme="dark"] .api-plan-card {
+  background: #222222;
+  border-color: #303030;
+  border-top: 1px solid #303030;
+  box-shadow: none;
+}
+[data-theme="dark"] .api-plan-card:hover { border-color: #46515d; box-shadow: none; }
+[data-theme="dark"] .api-plan-card-header { background: #1c1c1c; border-bottom-color: #303030; }
+[data-theme="dark"] .api-plan-card-header h2 { color: #e4e4e4; }
+[data-theme="dark"] .api-plan-price-band { background: #292929; border-bottom: 1px solid #303030; }
+[data-theme="dark"] .api-plan-price-band strong { color: #e4e4e4; }
+[data-theme="dark"] .api-plan-price-band span { color: #8e8e8e; }
+[data-theme="dark"] .api-plan-description { color: #b8b8b8; }
+[data-theme="dark"] .api-plan-periods .v2-badge { color: #b8b8b8; background: #2b2e32; border: 1px solid #3a3d42; }
+[data-theme="dark"] .api-plan-action .btn-primary { background: #2f68a7; border-color: #2f68a7; box-shadow: none; }
+[data-theme="dark"] .api-plan-action .btn-primary:hover { background: #3977b5; border-color: #3977b5; box-shadow: none; transform: none; }
+[data-theme="dark"] .api-plan-modal-description { color: #b8b8b8; background: #202020; border-left-color: #2f68a7; }
+[data-theme="dark"] .api-plan-order-form { color: #b8b8b8; }
+[data-theme="dark"] .api-plan-order-form label { color: #e4e4e4; }
+[data-theme="dark"] .api-plan-order-form .period { color: #b8b8b8; background: #222222; border-color: #3a3a3a; }
+[data-theme="dark"] .api-plan-order-form .period:hover { background: #292929; border-color: #46515d; }
+[data-theme="dark"] .api-plan-order-form .period.active { background: #252b31; border-color: #2f68a7; box-shadow: inset 0 0 0 1px #2f68a7; }
+[data-theme="dark"] .api-plan-order-form .period strong { color: #e4e4e4; }
+[data-theme="dark"] .api-plan-coupon-input { color: #e4e4e4; background: #1e1e1e; border-color: #353535; }
+[data-theme="dark"] .api-plan-coupon-input::placeholder { color: #747474; }
+[data-theme="dark"] .api-plan-coupon-input:focus { border-color: #2f68a7; outline: 2px solid rgba(47, 104, 167, .2); outline-offset: 0; }
+[data-theme="dark"] .api-plan-order-summary { color: #b8b8b8; background: #292929; border-color: #353535; }

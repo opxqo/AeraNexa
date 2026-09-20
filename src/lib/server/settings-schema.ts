@@ -7,9 +7,9 @@
  * 取值优先级：后台保存的值 → 同名环境变量（兼容既有部署）→ 默认值。
  */
 
-export type SettingKind = "url" | "secret" | "int" | "number";
+export type SettingKind = "url" | "secret" | "int" | "number" | "select" | "text";
 
-export type SettingGroup = "节点" | "订阅" | "佣金" | "Worker";
+export type SettingGroup = "节点" | "订阅" | "佣金" | "Worker" | "Telegram";
 
 export type SettingDef = {
   key: string;
@@ -23,9 +23,16 @@ export type SettingDef = {
   min?: number;
   max?: number;
   unit?: string;
+  options?: readonly { value: string; label: string }[];
 };
 
 export const SETTING_DEFS: readonly SettingDef[] = [
+  { key: "telegram.enabled", group: "Telegram", label: "AeraNexaBot 服务", description: "启用后才接收更新及投递用户通知。", kind: "select", env: "TELEGRAM_BOT_ENABLED", defaultValue: "false", options: [{ value: "false", label: "停用" }, { value: "true", label: "启用" }] },
+  { key: "telegram.mode", group: "Telegram", label: "运行方式", description: "长轮询适合本地与单机；Webhook 必须使用公网 HTTPS 地址。", kind: "select", env: "TELEGRAM_BOT_MODE", defaultValue: "polling", options: [{ value: "polling", label: "长轮询" }, { value: "webhook", label: "Webhook" }] },
+  { key: "telegram.username", group: "Telegram", label: "Bot 用户名", description: "不带 @，用于个人中心显示绑定入口。", kind: "text", env: "TELEGRAM_BOT_USERNAME", defaultValue: "" },
+  { key: "telegram.token", group: "Telegram", label: "Bot Token", description: "由 BotFather 创建；加密保存且不会回显。", kind: "secret", env: "TELEGRAM_BOT_TOKEN", defaultValue: "" },
+  { key: "telegram.webhook_url", group: "Telegram", label: "Webhook 公网 HTTPS 地址", description: "例如 https://app.example.com/api/telegram/webhook，仅 Webhook 模式使用。", kind: "url", env: "TELEGRAM_WEBHOOK_URL", defaultValue: "" },
+  { key: "telegram.webhook_secret", group: "Telegram", label: "Webhook 校验密钥", description: "Telegram 回调 Header 校验用；留空由系统生成并加密保存。", kind: "secret", env: "TELEGRAM_WEBHOOK_SECRET", defaultValue: "" },
   {
     key: "panel.base_url",
     group: "节点",
@@ -73,6 +80,28 @@ export const SETTING_DEFS: readonly SettingDef[] = [
     kind: "url",
     env: "SUBSCRIBE_BASE_URL",
     defaultValue: "http://localhost:3000",
+  },
+  {
+    key: "subscribe.clash_provider",
+    group: "订阅",
+    label: "Clash / Mihomo 规则来源",
+    description: "AeraNexa 由本系统生成规则；3x-ui 则沿用 3x-ui「订阅」中配置的 Clash/Mihomo 规则。两种方式都通过 AeraNexa 订阅链接校验用户权限。",
+    kind: "select",
+    env: "SUBSCRIBE_CLASH_PROVIDER",
+    defaultValue: "aeranexa",
+    options: [
+      { value: "aeranexa", label: "AeraNexa" },
+      { value: "3x-ui", label: "3x-ui" },
+    ],
+  },
+  {
+    key: "subscribe.panel_clash_url",
+    group: "订阅",
+    label: "3x-ui Clash/Mihomo 订阅地址",
+    description: "仅选择 3x-ui 规则来源时使用。填写 3x-ui「订阅 → Clash URI」中以 / 结尾的完整地址；留空时尝试面板地址下的 /mihomo/ 兼容路径。",
+    kind: "url",
+    env: "PANEL_CLASH_SUBSCRIBE_URL",
+    defaultValue: "",
   },
   {
     key: "commission.rate_percent",
@@ -180,6 +209,10 @@ export function normalizeSettingValue(def: SettingDef, raw: string): NormalizeRe
       if (value.length > 512) return { ok: false, error: `${def.label}过长` };
       if (/\s/.test(value)) return { ok: false, error: `${def.label}不能包含空白字符` };
       return { ok: true, value };
+    case "text":
+      if (value.length > 255) return { ok: false, error: `${def.label}过长` };
+      if (/[\u0000-\u001f\u007f]/.test(value)) return { ok: false, error: `${def.label}包含不可用字符` };
+      return { ok: true, value };
     case "int":
     case "number": {
       if (!/^-?\d+(\.\d+)?$/.test(value)) return { ok: false, error: `${def.label}需为数字` };
@@ -188,6 +221,10 @@ export function normalizeSettingValue(def: SettingDef, raw: string): NormalizeRe
       if (def.min !== undefined && parsed < def.min) return { ok: false, error: `${def.label}不能小于 ${def.min}${def.unit ?? ""}` };
       if (def.max !== undefined && parsed > def.max) return { ok: false, error: `${def.label}不能大于 ${def.max}${def.unit ?? ""}` };
       return { ok: true, value: String(parsed) };
+    }
+    case "select": {
+      if (def.options?.some((option) => option.value === value)) return { ok: true, value };
+      return { ok: false, error: `${def.label}选项不正确` };
     }
   }
 }
