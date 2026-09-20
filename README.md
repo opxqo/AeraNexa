@@ -15,7 +15,9 @@ pnpm dev
 
 首次运行前，请复制 `.env.example` 为 `.env.local` 并填写本地 MySQL 密码、会话密钥、各加密主密钥（SMTP / 支付 / 系统设置）和哈希 pepper。环境变量只放这些必须与数据库分离的配置；3x-ui 连接、订阅域名、佣金比例、Worker 调度等在后台 `/admin/settings`「系统设置」中调整，保存后数秒内生效。用户系统的数据库名由 `DB_NAME` 决定（不填默认为 `aeranexa`，也可以指向任意已有的库，比如托管平台自带的默认库），表结构见 [`database/schema.sql`](database/schema.sql)，`pnpm db:migrate` 会按 `DB_NAME` 自动建库建表。SMTP 主机、账号、发件人由 `/admin/mail` 配置；服务未启用时注册和找回密码会安全拒绝，不会回显验证码。
 
-首次部署且尚未配置 SMTP 时，注册流程需要的邮箱验证码无法发出，界面上也没有入口能直接建立第一个管理员账号。为此服务启动时（见 [`src/instrumentation.ts`](src/instrumentation.ts) 与 [`src/lib/server/bootstrap-admin.ts`](src/lib/server/bootstrap-admin.ts)）会自动检测 `users` 表：一旦发现一个用户都没有，就会创建默认管理员账号 `admin@admin.com` / `admin123456`（`role = 'admin'`）。执行 `pnpm db:migrate` 建好表结构后，正常 `pnpm dev` / `pnpm start` 启动即可，无需手动操作；表里只要出现任意用户，之后启动都会自动跳过，不会覆盖已有数据。**登录后请立即在「个人中心」修改密码**，并在 `/admin/settings` 补齐 3x-ui、SMTP 等运行时配置。
+生产启动命令 `pnpm start` 会先跑一遍 [`scripts/migrate-database.mjs`](scripts/migrate-database.mjs) 再 `next start`：schema.sql 通篇按幂等写（`CREATE TABLE IF NOT EXISTS`、每个 `ALTER` 前用 `information_schema` 探测、版本号 `INSERT IGNORE`），所以每次部署重放都是安全的，新环境不需要手动建库建表。迁移失败会直接中断启动，不会让服务带着不完整的表结构对外提供服务。本地 `pnpm dev` 不含这一步，仍用 `pnpm db:migrate` 手动执行。
+
+首次部署且尚未配置 SMTP 时，注册流程需要的邮箱验证码无法发出，界面上也没有入口能直接建立第一个管理员账号。为此服务启动时（见 [`src/instrumentation.ts`](src/instrumentation.ts) 与 [`src/lib/server/bootstrap-admin.ts`](src/lib/server/bootstrap-admin.ts)）会自动检测 `users` 表：一旦发现一个用户都没有，就会创建默认管理员账号 `admin@admin.com` / `admin123456`（`role = 'admin'`）。配合上面的自动迁移，一个全新环境部署完就能直接登录；表里只要出现任意用户，之后启动都会自动跳过，不会覆盖已有数据。**登录后请立即在「个人中心」修改密码**，并在 `/admin/settings` 补齐 3x-ui、SMTP 等运行时配置。
 
 如果 `users` 表已经非空，但仍想手动创建或重置某个管理员账号，可以运行：
 
