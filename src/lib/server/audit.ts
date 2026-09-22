@@ -34,6 +34,8 @@ export type AuditAction =
   | "admin.access_group_saved"
   | "admin.access_group_deleted"
   | "admin.user_devices_cleared"
+  | "admin.user_resynced"
+  | "admin.sync_failures_retried"
   | "admin.settings_saved"
   | "admin.ticket_updated"
   | "admin.ticket_replied"

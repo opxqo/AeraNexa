@@ -114,6 +114,8 @@ export async function saveSystemSettingsAction(formData: FormData): Promise<Acti
       invalidateMonitorAuthCache();
       restartMonitorRelay();
     }
+    // 流控改变的是每个 3x-ui 客户端的 flow，需全量标脏让 worker 立即改写，不等每分钟对账。
+    if (changed.includes("panel.vless_flow")) await markAllPanelClientsDirty(getDbPool());
     // 审计只记录改了哪些项，不记录值（其中可能有密钥）。
     await audit("admin.settings_saved", "system_settings", changed.join(","), {
       changed: changed.map((key) => findSettingDef(key)?.label ?? key),
@@ -274,6 +276,36 @@ export async function clearUserDevicesAction(formData: FormData): Promise<Action
     return ok(`已清空 ${removed} 台设备`);
   } catch (error) {
     return fail(error instanceof Error ? error.message : "清空设备失败");
+  }
+}
+
+/** 立即把该用户交给 worker 重新同步：标脏会重置失败次数与退避，下一轮事件同步即处理。 */
+export async function resyncUserAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const id = intValue(formData.get("id"), 1);
+    if (!id) return fail("用户编号不正确");
+    await markPanelClientDirty(getDbPool(), id);
+    await audit("admin.user_resynced", "user", id, {}, admin.id);
+    refreshAdmin();
+    return ok("已加入同步队列，worker 数秒内处理");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "重新同步失败");
+  }
+}
+
+/** 所有同步失败的用户立即重试（清空退避），不改变期望版本。 */
+export async function retryFailedSyncAction(): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminUser();
+    const [result] = await getDbPool().execute<ResultSetHeader>(
+      `UPDATE panel_clients SET attempts = 0, next_attempt_at = CURRENT_TIMESTAMP WHERE sync_status = 'failed'`,
+    );
+    await audit("admin.sync_failures_retried", "panel_clients", "failed", { count: result.affectedRows }, admin.id);
+    refreshAdmin();
+    return ok(result.affectedRows ? `已安排 ${result.affectedRows} 个用户立即重试` : "当前没有同步失败的用户");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "重试失败");
   }
 }
 

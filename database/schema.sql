@@ -1000,3 +1000,18 @@ DEALLOCATE PREPARE users_telegram_unique_statement;
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260920_006', 'AeraNexaBot binding, deduplicated updates and notification delivery ledger');
+
+-- 节点 worker 每个任务的最近一次运行结果，供后台判断 worker 是否存活、同步是否正常。
+CREATE TABLE IF NOT EXISTS worker_runs (
+  task VARCHAR(32) NOT NULL COMMENT 'import | traffic | reconcile | event',
+  last_finished_at DATETIME NOT NULL,
+  last_ok TINYINT(1) NOT NULL DEFAULT 0 COMMENT '最近一次是否成功；DATETIME 只到秒，不能靠比较时间推断',
+  last_ok_at DATETIME NULL,
+  last_summary VARCHAR(500) NULL,
+  last_error VARCHAR(2000) NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (task)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260923_001', 'Node worker run status for admin sync observability');

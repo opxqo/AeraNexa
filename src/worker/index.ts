@@ -19,6 +19,7 @@ import { getNumberSetting } from "../lib/server/settings";
 import { collectTraffic } from "../lib/server/panel/collect-traffic";
 import { importInbounds } from "../lib/server/panel/import-inbounds";
 import { listDirtyUserIds, reconcileClients, type ReconcileResult } from "../lib/server/panel/reconcile";
+import { recordWorkerRun, type WorkerTask } from "../lib/server/worker-status";
 
 const LEADER_LOCK = "aeranexa:node-worker";
 
@@ -83,18 +84,26 @@ async function acquireLeadership(): Promise<PoolConnection> {
   throw new Error("stopped before acquiring leadership");
 }
 
+/** 运行记录写失败只打日志：后台看不到状态不应影响同步本身。 */
+async function record(key: WorkerTask, outcome: { ok: boolean; summary?: string | null; error?: string | null }): Promise<void> {
+  await recordWorkerRun(key, outcome).catch((error: unknown) => log("写入运行记录失败", error));
+}
+
 /** 返回下一次执行前应额外暂停的毫秒数（面板不可达时暂停）。 */
-async function runTask(name: string, task: () => Promise<string | null>): Promise<number> {
+async function runTask(key: WorkerTask, name: string, task: () => Promise<string | null>): Promise<number> {
   try {
     const summary = await task();
     if (summary) log(`${name}：${summary}`);
+    await record(key, { ok: true, summary: summary ?? "无变更" });
     return 0;
   } catch (error) {
     if (error instanceof PanelError) {
       log(`${name}失败（${error.kind}）：${error.message}`);
+      await record(key, { ok: false, error: error.message });
       return error.retryable ? PANEL_DOWN_PAUSE : 0;
     }
     log(`${name}异常`, error);
+    await record(key, { ok: false, error: error instanceof Error ? error.message : String(error) });
     return 0;
   }
 }
@@ -125,7 +134,7 @@ async function main(): Promise<void> {
       }
 
       if (now >= nextImport) {
-        pause = await runTask("入站导入", async () => {
+        pause = await runTask("import", "入站导入", async () => {
           const r = await importInbounds();
           const changed = r.created + r.updated + r.restored + r.missing;
           return changed ? `新增 ${r.created}，更新 ${r.updated}，恢复 ${r.restored}，失踪 ${r.missing}` : null;
@@ -135,7 +144,7 @@ async function main(): Promise<void> {
 
       // 流量先于对账：本轮刚超额的用户会被标脏，紧接着的同步即可停用。
       if (!pause && now >= nextTraffic) {
-        pause = await runTask("流量采集", async () => {
+        pause = await runTask("traffic", "流量采集", async () => {
           const r = await collectTraffic();
           if (!r.users && !r.nodes) return null;
           const mb = (r.bytes / 1024 / 1024).toFixed(2);
@@ -145,13 +154,13 @@ async function main(): Promise<void> {
       }
 
       if (!pause && now >= nextReconcile) {
-        pause = await runTask("全量对账", async () => {
+        pause = await runTask("reconcile", "全量对账", async () => {
           const r = await reconcileClients("all");
           return r.changed || r.failed || r.orphansDeleted ? describe(r) : null;
         });
         nextReconcile = now + intervals.reconcile;
       } else if (!pause) {
-        pause = await runTask("事件同步", async () => {
+        pause = await runTask("event", "事件同步", async () => {
           const userIds = await listDirtyUserIds();
           if (!userIds.length) return null;
           return describe(await reconcileClients({ userIds }));

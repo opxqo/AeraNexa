@@ -37,6 +37,8 @@ import {
   saveSmtpSettingsAction,
   testSmtpSettingsAction,
   clearUserDevicesAction,
+  resyncUserAction,
+  retryFailedSyncAction,
   createRechargeCardsAction,
   getRechargeCardBatchDetailsAction,
   updateOrderStatusAction,
@@ -273,7 +275,7 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
             <thead>
               <tr>
                 <th>用户</th><th>身份</th><th>套餐</th><th>到期时间</th>
-                <th>已用 / 额度</th><th>余额</th><th>状态</th><th>操作</th>
+                <th>已用 / 额度</th><th>余额</th><th>状态</th><th title="3x-ui 客户端同步状态">节点同步</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -290,9 +292,10 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
                       {row.isActive ? "正常" : "停用"}
                     </span>
                   </td>
+                  <td><SyncBadge status={row.syncStatus} error={row.syncError} /></td>
                   <td><EditButton onClick={() => setSelected(row)} /></td>
                 </tr>
-              )) : <tr><td colSpan={8} className="admin-empty">没有匹配的用户</td></tr>}
+              )) : <tr><td colSpan={9} className="admin-empty">没有匹配的用户</td></tr>}
             </tbody>
           </table>
         </div>
@@ -352,6 +355,21 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
                 </div>
               </div>
             </div>
+            <div className="v2-field">
+              <span>3x-ui 客户端同步</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <SyncBadge status={selected.syncStatus} />
+                <button
+                  type="button"
+                  className="admin-action-button"
+                  disabled={pending}
+                  onClick={() => submit(resyncUserAction, buildForm({ id: selected.id }), close)}
+                >
+                  立即重同步
+                </button>
+              </div>
+              {selected.syncError ? <small className="admin-sync-error">{selected.syncError}</small> : null}
+            </div>
             <small className="admin-hint">已用流量 {formatBytes(selected.usedBytes)}，由节点 worker 每分钟从 3x-ui 采集累加。</small>
             <label className="admin-check-row">
               <input name="isActive" type="checkbox" defaultChecked={selected.isActive} />
@@ -363,6 +381,31 @@ function UsersEditor({ page }: { page: Extract<AdminEditorData, { section: "user
       </EditorModal>
     </>
   );
+}
+
+type UserSyncStatus = Extract<AdminEditorData, { section: "users" }>["page"]["rows"][number]["syncStatus"];
+
+const SYNC_BADGES: Record<UserSyncStatus, { label: string; className: string }> = {
+  synced: { label: "已同步", className: "badge-success" },
+  pending: { label: "待同步", className: "badge-warning" },
+  failed: { label: "同步失败", className: "badge-danger" },
+  none: { label: "未开通", className: "" },
+};
+
+function SyncBadge({ status, error }: { status: UserSyncStatus; error?: string }) {
+  const badge = SYNC_BADGES[status];
+  return <span className={`v2-badge ${badge.className}`} title={error || undefined}>{badge.label}</span>;
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`;
+  return `${Math.floor(seconds / 86400)} 天`;
+}
+
+function formatAgo(seconds: number | null): string {
+  return seconds === null ? "从未运行" : `${formatDuration(seconds)}前`;
 }
 
 /** 后台展示的是本地化日期串，回填到 date 输入框需要 YYYY-MM-DD。 */
@@ -405,7 +448,7 @@ function PlansEditor({ page, groups }: { page: Extract<AdminEditorData, { sectio
           <table className="v2-table">
             <thead>
               <tr>
-                <th>套餐</th><th>流量</th><th>限速</th><th>月付</th>
+                <th>套餐</th><th>流量</th><th title="3x-ui 客户端层不支持限速，该字段暂不生效">限速（未生效）</th><th>月付</th>
                 <th>可售周期</th><th>售卖状态</th><th>操作</th>
               </tr>
             </thead>
@@ -464,7 +507,7 @@ function PlansEditor({ page, groups }: { page: Extract<AdminEditorData, { sectio
           </div>
           <div className="admin-form-grid">
             <label className="v2-field"><span>流量（GB）</span><input name="transferEnable" type="number" min="0" step="1" defaultValue={item?.transferEnable ?? 100} required /></label>
-            <label className="v2-field"><span>限速（Mbps，留空不限速）</span><input name="speedLimit" type="number" min="0" step="1" defaultValue={item?.speedLimit ?? ""} /></label>
+            <label className="v2-field"><span>限速（Mbps，暂未生效）</span><input name="speedLimit" type="number" min="0" step="1" defaultValue={item?.speedLimit ?? ""} /><small>3x-ui 客户端层不支持限速，保存后不会限制用户速率。</small></label>
           </div>
           <div className="admin-form-grid">
             <label className="v2-field"><span>人数上限（留空不限）</span><input name="capacityLimit" type="number" min="0" step="1" defaultValue={item?.capacityLimit ?? ""} /></label>
@@ -666,7 +709,111 @@ function AccessGroupsModal({ open, onClose, groups }: { open: boolean; onClose: 
   );
 }
 
-function NodesEditor({ page, groups }: { page: Extract<AdminEditorData, { section: "nodes" }>["page"]; groups: EditorAccessGroup[] }) {
+type NodesData = Extract<AdminEditorData, { section: "nodes" }>;
+
+/** 节点 worker 心跳、各任务上次结果、客户端同步计数与失败用户（设计文档第 8 步）。 */
+function SyncOverviewPanel({ sync }: { sync: NodesData["sync"] }) {
+  const { pending, submit } = useSubmit();
+  const { counts, failures } = sync;
+
+  return (
+    <section className="v2-block">
+      <header className="v2-block-header admin-sync-header">
+        <div className="admin-sync-title">
+          <h2>同步状态</h2>
+          <span
+            className={`v2-badge ${sync.workerAlive ? "badge-success" : "badge-danger"}`}
+            title={`超过 ${sync.staleAfterSeconds} 秒没有任何任务完成即判定未运行`}
+          >
+            {sync.workerAlive ? "Worker 运行中" : "Worker 未运行"}
+          </span>
+          <span className="v2-badge badge-success">已同步 {counts.synced}</span>
+          {counts.pending ? <span className="v2-badge badge-warning">待同步 {counts.pending}</span> : null}
+          {counts.failed ? <span className="v2-badge badge-danger">失败 {counts.failed}</span> : null}
+        </div>
+        {counts.failed ? (
+          <button
+            type="button"
+            className="button button-secondary"
+            disabled={pending}
+            onClick={() => submit(retryFailedSyncAction, buildForm({}), () => {})}
+          >
+            <RotateCcw size={15} />全部重试
+          </button>
+        ) : null}
+      </header>
+
+      {!sync.workerAlive ? (
+        <p className="admin-sync-alert">
+          {sync.lastSeenAgoSeconds === null
+            ? "尚未检测到节点 worker 运行记录。"
+            : `节点 worker 最近一次运行在 ${formatAgo(sync.lastSeenAgoSeconds)}。`}
+          用户开通、续费、到期与超额都不会同步到 3x-ui，请在服务器上运行 <code>pnpm worker</code>。
+        </p>
+      ) : null}
+
+      <div className="table-wrap">
+        <table className="v2-table">
+          <thead>
+            <tr><th>任务</th><th>上次运行</th><th>结果</th></tr>
+          </thead>
+          <tbody>
+            {sync.runs.map((run) => (
+              <tr key={run.task}>
+                <td>{run.label}</td>
+                <td>{formatAgo(run.finishedAgoSeconds)}</td>
+                <td>
+                  {run.finishedAgoSeconds === null ? "—" : run.ok
+                    ? <span className="admin-sync-summary">{run.summary || "无变更"}</span>
+                    : <span className="admin-sync-error">{run.error || "失败"}</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {failures.length ? (
+        <div className="table-wrap">
+          <table className="v2-table">
+            <thead>
+              <tr><th>同步失败的用户</th><th>重试次数</th><th>最近错误</th><th>下次自动重试</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {failures.map((failure) => (
+                <tr key={failure.userId}>
+                  <td>{failure.email}<small>u{failure.userId}</small></td>
+                  <td>{failure.attempts}</td>
+                  <td className="admin-sync-error">{failure.lastError || "—"}</td>
+                  <td>
+                    {failure.retryInSeconds === null
+                      ? "—"
+                      : failure.retryInSeconds <= 0 ? "等待 worker 处理" : `${formatDuration(failure.retryInSeconds)}后`}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="admin-action-button"
+                      disabled={pending}
+                      onClick={() => submit(resyncUserAction, buildForm({ id: failure.userId }), () => {})}
+                    >
+                      立即重试
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {counts.failed > failures.length ? (
+            <p className="admin-audit-note">仅显示最近 {failures.length} 个，共 {counts.failed} 个失败用户；「全部重试」对所有失败用户生效。</p>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function NodesEditor({ page, groups, sync }: { page: NodesData["page"]; groups: EditorAccessGroup[]; sync: NodesData["sync"] }) {
   const [selected, setSelected] = useState<(typeof page.rows)[number] | null | "new">(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const { pending, submit } = useSubmit();
@@ -704,6 +851,7 @@ function NodesEditor({ page, groups }: { page: Extract<AdminEditorData, { sectio
         </button>
       </div>
       <AccessGroupsModal open={groupsOpen} onClose={() => setGroupsOpen(false)} groups={groups} />
+      <SyncOverviewPanel sync={sync} />
       <section className="v2-block">
         <div className="table-wrap">
           <table className="v2-table">
@@ -2064,7 +2212,7 @@ export function AdminEditor({ data, q }: { data: AdminEditorData; q: string }) {
     if (data.section === "refunds") return <RefundsEditor page={data.page} />;
     if (data.section === "reconciliation") return <ReconciliationEditor page={data.page} />;
     if (data.section === "recharge-cards") return <RechargeCardsEditor page={data.page} q={q} />;
-    if (data.section === "nodes") return <NodesEditor page={data.page} groups={data.groups} />;
+    if (data.section === "nodes") return <NodesEditor page={data.page} groups={data.groups} sync={data.sync} />;
     if (data.section === "tickets") return <TicketsEditor page={data.page} />;
     if (data.section === "notices") return <NoticesEditor page={data.page} />;
     if (data.section === "knowledge") return <KnowledgeEditor page={data.page} />;

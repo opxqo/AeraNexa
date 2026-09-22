@@ -9,6 +9,7 @@ import { listSettingsForAdmin, settingsEncryptionReady, type AdminSettingView } 
 import { badRequest, notFound } from "./errors";
 import { ensureSystemPaymentMethods } from "./client-portal";
 import { ONETIME_PERIOD, RECURRING_PERIODS } from "./subscription";
+import { loadSyncOverview, type SyncOverview } from "./worker-status";
 
 export type AdminListQuery = { q?: string; page?: number; pageSize?: number };
 export type AdminPage<T> = { rows: T[]; total: number; page: number; pageSize: number };
@@ -34,6 +35,9 @@ type EditorUser = {
   deviceLimitOverride: number | null;
   /** 订阅层已登记设备数。 */
   deviceCount: number;
+  /** 3x-ui 客户端同步状态；none 表示尚未开通（没有 panel_clients 行）。 */
+  syncStatus: "synced" | "pending" | "failed" | "none";
+  syncError: string;
 };
 
 type EditorPlan = {
@@ -196,7 +200,7 @@ export type AdminEditorData =
   | { section: "refunds"; page: AdminPage<EditorRefund> }
   | { section: "reconciliation"; page: AdminPage<EditorReconciliation> }
   | { section: "recharge-cards"; page: AdminPage<EditorRechargeCardBatch> }
-  | { section: "nodes"; page: AdminPage<EditorNode>; groups: EditorAccessGroup[] }
+  | { section: "nodes"; page: AdminPage<EditorNode>; groups: EditorAccessGroup[]; sync: SyncOverview }
   | { section: "tickets"; page: AdminPage<EditorTicket> }
   | { section: "notices"; page: AdminPage<EditorNotice> }
   | { section: "knowledge"; page: AdminPage<EditorKnowledge> }
@@ -349,8 +353,11 @@ export async function getAdminEditorData(
       `SELECT u.id, u.email, u.nickname, u.role, u.is_active, u.expired_at, u.transfer_enable,
               u.balance, u.commission_balance, u.uuid, u.created_at, p.name AS plan_name,
               u.upload_bytes + u.download_bytes AS used_bytes, u.device_limit_override,
-              (SELECT COUNT(*) FROM user_devices d WHERE d.user_id = u.id) AS device_count
-         FROM users u LEFT JOIN plans p ON p.id = u.plan_id
+              (SELECT COUNT(*) FROM user_devices d WHERE d.user_id = u.id) AS device_count,
+              pc.sync_status, pc.last_error AS sync_error
+         FROM users u
+         LEFT JOIN plans p ON p.id = u.plan_id
+         LEFT JOIN panel_clients pc ON pc.user_id = u.id
          ${where} ORDER BY u.id DESC${limitClause}`,
       params,
     );
@@ -379,6 +386,10 @@ export async function getAdminEditorData(
           usedBytes: asNumber(row.used_bytes),
           deviceLimitOverride: row.device_limit_override === null ? null : asNumber(row.device_limit_override),
           deviceCount: asNumber(row.device_count),
+          syncStatus: row.sync_status === "synced" || row.sync_status === "pending" || row.sync_status === "failed"
+            ? row.sync_status
+            : "none",
+          syncError: row.sync_error ? String(row.sync_error) : "",
         })),
       },
     };
@@ -572,6 +583,7 @@ export async function getAdminEditorData(
         })),
       },
       groups: await listAccessGroups(),
+      sync: await loadSyncOverview(),
     };
   }
 
