@@ -1,0 +1,19 @@
+[Unit]
+Description=AeraNexaBot（Telegram 查询机器人，仅在后台启用 telegram.enabled 时需要）
+Documentation=https://github.com/opxqo/AeraNexa
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/aeranexa
+ExecStart=/usr/bin/env pnpm bot
+Restart=always
+RestartSec=5
+User=aeranexa
+Group=aeranexa
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

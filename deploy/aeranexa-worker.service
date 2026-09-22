@@ -1,0 +1,22 @@
+[Unit]
+Description=AeraNexa 节点 worker（3x-ui 客户端同步 / 流量采集 / 入站导入）
+Documentation=https://github.com/opxqo/AeraNexa
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 改成实际部署路径（与 pnpm start 同一份代码）。
+WorkingDirectory=/opt/aeranexa
+# 需要能读到与 Web 进程相同的 .env.local（数据库连接、加密密钥等）。
+ExecStart=/usr/bin/env pnpm worker
+Restart=always
+RestartSec=5
+User=aeranexa
+Group=aeranexa
+# worker 收到 SIGTERM 会处理完当前任务再退出（src/worker/index.ts 的 shutdown()）。
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

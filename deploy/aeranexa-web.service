@@ -1,0 +1,19 @@
+[Unit]
+Description=AeraNexa Web（Next.js，含启动前自动迁移）
+Documentation=https://github.com/opxqo/AeraNexa
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/aeranexa
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+User=aeranexa
+Group=aeranexa
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
