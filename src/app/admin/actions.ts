@@ -23,6 +23,7 @@ import { importReconciliationCsv, resolveReconciliationRow } from "@/lib/server/
 import { savePaymentCallbackSecret } from "@/lib/server/payment-credentials";
 import { importInbounds } from "@/lib/server/panel/import-inbounds";
 import { getServerStatus, PanelError } from "@/lib/server/panel/client";
+import { invalidateMonitorAuthCache, testConnection } from "@/lib/server/monitor/client";
 import { markAllPanelClientsDirty, markPanelClientDirty } from "@/lib/server/node-sync";
 import { removeUserDevices } from "@/lib/server/devices";
 import { saveSettings } from "@/lib/server/settings";
@@ -107,6 +108,8 @@ export async function saveSystemSettingsAction(formData: FormData): Promise<Acti
       .map((def) => def.key);
     const changed = await saveSettings({ values, clearSecrets }, admin.id);
     if (!changed.length) return ok("没有需要保存的变更");
+    // 监控凭据变更后旧 JWT / 公开性探测结果必须立即作废，否则还会拿旧凭据请求。
+    if (changed.some((key) => key.startsWith("monitor."))) invalidateMonitorAuthCache();
     // 审计只记录改了哪些项，不记录值（其中可能有密钥）。
     await audit("admin.settings_saved", "system_settings", changed.join(","), {
       changed: changed.map((key) => findSettingDef(key)?.label ?? key),
@@ -126,6 +129,18 @@ export async function testPanelConnectionAction(): Promise<ActionResult> {
     return ok(`连接成功：3x-ui ${status.panelVersion}，Xray ${status.xrayVersion}（${status.xrayState === "running" ? "运行中" : status.xrayState}）`);
   } catch (error) {
     return fail(error instanceof Error ? error.message : "连接 3x-ui 失败");
+  }
+}
+
+/** 用当前生效的监控设置实跑一次读请求，验证地址与认证（公开免密钥 / 管理员 JWT 两种模式都走这里）。 */
+export async function testMonitorConnectionAction(): Promise<ActionResult> {
+  try {
+    await requireAdminUser();
+    const result = await testConnection();
+    const modeLabel = result.mode === "public" ? "公开免密钥" : "管理员 JWT";
+    return ok(`连接成功（${modeLabel}）：CF-Server-Monitor ${result.version}，节点 ${result.online}/${result.total} 在线`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "连接 CF-Server-Monitor 失败");
   }
 }
 

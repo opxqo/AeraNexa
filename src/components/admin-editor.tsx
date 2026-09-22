@@ -21,6 +21,7 @@ import {
   importInboundsAction,
   replyTicketAction,
   saveSystemSettingsAction,
+  testMonitorConnectionAction,
   testPanelConnectionAction,
   saveAccessGroupAction,
   saveCouponAction,
@@ -1967,6 +1968,17 @@ function SettingsEditor({ rows, encryptionReady }: { rows: Extract<AdminEditorDa
     });
   };
 
+  const testMonitor = () => {
+    startTesting(async () => {
+      try {
+        const result = await testMonitorConnectionAction();
+        showToast(result.message, result.ok ? "success" : "error");
+      } catch {
+        showToast("连接测试失败", "error");
+      }
+    });
+  };
+
   return (
     <form key={formKey} className="admin-editor-form" style={{ gridColumn: "1 / -1" }} onSubmit={(event) => { event.preventDefault(); submit(saveSystemSettingsAction, event.currentTarget, () => {}); }}>
       {!encryptionReady ? (
@@ -1982,6 +1994,12 @@ function SettingsEditor({ rows, encryptionReady }: { rows: Extract<AdminEditorDa
               <button type="button" className="button button-secondary" onClick={testPanel} disabled={testing}>
                 {testing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
                 {testing ? "测试中…" : "测试 3x-ui 连接"}
+              </button>
+            ) : null}
+            {group === "监控" ? (
+              <button type="button" className="button button-secondary" onClick={testMonitor} disabled={testing}>
+                {testing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                {testing ? "测试中…" : "测试监控连接"}
               </button>
             ) : null}
           </header>

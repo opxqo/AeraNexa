@@ -40,6 +40,7 @@ import type {
 } from "@/lib/api/types";
 import { ConfirmModal, Modal, useToast } from "@/components/v2-modal";
 import { OneClickSubscribeDrawer } from "@/components/one-click-subscribe";
+import { ServerStatusSection } from "@/components/node-monitor";
 import {
   AsyncBoundary,
   EmptyState,
@@ -1040,6 +1041,8 @@ export function ApiNodePage() {
           </div>
         </AsyncBoundary>
       </section>
+
+      <ServerStatusSection />
 
       <OneClickSubscribeDrawer
         open={subscribeDrawerOpen}

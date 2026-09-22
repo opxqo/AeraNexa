@@ -9,7 +9,7 @@
 
 export type SettingKind = "url" | "secret" | "int" | "number" | "select" | "text";
 
-export type SettingGroup = "节点" | "订阅" | "佣金" | "Worker" | "Telegram";
+export type SettingGroup = "节点" | "监控" | "订阅" | "佣金" | "Worker" | "Telegram";
 
 export type SettingDef = {
   key: string;
@@ -71,6 +71,59 @@ export const SETTING_DEFS: readonly SettingDef[] = [
     kind: "secret",
     env: "NODE_TRAFFIC_SECRET",
     defaultValue: "",
+  },
+  {
+    key: "monitor.base_url",
+    group: "监控",
+    label: "CF-Server-Monitor 地址",
+    description: "CFSM 探针监控系统的部署地址，例如 https://monitor.example.com。填写后节点状态页可展示其采集的负载、流量与延迟指标。",
+    kind: "url",
+    env: "CFSM_BASE_URL",
+    defaultValue: "",
+  },
+  {
+    key: "monitor.auth_mode",
+    group: "监控",
+    label: "监控对接模式",
+    description: "自动：先探测对方是否公开仪表盘，公开则免密钥直调，否则用管理员账号登录换取 JWT；公开免密钥：强制直调；管理员 JWT：强制账号密码登录（对方 is_public=false 或需要 24 小时以上历史时选它）。",
+    kind: "select",
+    env: "CFSM_AUTH_MODE",
+    defaultValue: "auto",
+    options: [
+      { value: "auto", label: "自动探测" },
+      { value: "public", label: "公开免密钥" },
+      { value: "jwt", label: "管理员 JWT" },
+    ],
+  },
+  {
+    key: "monitor.username",
+    group: "监控",
+    label: "监控管理员账号",
+    description: "CF-Server-Monitor 的管理员用户名。对方非公开仪表盘（或选择管理员 JWT 模式）时必填。",
+    kind: "text",
+    env: "CFSM_USERNAME",
+    defaultValue: "",
+  },
+  {
+    key: "monitor.password",
+    group: "监控",
+    label: "监控管理员密码",
+    description: "用于登录 CF-Server-Monitor 换取只读 JWT（7 天有效期，系统自动缓存与续期）。加密存储，保存后不再显示。",
+    kind: "secret",
+    env: "CFSM_PASSWORD",
+    defaultValue: "",
+  },
+  {
+    key: "monitor.timeout_ms",
+    group: "监控",
+    label: "监控请求超时",
+    description: "单次请求 CF-Server-Monitor 的超时时间。",
+    kind: "int",
+    env: "CFSM_TIMEOUT_MS",
+    defaultValue: "8000",
+    min: 1000,
+    max: 60000,
+    unit: "毫秒",
   },
   {
     key: "subscribe.base_url",
