@@ -1,10 +1,8 @@
-import { localApiRequest } from "./client";
-
 /**
  * CF-Server-Monitor 探针数据的前台类型定义。
  *
- * 数据来自服务端代理 `/api/monitor/servers`（见 src/lib/server/monitor/client.ts），
- * 代理已裁剪掉管理员 JWT，浏览器只拿到只读的节点与统计信息。
+ * 数据来自服务端中继的 SSE 流 `/api/monitor/stream`（见 src/lib/server/monitor/relay.ts），
+ * 浏览器不接触 CFSM 地址与凭据，只拿到只读的节点与统计信息。
  * 字段以 CFSM 原始响应为准，均为可选以兼容不同版本/未上报的节点。
  */
 
@@ -71,7 +69,14 @@ export type MonitorServer = {
   last_updated?: number;
   /** 配置时间戳（毫秒），并非上报时间，勿用于在线判定。 */
   timestamp?: number;
-  /** 延迟采样序列，末位为最新值。 */
+  /** 最新一次三网延迟（ms）/ 丢包（%），随每次推送更新；false 表示未探测。 */
+  ping_ct?: number | false;
+  ping_cu?: number | false;
+  ping_cm?: number | false;
+  loss_ct?: number | false;
+  loss_cu?: number | false;
+  loss_cm?: number | false;
+  /** 延迟采样序列（历史窗口，随快照刷新），末位为最新值。 */
   ping?: MonitorSamplePoint[];
   loss?: MonitorSamplePoint[];
 };
@@ -95,28 +100,11 @@ export type MonitorServersPayload = {
   sysConfig?: Record<string, unknown>;
 };
 
-/**
- * WS 实时推送消息（公开模式直连探针 /api/ws）。
- * 每条 update 的 samples 末位 data 为最新指标，需合并覆盖到对应节点上。
- */
-export type MonitorBatchUpdateMessage = {
-  type: "batchUpdate";
-  ts?: number;
-  updates: Array<{
-    serverId: string;
-    samples?: Array<{ ts?: number; data?: Record<string, unknown> }>;
-  }>;
-};
+/** SSE 数据流地址：事件 snapshot（MonitorServersPayload）/ update / status。 */
+export const MONITOR_STREAM_URL = "/api/monitor/stream";
 
-export const monitorApi = {
-  /** 拉取全部服务器实时状态与全局统计。 */
-  async getServers(): Promise<MonitorServersPayload> {
-    return localApiRequest<MonitorServersPayload>("monitor/servers");
-  },
+/** update 事件：发生变化的服务器，只含 id、变化字段与 last_updated，按 id 浅合并。 */
+export type MonitorServerDelta = Partial<MonitorServer> & { id: string };
 
-  /** 浏览器可直连的实时通道地址；JWT 模式返回 null（前端应回退轮询）。 */
-  async getWsUrl(): Promise<string | null> {
-    const result = await localApiRequest<{ url: string | null }>("monitor/ws-url");
-    return result?.url ?? null;
-  },
-};
+/** status 事件：上游实时通道是否在推送，以及最近一次错误。 */
+export type MonitorStreamStatus = { live: boolean; error: string | null };

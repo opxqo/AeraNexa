@@ -279,16 +279,16 @@ export async function getHistory(id: string, hours: number): Promise<unknown[]> 
 }
 
 /**
- * 浏览器侧实时通道地址。仅公开模式返回（不含任何凭据）；
- * 需要 JWT 的模式返回 null —— CFSM 的 JWT 等同管理员权限，不能下发给浏览器，
- * 这种模式下节点页应轮询 /api/monitor/servers 代理接口。
+ * 服务端中继（relay.ts）连接 CFSM 实时通道的地址。
+ * JWT 模式把 token 放进查询参数（CFSM WS 鉴权接受 token，见 src/middleware/auth.js:6），
+ * 该地址等同管理员凭据，只能在服务端使用，绝不能下发给浏览器。
  */
-export async function buildWsUrl(subscribe: "all" | string = "all"): Promise<string | null> {
+export async function buildRelayWsUrl(): Promise<string> {
   const config = await readConfig();
   const token = await resolveToken(config);
-  if (token) return null;
   const url = new URL(`${config.baseUrl}/api/ws`);
-  url.searchParams.set("subscribe", subscribe);
+  url.searchParams.set("subscribe", "all");
+  if (token) url.searchParams.set("token", token);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }

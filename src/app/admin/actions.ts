@@ -24,6 +24,7 @@ import { savePaymentCallbackSecret } from "@/lib/server/payment-credentials";
 import { importInbounds } from "@/lib/server/panel/import-inbounds";
 import { getServerStatus, PanelError } from "@/lib/server/panel/client";
 import { invalidateMonitorAuthCache, testConnection } from "@/lib/server/monitor/client";
+import { restartMonitorRelay } from "@/lib/server/monitor/relay";
 import { markAllPanelClientsDirty, markPanelClientDirty } from "@/lib/server/node-sync";
 import { removeUserDevices } from "@/lib/server/devices";
 import { saveSettings } from "@/lib/server/settings";
@@ -109,7 +110,10 @@ export async function saveSystemSettingsAction(formData: FormData): Promise<Acti
     const changed = await saveSettings({ values, clearSecrets }, admin.id);
     if (!changed.length) return ok("没有需要保存的变更");
     // 监控凭据变更后旧 JWT / 公开性探测结果必须立即作废，否则还会拿旧凭据请求。
-    if (changed.some((key) => key.startsWith("monitor."))) invalidateMonitorAuthCache();
+    if (changed.some((key) => key.startsWith("monitor."))) {
+      invalidateMonitorAuthCache();
+      restartMonitorRelay();
+    }
     // 审计只记录改了哪些项，不记录值（其中可能有密钥）。
     await audit("admin.settings_saved", "system_settings", changed.join(","), {
       changed: changed.map((key) => findSettingDef(key)?.label ?? key),
