@@ -116,14 +116,34 @@ export type EpayMerchantCheck = {
   balance: string;
   orders: number;
   ordersToday: number;
+  /** act=paytype 返回的已开通支付方式；查询失败时为 null。 */
+  payTypes: { name: string; label: string }[] | null;
 };
+
+/** act=paytype 的返回结构文档没写死，按常见形态宽松解析：data 数组、顶层数组或 name→showname 映射。 */
+function parsePayTypes(body: Record<string, unknown>): { name: string; label: string }[] | null {
+  if (Number(body.code) !== 1) return null;
+  const source = Array.isArray(body.data) ? body.data : Object.values(body).find(Array.isArray);
+  if (Array.isArray(source)) {
+    return source
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => ({ name: String(item.name ?? ""), label: String(item.showname ?? item.name ?? "") }))
+      .filter((item) => item.name);
+  }
+  const map = typeof body.data === "object" && body.data !== null ? (body.data as Record<string, unknown>) : null;
+  return map ? Object.entries(map).map(([name, label]) => ({ name, label: String(label) })) : null;
+}
 
 /** act=query：只读查询商户信息，用来验证网关地址、商户号、密钥三者是否匹配。 */
 export async function checkEpayMerchant(methodId: number): Promise<EpayMerchantCheck> {
   const channel = await resolveChannel(methodId);
   const body = await callEpayApi(channel.gatewayUrl, { act: "query", pid: channel.pid, key: channel.key });
   if (Number(body.code) !== 1) throw badRequest(`网关拒绝：${String(body.msg ?? "商户号或密钥不正确")}`);
+  const payTypes = await callEpayApi(channel.gatewayUrl, { act: "paytype", pid: channel.pid, key: channel.key })
+    .then(parsePayTypes)
+    .catch(() => null);
   return {
+    payTypes,
     active: Number(body.active) === 1,
     balance: String(body.money ?? "0.00"),
     orders: Number(body.orders ?? 0),

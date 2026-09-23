@@ -126,7 +126,7 @@ export function EpayLiveTest({ overview, initialStatus }: { overview: EpayTestOv
               <tbody>
                 {overview.channels.map((channel) => (
                   <tr key={channel.id}>
-                    <td><input type="radio" name="epay-channel" aria-label={`选择 ${channel.name}`} checked={methodId === channel.id} disabled={Boolean(payment)} onChange={() => { setMethodId(channel.id); setMerchant(null); }} /></td>
+                    <td><input type="radio" name="epay-channel" aria-label={`选择 ${channel.name}`} checked={methodId === channel.id} onChange={() => { setMethodId(channel.id); setMerchant(null); reset(); }} /></td>
                     <td>{channel.name}</td>
                     <td className="mono">{channel.provider}</td>
                     <td>{channel.enabled ? <Badge tone="success">启用</Badge> : <Badge tone="warning">停用</Badge>}</td>
@@ -154,6 +154,21 @@ export function EpayLiveTest({ overview, initialStatus }: { overview: EpayTestOv
                   {merchant.active ? <Badge tone="success">商户正常</Badge> : <Badge tone="danger">商户未激活</Badge>}
                   <span>余额 ¥{merchant.balance} · 今日订单 {merchant.ordersToday} · 累计 {merchant.orders}</span>
                 </p>
+              ) : null}
+              {merchant ? (
+                <p className="epay-live-result">
+                  <span>已开通：</span>
+                  {merchant.payTypes === null
+                    ? <Badge tone="warning">无法获取</Badge>
+                    : merchant.payTypes.length
+                      ? merchant.payTypes.map((item) => (
+                        <Badge key={item.name} tone={selected && selected.provider === `epay_${item.name}` ? "success" : "warning"}>{item.label}（{item.name}）</Badge>
+                      ))
+                      : <Badge tone="danger">无</Badge>}
+                </p>
+              ) : null}
+              {merchant?.payTypes && selected && !merchant.payTypes.some((item) => selected.provider === `epay_${item.name}`) ? (
+                <p className="admin-error-text"><CircleAlert size={14} /> 商户未开通 {selected.provider.replace("epay_", "")}，该渠道下单会被网关拒绝，请联系渠道开通。</p>
               ) : null}
             </div>
 
