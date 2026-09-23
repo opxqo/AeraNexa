@@ -22,6 +22,7 @@ import { listDirtyUserIds, reconcileClients, type ReconcileResult } from "../lib
 import { recordWorkerRun, type WorkerTask } from "../lib/server/worker-status";
 
 const LEADER_LOCK = "aeranexa:node-worker";
+const LEADER_POLL_MS = 5_000;
 
 type Intervals = { event: number; traffic: number; reconcile: number; import: number };
 
@@ -78,7 +79,8 @@ async function acquireLeadership(): Promise<PoolConnection> {
       log("已有其他 worker 在运行，进入待命");
       announced = true;
     }
-    await sleep(30_000);
+    // 滚动部署时旧容器收到 SIGTERM 后很快释放锁，短间隔让新容器尽快接手，避免同步中断。
+    await sleep(LEADER_POLL_MS);
   }
   connection.release();
   throw new Error("stopped before acquiring leadership");

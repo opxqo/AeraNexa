@@ -19,7 +19,19 @@ const connection = await mysql.createConnection({
   multipleStatements: true,
 });
 
+// 滚动部署或多副本时可能有多个实例同时启动：schema.sql 里「先查 information_schema 再 ALTER」
+// 不是原子的，并发执行会撞上重复加列等错误。用命名锁让迁移串行执行（锁不依赖具体库，库不存在时也可用）。
+const MIGRATION_LOCK = "aeranexa:migrate";
+const MIGRATION_LOCK_TIMEOUT_SECONDS = 120;
+
 try {
+  const [[lock]] = await connection.query("SELECT GET_LOCK(?, ?) AS acquired", [
+    MIGRATION_LOCK,
+    MIGRATION_LOCK_TIMEOUT_SECONDS,
+  ]);
+  if (Number(lock?.acquired) !== 1) {
+    throw new Error(`等待其他实例完成数据库迁移超时（${MIGRATION_LOCK_TIMEOUT_SECONDS} 秒）`);
+  }
   await connection.query(
     `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   );
@@ -34,5 +46,7 @@ try {
   );
   console.log(`AeraNexa database "${databaseName}" is ready (${tables.length} tables).`);
 } finally {
+  // 连接关闭时锁也会自动释放，这里显式释放只是为了不依赖这一点。
+  await connection.query("SELECT RELEASE_LOCK(?)", [MIGRATION_LOCK]).catch(() => {});
   await connection.end();
 }

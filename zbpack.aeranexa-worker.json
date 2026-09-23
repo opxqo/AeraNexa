@@ -1,0 +1,4 @@
+{
+  "build_command": "echo 'aeranexa-worker: 直接运行 TS 源码，跳过 next build'",
+  "start_command": "pnpm worker"
+}
