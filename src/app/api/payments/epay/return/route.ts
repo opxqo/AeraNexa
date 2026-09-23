@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { handleEpayNotice } from "@/lib/server/payments/epay";
 
 export const runtime = "nodejs";
@@ -14,6 +14,11 @@ export async function GET(request: NextRequest) {
     console.error("[epay return]", error);
   }
   // 后台测试单跳回支付测试台，并自动恢复该测试单的查询。
-  if (testTradeNo) return NextResponse.redirect(new URL(`/admin/payment-test?epay=${encodeURIComponent(testTradeNo)}`, request.url));
-  return NextResponse.redirect(new URL(tradeNo ? `/order/${encodeURIComponent(tradeNo)}` : "/order", request.url));
+  if (testTradeNo) return redirect(`/admin/payment-test?epay=${encodeURIComponent(testTradeNo)}`);
+  return redirect(tradeNo ? `/order/${encodeURIComponent(tradeNo)}` : "/order");
+}
+
+/** 用相对 Location：反向代理后 request.url 是容器内地址（如 localhost:8080），不能拿来拼绝对跳转。 */
+function redirect(path: string) {
+  return new Response(null, { status: 303, headers: { location: path } });
 }
