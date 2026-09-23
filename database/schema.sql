@@ -1015,3 +1015,27 @@ CREATE TABLE IF NOT EXISTS worker_runs (
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260923_001', 'Node worker run status for admin sync observability');
+
+-- 20260924_001：主动向支付渠道查单。
+-- last_queried_at 用于给查单限频（订单页轮询、worker 扫描、后台手动查单共用）；
+-- (status, created_at) 索引供 worker 扫描近期待处理 / 已关闭的交易。
+SET @payment_tx_queried_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'payment_transactions'
+    AND COLUMN_NAME = 'last_queried_at'
+);
+SET @payment_tx_queried_sql = IF(
+  @payment_tx_queried_exists = 0,
+  'ALTER TABLE payment_transactions
+     ADD COLUMN last_queried_at DATETIME NULL COMMENT ''最近一次向渠道主动查单的时间'' AFTER failed_at,
+     ADD KEY payment_transactions_status_created_index (status, created_at)',
+  'SELECT 1'
+);
+PREPARE payment_tx_queried_statement FROM @payment_tx_queried_sql;
+EXECUTE payment_tx_queried_statement;
+DEALLOCATE PREPARE payment_tx_queried_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260924_001', 'Payment transaction last_queried_at for active gateway order query');

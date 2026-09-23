@@ -14,6 +14,7 @@ import { markPanelClientDirty } from "./node-sync";
 import { getPaymentCallbackSecret } from "./payment-credentials";
 import { getEpayConfig } from "./payments/epay-config";
 import { buildEpaySubmitUrl, epayTypeOf } from "./payments/epay-protocol";
+import { PENDING_ORDER_TIMEOUT_MINUTES } from "./payments/order-payment-policy";
 import {
   badRequest,
   conflict,
@@ -122,7 +123,7 @@ function jsonList(value: unknown): unknown[] | null {
   }
 }
 
-function jsonNumberList(value: unknown): number[] | null {
+export function jsonNumberList(value: unknown): number[] | null {
   const list = jsonList(value);
   if (!list) return null;
   const numbers = list.map((item) => Number(item)).filter((item) => Number.isSafeInteger(item) && item > 0);
@@ -217,6 +218,8 @@ function serializeOrder(row: OrderRow) {
     status,
     status_label: ORDER_STATUS_LABELS[status] ?? "未知",
     payable: status === ORDER_STATUS.PENDING,
+    // 待支付订单的自动关闭时间：发起支付、改单都会刷新 updated_at，从而顺延。
+    pay_deadline: status === ORDER_STATUS.PENDING ? (unix(row.updated_at) ?? 0) + PENDING_ORDER_TIMEOUT_MINUTES * 60 : null,
     paid_at: unix(row.paid_at),
     cancelled_at: unix(row.cancelled_at),
     completed_at: unix(row.completed_at),
@@ -725,6 +728,7 @@ export async function cancelOrder(userId: number, tradeNo: string) {
       await connection.commit();
       return true;
     }
+    if (asNumber(order.status) === ORDER_STATUS.COMPLETED) throw conflict("订单已支付完成，无法取消");
     if (asNumber(order.status) !== ORDER_STATUS.PENDING) throw conflict("该订单当前不可取消");
 
     const [updated] = await connection.execute<ResultSetHeader>(
@@ -733,6 +737,7 @@ export async function cancelOrder(userId: number, tradeNo: string) {
       [ORDER_STATUS.CANCELLED, order.id, ORDER_STATUS.PENDING],
     );
     if (updated.affectedRows !== 1) throw conflict("该订单当前不可取消");
+    await closePendingTransactions(connection, asNumber(order.id));
 
     // 取消后释放优惠券占用，避免用户额度被僵尸订单吃掉。
     // 核销事实只存在 coupon_usages，删除即完成释放。
@@ -1074,6 +1079,17 @@ async function fulfillOrder(connection: PoolConnection, order: OrderRow, userId:
 }
 
 /**
+ * 关闭订单下所有未完成的支付流水（订单入账、取消、超时关闭时调用）。
+ * 关闭只表示本站不再等待它；渠道若之后仍确认收款，回调会按迟到付款处理，不会丢钱。
+ */
+export async function closePendingTransactions(connection: PoolConnection, orderId: number): Promise<void> {
+  await connection.execute(
+    `UPDATE payment_transactions SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status = 'pending'`,
+    [orderId],
+  );
+}
+
+/**
  * 履约来源。
  * gateway = 支付网关回调；admin = 后台人工补单。
  * 两者必须可区分，否则对账时无法判断一笔「已完成」是否真的收到过钱。
@@ -1103,6 +1119,8 @@ export async function settleOrder(
     [ORDER_STATUS.COMPLETED, source, adminId, providerTradeNo, order.id, ORDER_STATUS.PENDING],
   );
   if (claimed.affectedRows !== 1) throw conflict("订单已被处理，请刷新后查看");
+  // 同一订单可能发起过多次支付，入账后其余未完成的流水一并关闭；调用方随后把本次流水标记为 completed。
+  await closePendingTransactions(connection, asNumber(order.id));
 
   // 升级时把被折抵的历史订单标记为「已折抵」。
   const surplusOrderIds = jsonNumberList(order.surplus_order_ids);

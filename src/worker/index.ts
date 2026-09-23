@@ -5,7 +5,8 @@
  * - 事件同步：处理被标脏的用户（默认每 5s）；
  * - 流量采集：累加已用流量，超额用户标脏（默认每 60s）；
  * - 全量对账：兜底到期与手工改动（默认每 60s）；
- * - 入站导入：同步 3x-ui 入站变化（默认每 10min）。
+ * - 入站导入：同步 3x-ui 入站变化（默认每 10min）；
+ * - 支付查单：向支付渠道查询近期交易并关闭超时订单（每 15s，与 3x-ui 是否可达无关）。
  *
  * 间隔在后台「系统设置 → Worker」中调整，每轮重新读取，改完无需重启。
  *
@@ -19,6 +20,7 @@ import { getNumberSetting } from "../lib/server/settings";
 import { collectTraffic } from "../lib/server/panel/collect-traffic";
 import { importInbounds } from "../lib/server/panel/import-inbounds";
 import { listDirtyUserIds, reconcileClients, type ReconcileResult } from "../lib/server/panel/reconcile";
+import { sweepOrderPayments } from "../lib/server/payments/order-payments";
 import { recordWorkerRun, type WorkerTask } from "../lib/server/worker-status";
 
 const LEADER_LOCK = "aeranexa:node-worker";
@@ -39,6 +41,8 @@ async function readIntervals(): Promise<Intervals> {
 function describeIntervals(i: Intervals): string {
   return `事件 ${i.event}ms / 流量 ${i.traffic}ms / 全量 ${i.reconcile}ms / 导入 ${i.import}ms`;
 }
+/** 支付查单间隔：用户付款后通知丢失时，最迟约这么久开通。 */
+const PAYMENTS_INTERVAL = 15_000;
 /** 3x-ui 不可达时的整体暂停时间。 */
 const PANEL_DOWN_PAUSE = 30_000;
 
@@ -122,6 +126,7 @@ async function main(): Promise<void> {
   let nextReconcile = 0;
   let nextImport = 0;
   let nextTraffic = 0;
+  let nextPayments = 0;
 
   try {
     while (!stopping) {
@@ -133,6 +138,16 @@ async function main(): Promise<void> {
       if (describeIntervals(latest) !== describeIntervals(intervals)) {
         log(`调度间隔已更新（${describeIntervals(latest)}）`);
         intervals = latest;
+      }
+
+      // 支付查单不依赖 3x-ui，放在最前面，面板不可达导致的暂停不影响它。
+      if (now >= nextPayments) {
+        await runTask("payments", "支付查单", async () => {
+          const r = await sweepOrderPayments();
+          if (!r.queried && !r.closedOrders && !r.errors) return null;
+          return `查单 ${r.queried}，确认收款 ${r.paid}，超时关单 ${r.closedOrders}${r.errors ? `，失败 ${r.errors}` : ""}`;
+        });
+        nextPayments = now + PAYMENTS_INTERVAL;
       }
 
       if (now >= nextImport) {

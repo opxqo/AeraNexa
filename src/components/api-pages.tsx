@@ -609,7 +609,8 @@ export function ApiOrderPage() {
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 100;
 
-export function ApiOrderDetailPage({ tradeNo }: { tradeNo: string }) {
+/** resumePolling：从支付渠道收银台跳回（?paying=1）时直接进入等待结果状态。 */
+export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo: string; resumePolling?: boolean }) {
   const { showToast } = useToast();
   const { refreshUser } = useAuth();
 
@@ -627,7 +628,7 @@ export function ApiOrderDetailPage({ tradeNo }: { tradeNo: string }) {
 
   const [selectedMethodState, setSelectedMethod] = useState<number | null>(null);
   const [checkoutData, setCheckoutData] = useState<CheckoutResult | null>(null);
-  const [polling, setPolling] = useState(false);
+  const [polling, setPolling] = useState(resumePolling);
 
   const payGuard = useSubmitGuard();
   const pollAttemptsRef = useRef(0);
@@ -655,7 +656,8 @@ export function ApiOrderDetailPage({ tradeNo }: { tradeNo: string }) {
           setPolling(false);
           orderState.reload();
           await refreshUser();
-          showToast(`支付结果已确认：${result.status_label}`, "success");
+          if (result.status === 2) showToast("订单已超时关闭；如已付款，系统确认到账后会自动恢复开通", "warning");
+          else showToast(`支付结果已确认：${result.status_label}`, "success");
         })
         .catch(() => {
           // 轮询失败不打扰用户，交由下一轮重试
@@ -680,8 +682,11 @@ export function ApiOrderDetailPage({ tradeNo }: { tradeNo: string }) {
           showToast("余额支付成功，订阅已开通", "success");
           return;
         }
+        // 当前页跳转收银台：await 之后再 window.open 会被浏览器当作弹窗拦截，手机上多开标签页体验也差。
+        // 付款后渠道经 return 路由跳回本订单页（?paying=1），自动继续等待结果。
         if (result.type === 1 && result.data) {
-          window.open(result.data, "_blank", "noopener,noreferrer");
+          window.location.assign(result.data);
+          return;
         }
         showToast("已发起支付，请完成付款", "info");
         setPolling(true);
@@ -862,6 +867,9 @@ export function ApiOrderDetailPage({ tradeNo }: { tradeNo: string }) {
 
               {order.status === 0 && !checkoutData && (
                 <p className="field-hint" style={{ marginTop: 10 }}>
+                  {order.pay_deadline
+                    ? `请在 ${new Date(order.pay_deadline * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })} 前完成支付，超时未付的订单会自动关闭。`
+                    : null}
                   支付完成后如页面未自动刷新，可点击上方「刷新状态」。
                 </p>
               )}

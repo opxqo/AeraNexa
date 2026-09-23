@@ -7,6 +7,7 @@ import { recordAudit, type AuditAction } from "@/lib/server/audit";
 import { requireAdminUser } from "@/lib/server/admin";
 import { getAdminKnowledgeArticle, getAdminRechargeCardBatchDetails, getAdminTicketMessages } from "@/lib/server/admin-editor";
 import {
+  closePendingTransactions,
   fulfillOrderByAdmin,
   updateOrderRemark,
   updatePendingOrder,
@@ -22,6 +23,7 @@ import { dispatchSandboxPaymentCallback } from "@/lib/server/payment-callbacks";
 import { importReconciliationCsv, resolveReconciliationRow } from "@/lib/server/reconciliation";
 import { savePaymentCallbackSecret } from "@/lib/server/payment-credentials";
 import { epayTypeOf } from "@/lib/server/payments/epay-protocol";
+import { syncOrderPayments } from "@/lib/server/payments/order-payments";
 import { importInbounds } from "@/lib/server/panel/import-inbounds";
 import { getServerStatus, PanelError } from "@/lib/server/panel/client";
 import { invalidateMonitorAuthCache, testConnection } from "@/lib/server/monitor/client";
@@ -1131,6 +1133,26 @@ export async function fulfillOrderAction(formData: FormData): Promise<ActionResu
   }
 }
 
+/**
+ * 向支付渠道查单：查询订单下所有易支付流水（含已关闭的），渠道确认已付即按网关回调入账。
+ * 用户反馈「付了钱没开通」时先用它核实，确认渠道确实没收到款再考虑人工补单。
+ */
+export async function queryOrderPaymentAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireAdminUser();
+    const id = intValue(formData.get("id"), 1);
+    if (!id) return fail("订单编号不正确");
+    const summary = await syncOrderPayments(id, { includeClosed: true });
+    refreshAdmin();
+    if (!summary.transactions) return fail("该订单没有易支付流水，无法向渠道查单");
+    if (summary.paid) return ok(`渠道确认已收款，已自动入账（${summary.paid}/${summary.transactions} 笔流水）`);
+    if (summary.errors.length) return fail(`查单失败：${summary.errors[0]}`);
+    return ok(`渠道显示未付款（共 ${summary.transactions} 笔流水）`);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "查单失败");
+  }
+}
+
 /** 保存订单内部备注（仅后台可见）。 */
 export async function saveOrderRemarkAction(formData: FormData): Promise<ActionResult> {
   try {
@@ -1158,6 +1180,9 @@ export async function updateOrderStatusAction(formData: FormData): Promise<Actio
     if (status !== ORDER_STATUS.PENDING && status !== ORDER_STATUS.CANCELLED) {
       return fail("订单只能在待支付和已取消之间切换，已支付订单须经支付回调履约");
     }
+
+    // 取消前先向渠道确认没付过款，已付的会在这里直接开通，随后的状态校验会拒绝取消。
+    if (status === ORDER_STATUS.CANCELLED) await syncOrderPayments(id).catch(() => null);
 
     const pool = getDbPool();
     const connection = await pool.getConnection();
@@ -1193,6 +1218,7 @@ export async function updateOrderStatusAction(formData: FormData): Promise<Actio
       if (status === ORDER_STATUS.CANCELLED && order.coupon_id !== null) {
         await connection.execute(`DELETE FROM coupon_usages WHERE order_id = ?`, [id]);
       }
+      if (status === ORDER_STATUS.CANCELLED) await closePendingTransactions(connection, id);
 
       await connection.commit();
     } catch (error) {

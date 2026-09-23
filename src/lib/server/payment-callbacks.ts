@@ -1,11 +1,12 @@
 import "server-only";
 
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import type { ResultSetHeader, RowDataPacket } from "mysql2";
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { badRequest, conflict, forbidden, notFound, unavailable } from "./errors";
 import { getDbPool } from "./db";
 import { getPaymentCallbackSecret } from "./payment-credentials";
-import { getOrder, settleOrder } from "./client-portal";
+import { getOrder, jsonNumberList, settleOrder, type OrderRow } from "./client-portal";
+import { decideConfirmedPayment } from "./payments/order-payment-policy";
 import { ORDER_STATUS } from "./subscription";
 
 const MAX_CALLBACK_AGE_SECONDS = 300;
@@ -150,7 +151,9 @@ export async function applyGatewayCallback(input: GatewayCallbackInput) {
       return { duplicate: false, processed: false, unmatched: true };
     }
 
-    if (asNumber(order.status) === ORDER_STATUS.COMPLETED && String(transaction.status) === "completed") {
+    const transactionStatus = String(transaction.status);
+    // 同一笔流水已入账（例如异步通知与主动查单先后到达），直接确认。
+    if (transactionStatus === "completed") {
       await connection.execute(
         `UPDATE payment_callback_events SET processing_status = 'processed', transaction_id = ?, order_id = ?, processed_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [transactionId, orderId, receiptId],
@@ -158,9 +161,59 @@ export async function applyGatewayCallback(input: GatewayCallbackInput) {
       await connection.commit();
       return { duplicate: false, processed: true };
     }
-    if (asNumber(order.status) !== ORDER_STATUS.PENDING || String(transaction.status) !== "pending") throw conflict("订单或支付交易当前不可处理");
+    // closed：订单入账 / 取消 / 超时关闭时本站不再等待的流水。渠道仍确认收款时照样要处理，不能丢钱。
+    if (transactionStatus !== "pending" && transactionStatus !== "closed") throw conflict("支付交易当前不可处理");
 
-    await settleOrder(connection, order, asNumber(transaction.user_id), "gateway", null, payload.provider_trade_no);
+    const userId = asNumber(transaction.user_id);
+    const action = decideConfirmedPayment({
+      status: asNumber(order.status),
+      orderType: asNumber(order.order_type),
+      hasSurplus: Boolean(jsonNumberList(order.surplus_order_ids)?.length),
+      fulfillmentSource: order.fulfillment_source,
+    });
+
+    if (action === "confirm") {
+      await connection.execute(
+        "UPDATE payment_transactions SET status = 'completed', paid_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [transactionId],
+      );
+      await connection.execute(
+        `UPDATE orders SET admin_remark = CONCAT_WS('；', admin_remark, '渠道已确认收款，与人工补单对应'), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [orderId],
+      );
+      await connection.execute(
+        `UPDATE payment_callback_events SET processing_status = 'processed', error_message = 'order already fulfilled by admin',
+           transaction_id = ?, order_id = ?, processed_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [transactionId, orderId, receiptId],
+      );
+      await connection.commit();
+      return { duplicate: false, processed: true };
+    }
+
+    if (action === "credit") {
+      await creditPaymentToBalance(connection, { userId, orderId, tradeNo: String(order.trade_no), amount: asNumber(transaction.amount) });
+      await connection.execute(
+        "UPDATE payment_transactions SET status = 'credited', paid_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [transactionId],
+      );
+      await connection.execute(
+        `INSERT INTO payment_events
+          (order_id, transaction_id, provider, provider_event_id, event_type, signature_valid, payload, processing_status, processed_at)
+         VALUES (?, ?, ?, ?, 'payment.credited', 1, CAST(? AS JSON), 'processed', CURRENT_TIMESTAMP)`,
+        [orderId, transactionId, provider, input.eventId, input.rawBody],
+      );
+      await connection.execute(
+        `UPDATE payment_callback_events SET processing_status = 'processed', error_message = 'order not payable, credited to balance',
+           transaction_id = ?, order_id = ?, processed_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [transactionId, orderId, receiptId],
+      );
+      await connection.commit();
+      return { duplicate: false, processed: true, credited: true };
+    }
+
+    if (action === "reopen") await reopenCancelledOrder(connection, order, userId);
+
+    await settleOrder(connection, order, userId, "gateway", null, payload.provider_trade_no);
     await connection.execute("UPDATE payment_transactions SET status = 'completed', paid_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [transactionId]);
     await connection.execute(
       `INSERT INTO payment_events
@@ -180,6 +233,48 @@ export async function applyGatewayCallback(input: GatewayCallbackInput) {
   } finally {
     connection.release();
   }
+}
+
+/**
+ * 已取消 / 超时关闭的订单收到付款：恢复为待支付，随后由 settleOrder 按原价开通。
+ * 取消时释放过的优惠券重新核销（钱已按优惠价付了），即便这会让券的使用次数超出上限。
+ */
+async function reopenCancelledOrder(connection: PoolConnection, order: OrderRow, userId: number): Promise<void> {
+  const [reopened] = await connection.execute<ResultSetHeader>(
+    `UPDATE orders SET status = ?, cancelled_at = NULL,
+       admin_remark = COALESCE(admin_remark, '订单关闭后渠道确认收款，已自动恢复并开通'), updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND status = ?`,
+    [ORDER_STATUS.PENDING, order.id, ORDER_STATUS.CANCELLED],
+  );
+  if (reopened.affectedRows !== 1) throw conflict("订单状态已变化，请重试");
+  if (order.coupon_id !== null) {
+    await connection.execute(
+      `INSERT INTO coupon_usages (coupon_id, user_id, order_id, discount_amount)
+       SELECT ?, ?, ?, ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM coupon_usages WHERE order_id = ?)`,
+      [order.coupon_id, userId, order.id, asNumber(order.discount_amount), order.id],
+    );
+  }
+}
+
+/** 无法按原订单兑现的付款（重复支付、关单后的升级单等）全额转入余额，并在订单上留备注供后台查看。 */
+async function creditPaymentToBalance(
+  connection: PoolConnection,
+  input: { userId: number; orderId: number; tradeNo: string; amount: number },
+): Promise<void> {
+  const [rows] = await connection.execute<RowDataPacket[]>("SELECT balance FROM users WHERE id = ? FOR UPDATE", [input.userId]);
+  if (!rows[0]) throw notFound("用户不存在");
+  const nextBalance = asNumber(rows[0].balance) + input.amount;
+  await connection.execute("UPDATE users SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nextBalance, input.userId]);
+  await connection.execute(
+    `INSERT INTO wallet_transactions
+      (user_id, wallet_type, transaction_type, amount, balance_after, reference_type, reference_id, description)
+     VALUES (?, 'balance', 'payment_credit', ?, ?, 'order', ?, ?)`,
+    [input.userId, input.amount, nextBalance, input.orderId, `订单 ${input.tradeNo} 已关闭或已支付，付款转入余额`],
+  );
+  await connection.execute(
+    `UPDATE orders SET admin_remark = COALESCE(admin_remark, ?) WHERE id = ?`,
+    [`收到无法开通的付款 ${(input.amount / 100).toFixed(2)} 元，已转入用户余额`, input.orderId],
+  );
 }
 
 export async function dispatchSandboxPaymentCallback(transactionId: number) {

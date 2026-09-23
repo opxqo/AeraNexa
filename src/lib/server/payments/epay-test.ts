@@ -6,6 +6,7 @@ import { recordAudit } from "../audit";
 import { getDbPool } from "../db";
 import { badRequest, notFound, unavailable } from "../errors";
 import { getPaymentCallbackSecret } from "../payment-credentials";
+import { callEpayApi } from "./epay-api";
 import { getEpayConfig } from "./epay-config";
 import {
   buildEpaySubmitUrl,
@@ -86,29 +87,6 @@ async function resolveChannel(methodId: number) {
   if (!key) throw unavailable(`支付渠道「${name}」未配置商户密钥`);
   const { gatewayUrl, pid } = await getEpayConfig();
   return { id: methodId, name, provider: String(row.provider), type, notifyBase, key, gatewayUrl, pid };
-}
-
-/**
- * 调用 api.php：该接口以明文 key 鉴权，只能在服务端调用，返回给前端前必须剔除 key。
- * 渠道只从查询串读取 act（POST 表单会返回 "No Act!"），所以用 GET。
- */
-async function callEpayApi(gatewayUrl: string, params: Record<string, string>): Promise<Record<string, unknown>> {
-  const url = new URL("api.php", gatewayUrl.endsWith("/") ? gatewayUrl : `${gatewayUrl}/`);
-  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
-  let response: Response;
-  try {
-    response = await fetch(url, { signal: AbortSignal.timeout(10_000), cache: "no-store" });
-  } catch (error) {
-    throw unavailable(`无法连接易支付网关：${error instanceof Error ? error.message : String(error)}`);
-  }
-  const text = await response.text();
-  try {
-    const body = JSON.parse(text) as Record<string, unknown>;
-    delete body.key;
-    return body;
-  } catch {
-    throw unavailable(`网关返回非 JSON（HTTP ${response.status}）：${text.slice(0, 120)}`);
-  }
 }
 
 export type EpayMerchantCheck = {

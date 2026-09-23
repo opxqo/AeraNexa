@@ -42,6 +42,7 @@ import {
   createRechargeCardsAction,
   getRechargeCardBatchDetailsAction,
   updateOrderStatusAction,
+  queryOrderPaymentAction,
   refundBalanceOrderAction,
   importReconciliationCsvAction,
   resolveReconciliationRowAction,
@@ -1241,6 +1242,14 @@ function OrdersEditor({ page, plans }: {
                         <button type="button" className="admin-action-button" onClick={() => openEdit(row)} disabled={pending}>
                           <Pencil size={14} />改单
                         </button>
+                        {row.paymentProvider?.startsWith("epay_") ? (
+                          <form onSubmit={(event) => { event.preventDefault(); submit(queryOrderPaymentAction, event.currentTarget, () => {}); }}>
+                            <input name="id" type="hidden" value={row.id} />
+                            <button type="submit" className="admin-action-button" disabled={pending} title="向支付渠道查询是否已收款，已付则自动入账">
+                              <RefreshCw size={14} />向渠道查单
+                            </button>
+                          </form>
+                        ) : null}
                         <button type="button" className="admin-action-button" onClick={() => openFulfill(row)} disabled={pending}>
                           <CheckCheck size={14} />补单
                         </button>
@@ -1263,6 +1272,14 @@ function OrdersEditor({ page, plans }: {
                             <RotateCcw size={14} />恢复待支付
                           </button>
                         </form>
+                        {row.paymentProvider?.startsWith("epay_") ? (
+                          <form onSubmit={(event) => { event.preventDefault(); submit(queryOrderPaymentAction, event.currentTarget, () => {}); }}>
+                            <input name="id" type="hidden" value={row.id} />
+                            <button type="submit" className="admin-action-button" disabled={pending} title="向支付渠道查询是否已收款，已付则自动入账">
+                              <RefreshCw size={14} />向渠道查单
+                            </button>
+                          </form>
+                        ) : null}
                         <button type="button" className="admin-action-button" onClick={() => openRemark(row)} disabled={pending}>
                           <Pencil size={14} />备注
                         </button>
@@ -1286,7 +1303,7 @@ function OrdersEditor({ page, plans }: {
       </div>
       <p className="admin-audit-note">
         待支付订单可改套餐与周期，金额按与用户下单同一套价格链重算。已支付订单的金额是对账依据，不可修改。
-        线下转账、回调丢失等场景可用「补单」开通，补单必须填写原因，并会在订单上标记为人工履约以区别于网关回调。
+        疑似「付了钱没开通」时先点「向渠道查单」核实，渠道确认收款会自动入账；线下转账等渠道外收款才用「补单」开通，补单必须填写原因，并会在订单上标记为人工履约以区别于网关回调。
       </p>
 
       <EditorModal open={mode === "edit"} title="修改订单" onClose={close} width={640}>

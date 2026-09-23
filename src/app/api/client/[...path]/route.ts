@@ -27,6 +27,7 @@ import {
   updateInviteCodeStatus,
   verifyCoupon,
 } from "@/lib/server/client-portal";
+import { syncPendingOrderForUser } from "@/lib/server/payments/order-payments";
 import { listWalletTransactions, redeemRechargeCard } from "@/lib/server/recharge-cards";
 import { recordAudit } from "@/lib/server/audit";
 import { badRequest, readJsonBody, toApiError, unauthenticated } from "@/lib/server/errors";
@@ -89,6 +90,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (key === "orders/status") {
       const tradeNo = asText(query.get("trade_no"), 64);
       if (!tradeNo) throw badRequest("缺少订单号");
+      // 订单页每几秒轮询一次；顺带向支付渠道查单（限频 8 秒），异步通知丢失时也能及时开通。查单失败不影响返回状态。
+      await syncPendingOrderForUser(user.id, tradeNo, 8).catch((error: unknown) => console.error("[orders/status] 查单失败", error));
       return NextResponse.json({ data: await getOrderStatus(user.id, tradeNo) });
     }
 
@@ -153,6 +156,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (key === "orders/cancel") {
       const tradeNo = asText(body.trade_no, 64);
       if (!tradeNo) throw badRequest("缺少订单号");
+      // 取消前先向渠道确认没付过款：已付的订单会在这里直接开通，随后的取消返回「订单已支付完成」。
+      await syncPendingOrderForUser(user.id, tradeNo, 0).catch((error: unknown) => console.error("[orders/cancel] 查单失败", error));
       return NextResponse.json({ data: await cancelOrder(user.id, tradeNo) });
     }
 

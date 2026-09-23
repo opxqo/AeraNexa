@@ -11,13 +11,14 @@ import { getNumberSetting } from "./settings";
  * 本文件会被 worker 直接引用（Node 剥离类型运行），只能使用可擦除的 TS 语法。
  */
 
-export type WorkerTask = "import" | "traffic" | "reconcile" | "event";
+export type WorkerTask = "import" | "traffic" | "reconcile" | "event" | "payments";
 
 export const WORKER_TASKS: ReadonlyArray<{ task: WorkerTask; label: string }> = [
   { task: "event", label: "事件同步" },
   { task: "reconcile", label: "全量对账" },
   { task: "traffic", label: "流量采集" },
   { task: "import", label: "入站导入" },
+  { task: "payments", label: "支付查单" },
 ];
 
 export async function recordWorkerRun(

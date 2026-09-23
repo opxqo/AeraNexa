@@ -134,6 +134,8 @@ export interface OrderItem {
   total_amount: number; // 应付金额，分
   payable_amount?: number;
   payable?: boolean;
+  /** 待支付订单的自动关闭时间（Unix 秒）；非待支付为 null。 */
+  pay_deadline?: number | null;
   handling_amount?: number | null;
   discount_amount?: number | null;
   surplus_amount?: number | null;

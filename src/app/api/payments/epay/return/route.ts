@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   }
   // 后台测试单跳回支付测试台，并自动恢复该测试单的查询。
   if (testTradeNo) return redirect(`/admin/payment-test?epay=${encodeURIComponent(testTradeNo)}`);
-  return redirect(tradeNo ? `/order/${encodeURIComponent(tradeNo)}` : "/order");
+  return redirect(tradeNo ? `/order/${encodeURIComponent(tradeNo)}?paying=1` : "/order");
 }
 
 /** 用相对 Location：反向代理后 request.url 是容器内地址（如 localhost:8080），不能拿来拼绝对跳转。 */
