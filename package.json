@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "db:migrate": "node --env-file=.env.local scripts/migrate-database.mjs",
-    "db:create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
+    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate-database.mjs",
+    "db:create-admin": "node --env-file-if-exists=.env.local scripts/create-admin.mjs",
     "start": "node scripts/migrate-database.mjs && next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -15,8 +18,8 @@
     "test:acceptance": "node --env-file=.env.local --test tests/acceptance/*.test.mjs",
     "test": "node --env-file=.env.local --import ./scripts/ts-register.mjs --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/schema/*.test.mjs tests/node-domain/*.test.mjs tests/user-system/*.test.mjs tests/acceptance/*.test.mjs",
     "test:schema": "node --test tests/schema/*.test.mjs",
-    "worker": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/node-worker.mjs",
-    "bot": "node --env-file=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bot-worker.mjs",
+    "worker": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/node-worker.mjs",
+    "bot": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bot-worker.mjs",
     "test:node": "node --import ./scripts/ts-register.mjs --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/node-domain/*.test.mjs"
   },
   "dependencies": {
