@@ -88,17 +88,16 @@ async function resolveChannel(methodId: number) {
   return { id: methodId, name, provider: String(row.provider), type, notifyBase, key, gatewayUrl, pid };
 }
 
-/** 调用 api.php：该接口以明文 key 鉴权，只能在服务端调用，返回给前端前必须剔除 key。 */
+/**
+ * 调用 api.php：该接口以明文 key 鉴权，只能在服务端调用，返回给前端前必须剔除 key。
+ * 渠道只从查询串读取 act（POST 表单会返回 "No Act!"），所以用 GET。
+ */
 async function callEpayApi(gatewayUrl: string, params: Record<string, string>): Promise<Record<string, unknown>> {
   const url = new URL("api.php", gatewayUrl.endsWith("/") ? gatewayUrl : `${gatewayUrl}/`);
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
   let response: Response;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      body: new URLSearchParams(params),
-      signal: AbortSignal.timeout(10_000),
-      cache: "no-store",
-    });
+    response = await fetch(url, { signal: AbortSignal.timeout(10_000), cache: "no-store" });
   } catch (error) {
     throw unavailable(`无法连接易支付网关：${error instanceof Error ? error.message : String(error)}`);
   }
@@ -159,6 +158,13 @@ export async function createEpayTestPayment(methodId: number, amountCents: numbe
   return { outTradeNo, payUrl, notifyUrl: `${channel.notifyBase}/api/payments/epay/notify` };
 }
 
+function formatTime(value: Date | string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Shanghai",
+  }).format(new Date(value));
+}
+
 type TestRecord = { methodId: number; amountCents: number; createdAt: string };
 
 async function findTestRecord(outTradeNo: string): Promise<TestRecord | null> {
@@ -168,7 +174,7 @@ async function findTestRecord(outTradeNo: string): Promise<TestRecord | null> {
   );
   if (!rows[0]) return null;
   const context = typeof rows[0].context === "string" ? JSON.parse(rows[0].context) : rows[0].context;
-  return { methodId: Number(context.methodId), amountCents: Number(context.amountCents), createdAt: String(rows[0].created_at) };
+  return { methodId: Number(context.methodId), amountCents: Number(context.amountCents), createdAt: formatTime(rows[0].created_at) };
 }
 
 export type EpayTestNotification = { source: string; verified: boolean; amountMatches: boolean; receivedAt: string };
@@ -209,7 +215,7 @@ export async function getEpayTestStatus(outTradeNo: string): Promise<EpayTestSta
       source: String(context.source),
       verified: Boolean(context.verified),
       amountMatches: Boolean(context.amountMatches),
-      receivedAt: String(row.created_at),
+      receivedAt: formatTime(row.created_at),
     };
   });
 
