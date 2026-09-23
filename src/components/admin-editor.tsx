@@ -617,7 +617,7 @@ function PaymentsEditor({ page }: { page: Extract<AdminEditorData, { section: "p
           </table>
         </div>
         <p className="admin-audit-note">
-          <span className="mono">balance</span> 为系统内置零手续费渠道；<span className="mono">mock</span> 用于本地测试，其他 provider 仍待接入真实网关。
+          <span className="mono">balance</span> 为系统内置零手续费渠道；<span className="mono">mock</span> 用于本地测试；<span className="mono">epay_alipay</span> / <span className="mono">epay_wxpay</span> 走易支付网关（网关地址与商户号在「系统设置 → 支付」配置），其他 provider 不会在收银台展示。
         </p>
       </section>
 
@@ -628,8 +628,13 @@ function PaymentsEditor({ page }: { page: Extract<AdminEditorData, { section: "p
             <label className="v2-field"><span>渠道名称</span><input name="name" defaultValue={item?.name ?? ""} required maxLength={255} /></label>
             <label className="v2-field">
               <span>Provider 标识</span>
-              <input name="provider" defaultValue={item?.provider ?? "epay"} required pattern="[a-z0-9_-]{2,50}" />
-              <small>小写字母、数字、下划线、短横线，用于对接支付适配器。</small>
+              <input name="provider" defaultValue={item?.provider ?? "epay_alipay"} required pattern="[a-z0-9_-]{2,50}" list="payment-provider-options" />
+              <datalist id="payment-provider-options">
+                <option value="epay_alipay">易支付 · 支付宝</option>
+                <option value="epay_wxpay">易支付 · 微信支付</option>
+                <option value="mock">模拟支付</option>
+              </datalist>
+              <small>易支付填 epay_alipay / epay_wxpay，需同时填写回调域名与商户密钥。</small>
             </label>
           </div>
           <div className="admin-form-grid">
@@ -640,7 +645,7 @@ function PaymentsEditor({ page }: { page: Extract<AdminEditorData, { section: "p
             <label className="v2-field"><span>回调域名（可选）</span><input name="notifyDomain" type="url" defaultValue={item?.notifyDomain ?? ""} placeholder="https://example.com" /></label>
             <label className="v2-field"><span>排序</span><input name="sortOrder" type="number" min="0" step="1" defaultValue={item?.sortOrder ?? 0} required /></label>
           </div>
-          <label className="v2-field"><span>回调签名密钥（可选）</span><input name="callbackSecret" type="password" autoComplete="new-password" placeholder="留空则保持当前密钥" maxLength={1000} /><small>使用 PAYMENT_CONFIG_ENCRYPTION_KEY 加密保存，后台不会回显。</small></label>
+          <label className="v2-field"><span>回调签名密钥 / 商户密钥（可选）</span><input name="callbackSecret" type="password" autoComplete="new-password" placeholder="留空则保持当前密钥" maxLength={1000} /><small>使用 PAYMENT_CONFIG_ENCRYPTION_KEY 加密保存，后台不会回显。</small></label>
           <label className="admin-check-row"><input name="isEnabled" type="checkbox" defaultChecked={item?.isEnabled ?? true} /><span>启用该渠道</span></label>
           <FormFooter pending={pending} onClose={close} />
         </form>

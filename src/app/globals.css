@@ -2092,3 +2092,93 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme="dark"] .api-plan-coupon-input::placeholder { color: #747474; }
 [data-theme="dark"] .api-plan-coupon-input:focus { border-color: #2f68a7; outline: 2px solid rgba(47, 104, 167, .2); outline-offset: 0; }
 [data-theme="dark"] .api-plan-order-summary { color: #b8b8b8; background: #292929; border-color: #353535; }
+
+/* 支付沙箱补充记录列表、状态标签与深色主题适配。 */
+.payment-lab-order-status {
+  padding: 3px 8px;
+  color: #8b6918;
+  background: #fff5d9;
+  border-radius: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.payment-lab-order-status.paid { color: #4f7f24; background: #e9f4df; }
+.payment-lab-order-status.failed, .payment-lab-order-status.closed { color: #a8353f; background: #fde4e7; }
+.payment-lab-activity .v2-block-header > span { color: var(--v2-muted); font-size: 12px; }
+.payment-lab-activity-list { margin: 0; padding: 0; list-style: none; }
+.payment-lab-activity-item {
+  min-width: 0;
+  padding: 12px 20px;
+  display: grid;
+  grid-template-columns: 78px minmax(150px, 220px) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid var(--v2-border);
+}
+.payment-lab-activity-item strong { color: var(--v2-heading); font-weight: 500; }
+.payment-lab-activity-item > span:last-child { min-width: 0; color: var(--v2-muted); font-size: 12px; }
+.payment-lab-activity-time { color: var(--v2-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.payment-lab-activity-item.success strong { color: #628c38; }
+.payment-lab-activity-item.warning strong { color: #9b751d; }
+.payment-lab-activity-item.error strong { color: #b34c55; }
+.payment-lab-activity-empty { margin: 0; padding: 18px 20px; color: var(--v2-muted); }
+.payment-lab-cashier-actions button:disabled { cursor: not-allowed; opacity: .58; }
+
+@media (max-width: 760px) {
+  .payment-lab-activity-item { grid-template-columns: 1fr auto; gap: 4px 10px; padding: 11px 15px; }
+  .payment-lab-activity-item > span:last-child { grid-column: 1 / -1; }
+}
+
+[data-theme="dark"] .payment-lab-status-dot { color: #b4d296; background: #2a3822; }
+[data-theme="dark"] .payment-lab-hero-note,
+[data-theme="dark"] .payment-lab-product,
+[data-theme="dark"] .payment-lab-cashier,
+[data-theme="dark"] .payment-lab-safety-note { color: var(--v2-muted); background: var(--v2-header); border-color: var(--v2-border); }
+[data-theme="dark"] .payment-lab-amount-input { color: var(--v2-heading); background: #1d1d1d; border-color: #3a3a3a; }
+[data-theme="dark"] .payment-lab-amount-input input { color: var(--v2-heading); }
+[data-theme="dark"] .payment-lab-channel { color: var(--v2-text); background: var(--v2-surface); border-color: var(--v2-border); }
+[data-theme="dark"] .payment-lab-channel.selected { background: #202632; border-color: #2f68a7; box-shadow: inset 0 0 0 1px #2f68a7; }
+[data-theme="dark"] .payment-lab-cashier-amount,
+[data-theme="dark"] .payment-lab-section-heading h2,
+[data-theme="dark"] .payment-lab-product strong { color: var(--v2-heading); }
+[data-theme="dark"] .payment-lab-cashier-topline,
+[data-theme="dark"] .payment-lab-cashier p { color: var(--v2-muted); }
+[data-theme="dark"] .payment-lab-trade-row { color: var(--v2-muted); background: #1d1d1d; border-color: var(--v2-border); }
+[data-theme="dark"] .payment-lab-order-status { color: #e1c16f; background: #352f1f; }
+[data-theme="dark"] .payment-lab-order-status.paid { color: #b4d296; background: #2a3822; }
+[data-theme="dark"] .payment-lab-order-status.failed,
+[data-theme="dark"] .payment-lab-order-status.closed { color: #f08b93; background: #331f23; }
+[data-theme="dark"] .payment-lab-result.success { color: #b4d296; background: #222b1d; border-color: #3d4b32; }
+[data-theme="dark"] .payment-lab-result.success span,
+[data-theme="dark"] .payment-lab-result.failed span { color: var(--v2-muted); }
+[data-theme="dark"] .payment-lab-result.failed { color: #f08b93; background: #2b1d20; border-color: #4a2a2f; }
+[data-theme="dark"] .payment-lab-callback { background: #1c2029; border-color: var(--v2-border); }
+[data-theme="dark"] .payment-lab-callback-heading { color: var(--v2-text); border-color: var(--v2-border); }
+[data-theme="dark"] .payment-lab-callback pre { color: var(--v2-text); }
+[data-theme="dark"] .payment-lab-activity-item { border-color: var(--v2-border); }
+[data-theme="dark"] .payment-lab-activity-item strong { color: var(--v2-heading); }
+[data-theme="dark"] .payment-lab-activity-item.success strong { color: #b4d296; }
+[data-theme="dark"] .payment-lab-activity-item.warning strong { color: #e1c16f; }
+[data-theme="dark"] .payment-lab-activity-item.error strong { color: #f08b93; }
+[data-theme="dark"] .payment-lab-activity-empty { color: var(--v2-muted); }
+
+/* 支付测试台 · 易支付真实联调 */
+.epay-live { margin-bottom: 22px; }
+.epay-live .v2-block-header h2 { display: flex; align-items: center; gap: 8px; }
+.epay-live .v2-block-header .admin-audit-note { margin-top: 6px; padding: 0; background: none; border: 0; }
+.epay-live .admin-error-text { display: flex; align-items: center; gap: 6px; margin: 0; padding: 12px 20px; }
+.epay-live-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--v2-border); }
+.epay-live-config dt { color: var(--v2-muted, #6c757d); font-size: 12px; }
+.epay-live-config dd { margin: 2px 0 0; overflow-wrap: anywhere; color: var(--v2-heading); }
+.epay-live-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; background: var(--v2-border); border-top: 1px solid var(--v2-border); }
+.epay-live-step { display: grid; align-content: start; justify-items: start; gap: 10px; padding: 18px 20px; background: var(--v2-surface); }
+.epay-live-step > strong { color: var(--v2-heading); }
+.epay-live-step > span { color: var(--v2-muted, #6c757d); font-size: 13px; line-height: 1.6; }
+.epay-live-step .admin-audit-note { padding: 0; background: none; border: 0; }
+.epay-live-inline { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.epay-live-inline .v2-field { max-width: 140px; }
+.epay-live-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+.epay-live-checks { display: grid; gap: 10px; width: 100%; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.epay-live-checks li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.epay-live-checks li > b { min-width: 60px; color: var(--v2-heading); font-weight: 600; }
+.epay-live-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

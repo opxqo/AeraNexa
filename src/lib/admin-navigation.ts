@@ -36,6 +36,7 @@ export const adminSections: AdminSection[] = [
   { href: "/admin/orders", key: "orders", label: "订单管理", description: "订单与履约状态", icon: "orders", group: "业务管理" },
   { href: "/admin/coupons", key: "coupons", label: "惠券管理", description: "折扣码与核销统计", icon: "coupons", group: "业务管理" },
   { href: "/admin/payments", key: "payments", label: "支付管理", description: "渠道与交易记录", icon: "payments", group: "业务管理" },
+  { href: "/admin/payment-test", label: "支付测试台", description: "易支付真实联调与回调场景模拟", icon: "payments", group: "业务管理" },
   { href: "/admin/refunds", key: "refunds", label: "退款管理", description: "余额退款账本", icon: "refunds", group: "业务管理" },
   { href: "/admin/reconciliation", key: "reconciliation", label: "对账管理", description: "渠道账单与差异", icon: "reconciliation", group: "业务管理" },
   { href: "/admin/recharge-cards", key: "recharge-cards", label: "卡密管理", description: "余额充值卡与核销状态", icon: "rechargeCards", group: "业务管理" },

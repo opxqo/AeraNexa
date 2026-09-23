@@ -66,6 +66,31 @@ export async function processPaymentCallback(input: ProcessInput) {
     throw badRequest("回调时间戳无效或已过期");
   }
   const payload = parsePayload(input.rawBody);
+  return applyGatewayCallback({
+    provider,
+    eventId: input.eventId,
+    timestampSeconds,
+    rawBody: input.rawBody,
+    payload,
+    verify: (secret) => Boolean(secret && isValidSignature(input.signature, signPaymentCallback(input.timestamp, input.eventId, input.rawBody, secret))),
+  });
+}
+
+type GatewayCallbackInput = {
+  provider: string;
+  eventId: string;
+  timestampSeconds: number;
+  /** 原始报文（JSON 字符串），落库留痕。 */
+  rawBody: string;
+  /** trade_no 为空时按 provider_trade_no 关联到的订单处理（易支付类渠道只回传交易号）。 */
+  payload: CallbackPayload;
+  /** 用渠道保存的密钥校验签名；密钥缺失时传入 null。 */
+  verify: (secret: string | null) => boolean;
+};
+
+/** 各渠道验签方式不同，验签之后的幂等落库、金额核对与履约共用这一段。 */
+export async function applyGatewayCallback(input: GatewayCallbackInput) {
+  const { provider, payload } = input;
   const connection = await getDbPool().getConnection();
   const payloadHash = createHash("sha256").update(input.rawBody).digest("hex");
   let receiptId = 0;
@@ -86,12 +111,12 @@ export async function processPaymentCallback(input: ProcessInput) {
     );
     const method = methods[0];
     const secret = method ? await getPaymentCallbackSecret(asNumber(method.id), provider) : null;
-    const valid = Boolean(secret && isValidSignature(input.signature, signPaymentCallback(input.timestamp, input.eventId, input.rawBody, secret)));
+    const valid = input.verify(secret);
     const [receipt] = await connection.execute<ResultSetHeader>(
       `INSERT INTO payment_callback_events
         (provider, event_id, timestamp_seconds, signature_valid, payload, payload_sha256, processing_status, error_message)
        VALUES (?, ?, ?, ?, CAST(? AS JSON), ?, ?, ?)`,
-      [provider, input.eventId, timestampSeconds, valid ? 1 : 0, input.rawBody, payloadHash, valid ? "received" : "rejected", valid ? null : "signature invalid or provider unavailable"],
+      [provider, input.eventId, input.timestampSeconds, valid ? 1 : 0, input.rawBody, payloadHash, valid ? "received" : "rejected", valid ? null : "signature invalid or provider unavailable"],
     );
     receiptId = Number(receipt.insertId);
     if (!valid) {
@@ -100,7 +125,7 @@ export async function processPaymentCallback(input: ProcessInput) {
     }
 
     const [transactions] = await connection.execute<RowDataPacket[]>(
-      `SELECT pt.id, pt.order_id, pt.amount, pt.currency, pt.status, pm.provider, o.user_id
+      `SELECT pt.id, pt.order_id, pt.amount, pt.currency, pt.status, pm.provider, o.user_id, o.trade_no
          FROM payment_transactions pt
          INNER JOIN payment_methods pm ON pm.id = pt.payment_method_id
          INNER JOIN orders o ON o.id = pt.order_id
@@ -118,7 +143,7 @@ export async function processPaymentCallback(input: ProcessInput) {
     }
     const transactionId = asNumber(transaction.id);
     const orderId = asNumber(transaction.order_id);
-    const order = await getOrder(connection, asNumber(transaction.user_id), payload.trade_no, true);
+    const order = await getOrder(connection, asNumber(transaction.user_id), payload.trade_no || String(transaction.trade_no), true);
     if (!order || asNumber(order.id) !== orderId) {
       await connection.execute("UPDATE payment_callback_events SET processing_status = 'unmatched', error_message = 'order not found' WHERE id = ?", [receiptId]);
       await connection.commit();

@@ -11,12 +11,16 @@ import {
 } from "./commission";
 import { getDbPool } from "./db";
 import { markPanelClientDirty } from "./node-sync";
+import { getPaymentCallbackSecret } from "./payment-credentials";
+import { getEpayConfig } from "./payments/epay-config";
+import { buildEpaySubmitUrl, epayTypeOf } from "./payments/epay-protocol";
 import {
   badRequest,
   conflict,
   forbidden,
   notFound,
   tooManyRequests,
+  unavailable,
 } from "./errors";
 import {
   BYTES_PER_GB,
@@ -805,10 +809,10 @@ export async function listPaymentMethods() {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT id, provider, name, icon, handling_fee_fixed, handling_fee_percent
        FROM payment_methods
-      WHERE is_enabled = 1 AND provider IN ('balance', 'mock')
+      WHERE is_enabled = 1
       ORDER BY sort_order ASC, id ASC`,
   );
-  return rows.map((row) => ({
+  return rows.filter((row) => isCheckoutProvider(String(row.provider))).map((row) => ({
     id: asNumber(row.id),
     name: String(row.name),
     payment: String(row.provider),
@@ -816,6 +820,11 @@ export async function listPaymentMethods() {
     handling_fee_fixed: asNumber(row.handling_fee_fixed),
     handling_fee_percent: asNumber(row.handling_fee_percent),
   }));
+}
+
+/** 已接入收银台的渠道；后台建了但未接入的渠道不展示给用户。 */
+function isCheckoutProvider(provider: string): boolean {
+  return provider === "balance" || provider === "mock" || epayTypeOf(provider) !== null;
 }
 
 function computeHandlingFeeCents(baseCents: number, fixedCents: number, percent: number): number {
@@ -836,7 +845,7 @@ export async function checkoutOrder(userId: number, tradeNo: string, methodId: n
     if (!order) throw notFound("订单不存在");
 
     const [methods] = await connection.execute<RowDataPacket[]>(
-      `SELECT id, provider, name, handling_fee_fixed, handling_fee_percent
+      `SELECT id, provider, name, handling_fee_fixed, handling_fee_percent, notify_domain
          FROM payment_methods WHERE id = ? AND is_enabled = 1 LIMIT 1`,
       [methodId],
     );
@@ -918,8 +927,44 @@ export async function checkoutOrder(userId: number, tradeNo: string, methodId: n
       return { type: 0 as const, data: "balance://paid", provider, transaction_id: transactionId, amount: baseAmount, completed: true };
     }
 
+    const epayType = epayTypeOf(provider);
+    if (epayType) {
+      const notifyBase = method.notify_domain ? String(method.notify_domain).replace(/\/+$/, "") : "";
+      if (!notifyBase) throw unavailable(`支付渠道「${String(method.name)}」未配置回调域名`);
+      const key = await getPaymentCallbackSecret(methodId, provider);
+      if (!key) throw unavailable(`支付渠道「${String(method.name)}」未配置商户密钥`);
+      const { gatewayUrl, pid } = await getEpayConfig();
+      // 易支付拒绝重复的商户单号且收银台会过期，所以每次发起都新建交易；
+      // 旧交易保持 pending，用户若仍在旧收银台付了款，回调照样能按交易号入账。
+      const providerTradeNo = `EP${randomBytes(10).toString("hex").toUpperCase()}`;
+      const payUrl = buildEpaySubmitUrl({
+        gatewayUrl,
+        pid,
+        key,
+        type: epayType,
+        outTradeNo: providerTradeNo,
+        amountCents: amount,
+        name: `订单 ${tradeNo}`,
+        notifyUrl: `${notifyBase}/api/payments/epay/notify`,
+        returnUrl: `${notifyBase}/api/payments/epay/return`,
+      });
+      const [created] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO payment_transactions
+          (order_id, payment_method_id, provider_trade_no, amount, checkout_type, checkout_data, request_payload, status)
+         VALUES (?, ?, ?, ?, 1, ?, JSON_OBJECT('provider', ?, 'type', ?), 'pending')`,
+        [order.id, methodId, providerTradeNo, amount, payUrl, provider, epayType],
+      );
+      await connection.execute(
+        `UPDATE orders SET payment_method_id = ?, handling_amount = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND status = ?`,
+        [methodId, handlingFee, order.id, ORDER_STATUS.PENDING],
+      );
+      await connection.commit();
+      return { type: 1 as const, data: payUrl, provider, transaction_id: Number(created.insertId), amount };
+    }
+
     if (provider !== "mock") {
-      throw badRequest(`支付渠道「${String(method.name)}」尚未接入，请选择模拟支付`);
+      throw badRequest(`支付渠道「${String(method.name)}」尚未接入，请选择其它支付方式`);
     }
 
     // 复用同一渠道下未完成的交易，保证重复点击收银台不会产生多条流水。

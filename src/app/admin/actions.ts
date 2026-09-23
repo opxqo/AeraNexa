@@ -21,6 +21,7 @@ import { refundBalanceOrder } from "@/lib/server/payment-refunds";
 import { dispatchSandboxPaymentCallback } from "@/lib/server/payment-callbacks";
 import { importReconciliationCsv, resolveReconciliationRow } from "@/lib/server/reconciliation";
 import { savePaymentCallbackSecret } from "@/lib/server/payment-credentials";
+import { epayTypeOf } from "@/lib/server/payments/epay-protocol";
 import { importInbounds } from "@/lib/server/panel/import-inbounds";
 import { getServerStatus, PanelError } from "@/lib/server/panel/client";
 import { invalidateMonitorAuthCache, testConnection } from "@/lib/server/monitor/client";
@@ -667,6 +668,7 @@ export async function savePaymentMethodAction(formData: FormData): Promise<Actio
     if (!Number.isFinite(feePercent) || feePercent < 0 || feePercent > 100) return fail("比例手续费需在 0 到 100 之间");
     if (sortOrder === null) return fail("排序值不正确");
     if (notifyDomain && !/^https?:\/\/.+/i.test(notifyDomain)) return fail("回调域名需以 http:// 或 https:// 开头");
+    if (epayTypeOf(provider) && !notifyDomain) return fail("易支付渠道必须填写回调域名（AeraNexa 对外访问地址）");
 
     const pool = getDbPool();
     const values = [provider, name, feeFixed, Math.round(feePercent * 100) / 100, notifyDomain, checkbox(formData.get("isEnabled")), sortOrder];
