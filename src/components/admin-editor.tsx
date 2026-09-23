@@ -54,7 +54,7 @@ import { AdminListPager, AdminListToolbar } from "@/components/admin-pagination"
 type Result = { ok: boolean; message: string };
 type FormAction = (data: FormData) => Promise<Result>;
 
-const ORDER_STATUS_LABELS = ["待支付", "开通中", "已取消", "已完成", "已折抵", "已退款"];
+const ORDER_STATUS_LABELS = ["待支付", "待生效", "已取消", "已完成", "已折抵", "已退款"];
 /** 订阅曾经开通过的状态：已完成 / 已折抵 / 已退款。用于区分「没记录来源」和「真的没履约」。 */
 const FULFILLED_ORDER_STATUSES = new Set([3, 4, 5]);
 const ORDER_TYPE_LABELS: Record<number, string> = { 1: "新购", 2: "续费", 3: "升级", 4: "流量重置" };
@@ -428,7 +428,6 @@ const PLAN_PRICE_INPUTS = [
   { name: "twoYearPrice", label: "两年付" },
   { name: "threeYearPrice", label: "三年付" },
   { name: "onetimePrice", label: "一次性" },
-  { name: "resetPrice", label: "流量重置" },
 ] as const;
 
 function PlansEditor({ page, groups }: { page: Extract<AdminEditorData, { section: "plans" }>["page"]; groups: EditorAccessGroup[] }) {

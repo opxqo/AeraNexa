@@ -26,5 +26,6 @@ test("已完成 / 已退款等订单再次收款（重复支付）：转入余�
 
 test("人工补单后的订单再收到付款：只记账，不重复开通也不转余额", () => {
   assert.equal(decideConfirmedPayment({ status: 3, orderType: 1, hasSurplus: false, fulfillmentSource: "admin" }), "confirm");
+  assert.equal(decideConfirmedPayment({ status: 1, orderType: 1, hasSurplus: false, fulfillmentSource: "admin" }), "confirm");
   assert.equal(decideConfirmedPayment({ status: 3, orderType: 1, hasSurplus: false, fulfillmentSource: "gateway" }), "credit");
 });

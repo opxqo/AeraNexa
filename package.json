@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test:user": "node --env-file=.env.local --test tests/user-system/*.test.mjs",
     "test:acceptance": "node --env-file=.env.local --test tests/acceptance/*.test.mjs",
-    "test": "node --env-file=.env.local --import ./scripts/ts-register.mjs --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/schema/*.test.mjs tests/node-domain/*.test.mjs tests/payments/*.test.mjs tests/user-system/*.test.mjs tests/acceptance/*.test.mjs",
+    "test": "node --env-file=.env.local --import ./scripts/ts-register.mjs --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-concurrency=1 tests/schema/*.test.mjs tests/node-domain/*.test.mjs tests/payments/*.test.mjs tests/user-system/*.test.mjs tests/acceptance/*.test.mjs",
     "test:schema": "node --test tests/schema/*.test.mjs",
     "worker": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/node-worker.mjs",
     "bot": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bot-worker.mjs",

@@ -18,9 +18,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { noticeApi } from "@/lib/api/notice";
-import type { Notice } from "@/lib/api/types";
+import type { Notice, ResetTrafficQuote } from "@/lib/api/types";
+import { orderApi } from "@/lib/api/order";
 import { OneClickSubscribeDrawer } from "@/components/one-click-subscribe";
-import { ConfirmModal, Modal } from "@/components/v2-modal";
+import { ConfirmModal, Modal, useToast } from "@/components/v2-modal";
 import { ErrorState, sanitizeHtml, useAsyncData } from "@/components/api-ui";
 import { localApiRequest } from "@/lib/api/client";
 import { TelegramIcon } from "@/components/telegram-icon";
@@ -30,7 +31,33 @@ export default function ApiDashboardPage() {
   const { user, subscribe, stat, isLoading, isAuthenticated, refreshUser } = useAuth();
 
   const [subscribeDrawerOpen, setSubscribeDrawerOpen] = useState(false);
-  const [resetTrafficModalOpen, setResetTrafficModalOpen] = useState(false);
+  const { showToast } = useToast();
+  const [resetQuote, setResetQuote] = useState<ResetTrafficQuote | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  // 先取报价再弹确认框：价格由服务端按「当前套餐月付价 × 后台比例」计算，没有生效中的套餐会直接提示原因。
+  const openResetTraffic = async () => {
+    setResetBusy(true);
+    try {
+      setResetQuote(await orderApi.fetchResetQuote());
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "暂时无法购买流量重置", "warning");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+  const confirmResetTraffic = async () => {
+    if (!resetQuote) return;
+    setResetBusy(true);
+    try {
+      const tradeNo = await orderApi.saveOrder({ plan_id: resetQuote.plan_id, period: resetQuote.period });
+      setResetQuote(null);
+      router.push(`/order/${encodeURIComponent(tradeNo)}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "创建流量重置订单失败", "error");
+    } finally {
+      setResetBusy(false);
+    }
+  };
   const [telegramModalOpen, setTelegramModalOpen] = useState(false);
   const [telegramCode, setTelegramCode] = useState<string | null>(null);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
@@ -247,13 +274,27 @@ export default function ApiDashboardPage() {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => setResetTrafficModalOpen(true)}
+                    onClick={() => void openResetTraffic()}
+                    disabled={resetBusy}
                   >
-                    <RotateCcw size={14} />
-                    <span>重置当月流量</span>
+                    {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                    <span>购买流量重置</span>
                   </button>
                 </div>
               </div>
+              {subscribe?.queued_plans?.length ? (
+                <div className="dashboard-queued-plans">
+                  <span>排队中的套餐（当前套餐到期后按顺序生效）：</span>
+                  <ol>
+                    {subscribe.queued_plans.map((item) => (
+                      <li key={item.trade_no}>
+                        <Link href={`/order/${encodeURIComponent(item.trade_no)}`}>{item.plan_name}</Link>
+                        <small>{item.period_label}</small>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -318,16 +359,17 @@ export default function ApiDashboardPage() {
 
       {/* 重置流量确认弹窗 */}
       <ConfirmModal
-        open={resetTrafficModalOpen}
-        title="确定重置当前已用流量？"
-        content="点击「确定」将会前往购买流量重置包，支付订单后系统将清空您当月已使用流量。"
-        okText="确定"
+        open={resetQuote !== null}
+        title="购买流量重置？"
+        content={
+          resetQuote
+            ? `将为「${resetQuote.plan_name}」重置已用流量，价格 ¥${(resetQuote.price / 100).toFixed(2)}（月付价的 ${resetQuote.percent}%）。确定后前往支付，支付完成立即生效，到期时间不变。`
+            : ""
+        }
+        okText={resetBusy ? "正在创建订单…" : "去支付"}
         cancelText="取消"
-        onOk={() => {
-          setResetTrafficModalOpen(false);
-          router.push("/plan");
-        }}
-        onCancel={() => setResetTrafficModalOpen(false)}
+        onOk={() => void confirmResetTraffic()}
+        onCancel={() => setResetQuote(null)}
       />
 
       {/* 绑定 Telegram 模态框向导 */}

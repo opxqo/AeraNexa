@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
+import { listQueuedOrders } from "@/lib/server/client-portal";
 import { getDbPool } from "@/lib/server/db";
 import { getSubscribeBaseUrl } from "@/lib/server/settings";
 import { toApiError, unauthenticated } from "@/lib/server/errors";
@@ -56,6 +57,8 @@ export async function GET() {
             }
           : undefined,
         subscribe_url: subscribeUrl,
+        // 已付款、排队等当前套餐到期后生效的套餐（按生效顺序）。
+        queued_plans: await listQueuedOrders(user.id),
       },
     });
   } catch (error) {

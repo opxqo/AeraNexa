@@ -1,5 +1,5 @@
 import { localApiRequest, localApiRequestFull } from "./client";
-import type { CheckoutResult, OrderItem, PagedMeta, PaymentMethod } from "./types";
+import type { CheckoutResult, OrderItem, PagedMeta, PaymentMethod, ResetTrafficQuote } from "./types";
 
 export interface SaveOrderParams {
   plan_id: number;
@@ -54,6 +54,11 @@ export const orderApi = {
       method: "POST",
       body: params as unknown as Record<string, unknown>,
     });
+  },
+
+  /** 当前套餐的流量重置报价；没有生效中的套餐时服务端返回 400。 */
+  async fetchResetQuote(): Promise<ResetTrafficQuote> {
+    return localApiRequest<ResetTrafficQuote>("client/orders/reset-quote");
   },
 
   async getPaymentMethods(): Promise<PaymentMethod[]> {

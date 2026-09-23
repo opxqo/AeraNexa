@@ -6,7 +6,7 @@
  * - 流量采集：累加已用流量，超额用户标脏（默认每 60s）；
  * - 全量对账：兜底到期与手工改动（默认每 60s）；
  * - 入站导入：同步 3x-ui 入站变化（默认每 10min）；
- * - 支付查单：向支付渠道查询近期交易并关闭超时订单（每 15s，与 3x-ui 是否可达无关）。
+ * - 订单处理：向支付渠道查询近期交易、关闭超时订单、开通到期后排队的套餐（每 15s，与 3x-ui 是否可达无关）。
  *
  * 间隔在后台「系统设置 → Worker」中调整，每轮重新读取，改完无需重启。
  *
@@ -20,6 +20,7 @@ import { getNumberSetting } from "../lib/server/settings";
 import { collectTraffic } from "../lib/server/panel/collect-traffic";
 import { importInbounds } from "../lib/server/panel/import-inbounds";
 import { listDirtyUserIds, reconcileClients, type ReconcileResult } from "../lib/server/panel/reconcile";
+import { activateQueuedSubscriptions } from "../lib/server/client-portal";
 import { sweepOrderPayments } from "../lib/server/payments/order-payments";
 import { recordWorkerRun, type WorkerTask } from "../lib/server/worker-status";
 
@@ -140,12 +141,14 @@ async function main(): Promise<void> {
         intervals = latest;
       }
 
-      // 支付查单不依赖 3x-ui，放在最前面，面板不可达导致的暂停不影响它。
+      // 订单处理不依赖 3x-ui，放在最前面：面板不可达导致的暂停不影响它；
+      // 且排队套餐在本轮开通并标脏后，紧接着的同步即可把新套餐下发到 3x-ui。
       if (now >= nextPayments) {
-        await runTask("payments", "支付查单", async () => {
+        await runTask("payments", "订单处理", async () => {
           const r = await sweepOrderPayments();
-          if (!r.queried && !r.closedOrders && !r.errors) return null;
-          return `查单 ${r.queried}，确认收款 ${r.paid}，超时关单 ${r.closedOrders}${r.errors ? `，失败 ${r.errors}` : ""}`;
+          const activated = await activateQueuedSubscriptions();
+          if (!r.queried && !r.closedOrders && !r.errors && !activated) return null;
+          return `查单 ${r.queried}，确认收款 ${r.paid}，超时关单 ${r.closedOrders}，排队套餐生效 ${activated}${r.errors ? `，失败 ${r.errors}` : ""}`;
         });
         nextPayments = now + PAYMENTS_INTERVAL;
       }

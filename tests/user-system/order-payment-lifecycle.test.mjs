@@ -7,6 +7,7 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
+import { enableMockPaymentForTests, restoreMockPaymentMethod } from "./helpers.mjs";
 
 const baseUrl = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 const dbConfig = { host: process.env.DB_HOST ?? "127.0.0.1", port: Number(process.env.DB_PORT ?? 3306), database: process.env.DB_NAME ?? "aeranexa", user: process.env.DB_USER ?? "root", password: process.env.DB_PASSWORD };
@@ -28,12 +29,13 @@ async function query(sql, params = []) {
 
 let planId;
 let mockMethodId;
+let mockPaymentWasEnabled = null;
 
 before(async () => {
   const plan = await query("INSERT INTO plans (name, transfer_enable, month_price, is_visible, is_renewable) VALUES (?, 10, 500, 1, 1)", [`lifecycle-plan-${Date.now()}`]);
   planId = Number(plan.insertId);
   created.plans.push(planId);
-  await query("UPDATE payment_methods SET is_enabled = 1 WHERE provider = 'mock'");
+  mockPaymentWasEnabled = await enableMockPaymentForTests();
 });
 
 after(async () => {
@@ -60,6 +62,7 @@ after(async () => {
   } finally {
     await connection.end();
   }
+  await restoreMockPaymentMethod(mockPaymentWasEnabled);
   const { getDbPool } = await import("../../src/lib/server/db.ts");
   await getDbPool().end().catch(() => {});
 });

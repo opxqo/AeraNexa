@@ -9,7 +9,7 @@
 
 export type SettingKind = "url" | "secret" | "int" | "number" | "select" | "text";
 
-export type SettingGroup = "节点" | "监控" | "订阅" | "佣金" | "支付" | "Worker" | "Telegram";
+export type SettingGroup = "节点" | "监控" | "订阅" | "佣金" | "订单" | "支付" | "Worker" | "Telegram";
 
 export type SettingDef = {
   key: string;
@@ -33,6 +33,17 @@ export const SETTING_DEFS: readonly SettingDef[] = [
   { key: "telegram.token", group: "Telegram", label: "Bot Token", description: "由 BotFather 创建；加密保存且不会回显。", kind: "secret", env: "TELEGRAM_BOT_TOKEN", defaultValue: "" },
   { key: "telegram.webhook_url", group: "Telegram", label: "Webhook 公网 HTTPS 地址", description: "例如 https://app.example.com/api/telegram/webhook，仅 Webhook 模式使用。", kind: "url", env: "TELEGRAM_WEBHOOK_URL", defaultValue: "" },
   { key: "telegram.webhook_secret", group: "Telegram", label: "Webhook 校验密钥", description: "Telegram 回调 Header 校验用；留空由系统生成并加密保存。", kind: "secret", env: "TELEGRAM_WEBHOOK_SECRET", defaultValue: "" },
+  {
+    key: "order.reset_traffic_percent",
+    group: "订单",
+    label: "流量重置价格比例",
+    description: "流量重置价格 = 用户当前套餐的月付价 × 该比例；套餐没有月付价时按最短周期换算成每月价格。",
+    kind: "int",
+    defaultValue: "75",
+    min: 0,
+    max: 500,
+    unit: "%",
+  },
   {
     key: "payment.epay.gateway_url",
     group: "支付",

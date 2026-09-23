@@ -649,24 +649,31 @@ test("[订单] 优惠券的适用套餐与适用周期限制真正生效", async
   assert.equal(order.status, 400, "下单时也应拒绝不适用的优惠券");
 });
 
-test("[订单] 升级折抵后原订单被标记为已折抵", async () => {
+test("[订单] 生效中购买其它套餐：不折抵，付款后排队待生效，原订单不受影响", async () => {
   const basePlan = await createPlan({ monthPrice: 990, quarterPrice: 2790 });
-  const higherPlan = await createPlan({ monthPrice: 9900, quarterPrice: 27900 });
+  const otherPlan = await createPlan({ monthPrice: 9900, quarterPrice: 27900 });
   const { cookie } = await register();
 
   const base = await placeAndPayOrder(cookie, basePlan, "month_price");
 
-  const upgrade = await post("/api/client/orders", cookie, { plan_id: higherPlan, period: "quarter_price" });
-  const upgradeTradeNo = (await expectStatus(upgrade, 201, "升级下单")).data;
-  const detail = await expectStatus(await get(`/api/client/orders/${upgradeTradeNo}`, cookie), 200, "升级订单详情");
-  assert.equal(detail.data.type, 3, "应识别为升级订单");
-  assert.ok(detail.data.surplus_amount > 0, "升级应产生折抵金额");
+  const second = await post("/api/client/orders", cookie, { plan_id: otherPlan, period: "quarter_price" });
+  const secondTradeNo = (await expectStatus(second, 201, "购买其它套餐")).data;
+  const detail = await expectStatus(await get(`/api/client/orders/${secondTradeNo}`, cookie), 200, "订单详情");
+  assert.equal(detail.data.type, 1, "生效中购买其它套餐应为新购，不再是升级");
+  assert.equal(detail.data.surplus_amount, 0, "不再折抵旧套餐剩余价值");
+  assert.equal(detail.data.total_amount, 27900, "按原价付款");
 
-  await placeAndPayOrderFor(cookie, upgradeTradeNo);
+  await placeAndPayOrderFor(cookie, secondTradeNo);
 
   const connection = await getDb();
-  const [rows] = await connection.execute("SELECT status FROM orders WHERE trade_no = ?", [base.tradeNo]);
-  assert.equal(Number(rows[0].status), 4, "被折抵的原订单应转为「已折抵」");
+  const [rows] = await connection.query("SELECT trade_no, status FROM orders WHERE trade_no IN (?)", [[base.tradeNo, secondTradeNo]]);
+  const statusOf = Object.fromEntries(rows.map((row) => [row.trade_no, Number(row.status)]));
+  assert.equal(statusOf[base.tradeNo], 3, "原订单保持已完成");
+  assert.equal(statusOf[secondTradeNo], 1, "新套餐付款后排队（待生效）");
+
+  const subscribe = await expectStatus(await get("/api/user/getSubscribe", cookie), 200, "订阅信息");
+  assert.equal(subscribe.data.plan_id, basePlan, "当前生效的仍是原套餐");
+  assert.deepEqual(subscribe.data.queued_plans.map((item) => item.trade_no), [secondTradeNo]);
 });
 
 /* ------------------------------------------------------------------ *

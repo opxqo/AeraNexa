@@ -36,6 +36,7 @@ import type {
   ServerNode,
   Ticket,
   TrafficRecord,
+  UserSubscribe,
   WalletTransaction,
 } from "@/lib/api/types";
 import { ConfirmModal, Modal, useToast } from "@/components/v2-modal";
@@ -115,9 +116,32 @@ function planPeriods(plan: Plan): string[] {
   return PERIOD_KEYS.filter((key) => planPeriodPrice(plan, key) !== null);
 }
 
+/**
+ * 下单前说明这笔订单付款后何时生效（规则见服务端 subscription-rules.ts）：
+ * 同套餐生效中 → 续费顺延；别的套餐生效中或已有排队 → 排队，到期后生效、互不折抵；永久套餐 → 不能买别的套餐。
+ */
+function PurchaseEffectHint({ subscribe, planId }: { subscribe: UserSubscribe | null; planId: number }) {
+  if (!subscribe?.plan_id) return null;
+  const now = subscribe.server_time ?? 0;
+  const permanent = subscribe.expired_at === null;
+  const active = permanent || (subscribe.expired_at ?? 0) > now;
+  const queued = subscribe.queued_plans?.length ?? 0;
+  const currentName = subscribe.plan?.name ?? "当前套餐";
+  let text: string | null = null;
+  if (active && subscribe.plan_id === planId) {
+    text = permanent ? null : "续费：到期时间将在当前到期日的基础上顺延，已用流量保留。";
+  } else if (active && permanent) {
+    text = `当前「${currentName}」为永久套餐，不会到期，无法再购买其它套餐；流量用完可在仪表盘购买流量重置。`;
+  } else if (active || queued) {
+    const until = subscribe.expired_at ? new Date(subscribe.expired_at * 1000).toLocaleDateString("zh-CN") : "";
+    text = `「${currentName}」${until ? `有效期至 ${until}` : "仍在有效期内"}${queued ? `，另有 ${queued} 个套餐在排队` : ""}。本套餐付款后将排队，等前面的套餐到期后自动生效，与当前套餐互不折抵。`;
+  }
+  return text ? <small className="field-hint" style={{ margin: 0 }}>{text}</small> : null;
+}
+
 const ORDER_STATUS_META: Record<number, { label: string; tone: string }> = {
   0: { label: "待支付", tone: "badge-warning" },
-  1: { label: "开通中", tone: "badge-info" },
+  1: { label: "待生效", tone: "badge-info" },
   2: { label: "已取消", tone: "badge-danger" },
   3: { label: "已完成", tone: "badge-success" },
   4: { label: "已折抵", tone: "badge-success" },
@@ -144,7 +168,7 @@ const TICKET_LEVEL_META: Record<number, { label: string; tone: string }> = {
 export function ApiPlanPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, subscribe } = useAuth();
 
   const plansState = useAsyncData<Plan[]>(
     async () => {
@@ -424,11 +448,7 @@ export function ApiPlanPage() {
                 <span>应付总计</span>
                 <strong style={{ fontSize: 18, color: "var(--v2-primary)" }}>{formatAmount(payable)}</strong>
               </div>
-              {selectedPlan.renew === 1 && (
-                <small className="field-hint" style={{ margin: 0 }}>
-                  升级订单将自动折抵当前订阅的剩余价值，实际应付以收银台为准。
-                </small>
-              )}
+              <PurchaseEffectHint subscribe={subscribe} planId={selectedPlan.id} />
             </div>
           </div>
         </Modal>

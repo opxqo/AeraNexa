@@ -15,6 +15,8 @@ import { getPaymentCallbackSecret } from "./payment-credentials";
 import { getEpayConfig } from "./payments/epay-config";
 import { buildEpaySubmitUrl, epayTypeOf } from "./payments/epay-protocol";
 import { PENDING_ORDER_TIMEOUT_MINUTES } from "./payments/order-payment-policy";
+import { getNumberSetting } from "./settings";
+import { decideActivation, monthlyPriceCents, purchaseBlockReason, resetTrafficPriceCents } from "./subscription-rules";
 import {
   badRequest,
   conflict,
@@ -24,7 +26,6 @@ import {
   unavailable,
 } from "./errors";
 import {
-  BYTES_PER_GB,
   ONETIME_PERIOD,
   ORDER_PERIODS,
   ORDER_STATUS,
@@ -38,7 +39,6 @@ import {
   addMonths,
   gbToBytes,
   resolveOrderType,
-  resolveSubscriptionState,
 } from "./subscription";
 
 type SqlExecutor = Pool | PoolConnection;
@@ -249,6 +249,13 @@ export async function listPlans() {
   return rows.filter((row) => availablePeriods(row).length > 0).map(serializePlan);
 }
 
+/** 下单用的套餐：流量重置作用于用户当前套餐，即便该套餐已下架也允许；其余只能买上架套餐。 */
+async function getPlanForOrder(executor: SqlExecutor, planId: number, period: string): Promise<ClientPlan | null> {
+  if (period !== RESET_PERIOD) return getVisiblePlan(executor, planId);
+  const [rows] = await executor.execute<ClientPlan[]>(`SELECT * FROM plans WHERE id = ? LIMIT 1`, [planId]);
+  return rows[0] ?? null;
+}
+
 async function getVisiblePlan(executor: SqlExecutor, planId: number): Promise<ClientPlan | null> {
   const [rows] = await executor.execute<ClientPlan[]>(
     `SELECT * FROM plans WHERE id = ? AND is_visible = 1 LIMIT 1`,
@@ -372,77 +379,6 @@ async function getUserForUpdate(connection: PoolConnection, userId: number): Pro
   return user;
 }
 
-/**
- * 升级折抵：按 V2Board OrderService::getSurplusValue 的口径估算旧订阅剩余价值。
- * - 永久套餐（一次性）：按「剩余流量占比」折算；
- * - 周期套餐：按「剩余时长占比」折算已付金额。
- */
-async function computeSurplusValue(
-  connection: PoolConnection,
-  user: UserSubscriptionRow,
-  now: number,
-): Promise<{ amountCents: number; orderIds: number[] }> {
-  const expiredAt = user.expired_at === null ? null : asNumber(user.expired_at);
-
-  if (expiredAt === null) {
-    const [rows] = await connection.execute<OrderRow[]>(
-      `SELECT * FROM orders
-        WHERE user_id = ? AND period = ? AND status = ?
-        ORDER BY id DESC LIMIT 1`,
-      [user.id, ONETIME_PERIOD, ORDER_STATUS.COMPLETED],
-    );
-    const lastOrder = rows[0];
-    if (!lastOrder) return { amountCents: 0, orderIds: [] };
-
-    const paidTotal = asNumber(lastOrder.total_amount) + asNumber(lastOrder.balance_amount);
-    const quotaGb = asNumber(user.transfer_enable) / BYTES_PER_GB;
-    if (paidTotal <= 0 || quotaGb <= 0) return { amountCents: 0, orderIds: [] };
-
-    const usedGb = (asNumber(user.upload_bytes) + asNumber(user.download_bytes)) / BYTES_PER_GB;
-    const remainingGb = Math.max(0, quotaGb - usedGb);
-    const amount = Math.round((paidTotal / quotaGb) * remainingGb);
-
-    const [allOrders] = await connection.execute<RowDataPacket[]>(
-      `SELECT id FROM orders WHERE user_id = ? AND period <> ? AND status = ?`,
-      [user.id, RESET_PERIOD, ORDER_STATUS.COMPLETED],
-    );
-    return { amountCents: Math.max(0, amount), orderIds: allOrders.map((row) => asNumber(row.id)) };
-  }
-
-  const [orders] = await connection.execute<OrderRow[]>(
-    `SELECT * FROM orders
-      WHERE user_id = ? AND period <> ? AND period <> ? AND status = ?
-      ORDER BY id ASC`,
-    [user.id, RESET_PERIOD, ONETIME_PERIOD, ORDER_STATUS.COMPLETED],
-  );
-  if (!orders.length) return { amountCents: 0, orderIds: [] };
-
-  let amountSum = 0;
-  let monthSum = 0;
-  let lastValidAt = 0;
-  for (const order of orders) {
-    const months = PERIOD_MONTHS[order.period];
-    if (!months) continue;
-    const createdAt = unix(order.created_at) ?? 0;
-    if (!createdAt || addMonths(createdAt, months) < now) continue;
-    lastValidAt = createdAt;
-    monthSum += months;
-    amountSum += asNumber(order.total_amount) + asNumber(order.balance_amount)
-      + asNumber(order.surplus_amount) - asNumber(order.refund_amount);
-  }
-  if (!lastValidAt) return { amountCents: 0, orderIds: [] };
-
-  const expiresAtByOrder = addMonths(lastValidAt, monthSum);
-  if (expiresAtByOrder < now) return { amountCents: 0, orderIds: [] };
-
-  const surplusSeconds = expiresAtByOrder - now;
-  const rangeSeconds = expiresAtByOrder - lastValidAt;
-  if (surplusSeconds <= 0 || rangeSeconds <= 0 || amountSum <= 0) return { amountCents: 0, orderIds: [] };
-
-  const amount = Math.round((amountSum / rangeSeconds) * surplusSeconds);
-  return { amountCents: Math.max(0, amount), orderIds: orders.map((order) => asNumber(order.id)) };
-}
-
 export type CreateOrderInput = { planId: number; period: string; couponCode?: string };
 
 type OrderPricing = {
@@ -471,12 +407,21 @@ async function computeOrderPricing(
   period: string,
   couponCode: string,
 ): Promise<OrderPricing> {
-  const subtotal = planPeriodPriceCents(plan, period);
-  if (subtotal === null) throw badRequest("该套餐暂不支持所选付款周期");
-
   const now = nowSeconds();
   const currentPlanId = user.plan_id === null ? null : asNumber(user.plan_id);
   const currentExpiresAt = user.expired_at === null ? null : asNumber(user.expired_at);
+  const isReset = period === RESET_PERIOD;
+
+  const blocked = purchaseBlockReason({
+    isReset,
+    targetPlanId: asNumber(plan.id),
+    user: { planId: currentPlanId, expiresAt: currentExpiresAt, now },
+  });
+  if (blocked) throw badRequest(blocked);
+
+  const subtotal = isReset ? await resetTrafficPrice(plan) : planPeriodPriceCents(plan, period);
+  if (subtotal === null) throw badRequest("该套餐暂不支持所选付款周期");
+
   const orderType = resolveOrderType({
     period,
     currentPlanId,
@@ -485,10 +430,6 @@ async function computeOrderPricing(
     nowSeconds: now,
   });
 
-  if (orderType === ORDER_TYPE.RESET_TRAFFIC) {
-    const state = resolveSubscriptionState(currentPlanId, currentExpiresAt, now);
-    if (!state.isActive) throw badRequest("需要先拥有生效中的订阅才能购买流量重置");
-  }
   if (orderType === ORDER_TYPE.RENEW && !plan.is_renewable) {
     throw badRequest("该套餐已停止续费，请选择其他套餐");
   }
@@ -497,26 +438,74 @@ async function computeOrderPricing(
     ? await resolveCoupon(connection, asNumber(user.id), couponCode, asNumber(plan.id), period, true)
     : null;
   const discount = computeDiscountCents(coupon, subtotal);
-  const afterDiscount = subtotal - discount;
 
-  let surplus = 0;
-  let surplusOrderIds: number[] = [];
-  if (orderType === ORDER_TYPE.UPGRADE) {
-    const result = await computeSurplusValue(connection, user, now);
-    surplus = Math.min(result.amountCents, afterDiscount);
-    surplusOrderIds = result.orderIds;
-  }
-
+  // 多套餐改为排队生效，不再折抵旧套餐剩余价值；surplus / refund 字段仅保留给历史升级单。
   return {
     subtotal,
     orderType,
     coupon,
     discount,
-    surplus,
-    surplusOrderIds,
-    payable: Math.max(0, afterDiscount - surplus),
-    refund: Math.max(0, surplus - afterDiscount),
+    surplus: 0,
+    surplusOrderIds: [],
+    payable: Math.max(0, subtotal - discount),
+    refund: 0,
   };
+}
+
+/** 流量重置价（分）= 套餐月付价 × 后台「流量重置价格比例」。 */
+async function resetTrafficPrice(plan: ClientPlan): Promise<number | null> {
+  const prices: Record<string, number | null> = {};
+  for (const column of planPriceColumns) prices[column] = planPeriodPriceCents(plan, column);
+  const monthly = monthlyPriceCents(prices);
+  if (monthly === null) return null;
+  return resetTrafficPriceCents(monthly, await getNumberSetting("order.reset_traffic_percent"));
+}
+
+/** 用户当前套餐的流量重置报价，供仪表盘「重置流量」确认弹窗展示。 */
+export async function getResetTrafficQuote(userId: number) {
+  const [users] = await getDbPool().execute<RowDataPacket[]>(
+    "SELECT plan_id, expired_at FROM users WHERE id = ? LIMIT 1",
+    [userId],
+  );
+  const user = users[0];
+  if (!user) throw notFound("用户不存在");
+  const planId = user.plan_id === null ? null : asNumber(user.plan_id);
+  const blocked = purchaseBlockReason({
+    isReset: true,
+    targetPlanId: planId ?? 0,
+    user: { planId, expiresAt: user.expired_at === null ? null : asNumber(user.expired_at), now: nowSeconds() },
+  });
+  if (blocked || planId === null) throw badRequest(blocked ?? "需要先拥有生效中的订阅才能购买流量重置");
+  const [plans] = await getDbPool().execute<ClientPlan[]>("SELECT * FROM plans WHERE id = ? LIMIT 1", [planId]);
+  const plan = plans[0];
+  if (!plan) throw notFound("当前套餐不存在");
+  const price = await resetTrafficPrice(plan);
+  if (price === null) throw badRequest("当前套餐未设置价格，无法购买流量重置");
+  return {
+    plan_id: planId,
+    plan_name: String(plan.name),
+    period: RESET_PERIOD,
+    price,
+    percent: await getNumberSetting("order.reset_traffic_percent"),
+  };
+}
+
+/** 已付款、排队等待生效的订单（按付款顺序），供仪表盘展示。 */
+export async function listQueuedOrders(userId: number) {
+  const [rows] = await getDbPool().execute<RowDataPacket[]>(
+    `SELECT o.trade_no, o.period, o.paid_at, p.name AS plan_name
+       FROM orders o INNER JOIN plans p ON p.id = o.plan_id
+      WHERE o.user_id = ? AND o.status = ?
+      ORDER BY o.paid_at ASC, o.id ASC`,
+    [userId, ORDER_STATUS.PROVISIONING],
+  );
+  return rows.map((row) => ({
+    trade_no: String(row.trade_no),
+    plan_name: String(row.plan_name),
+    period: String(row.period),
+    period_label: PERIOD_LABELS[String(row.period)] ?? String(row.period),
+    paid_at: unix(row.paid_at),
+  }));
 }
 
 export async function createOrder(userId: number, input: CreateOrderInput) {
@@ -528,7 +517,7 @@ export async function createOrder(userId: number, input: CreateOrderInput) {
     await connection.beginTransaction();
 
     const user = await getUserForUpdate(connection, userId);
-    const plan = await getVisiblePlan(connection, input.planId);
+    const plan = await getPlanForOrder(connection, input.planId, input.period);
     if (!plan) throw notFound("套餐不存在或暂未开放购买");
 
     const [pendingRows] = await connection.execute<RowDataPacket[]>(
@@ -612,7 +601,7 @@ export async function updatePendingOrder(orderId: number, input: UpdatePendingOr
 
     const userId = asNumber(order.user_id);
     const user = await getUserForUpdate(connection, userId);
-    const plan = await getVisiblePlan(connection, input.planId);
+    const plan = await getPlanForOrder(connection, input.planId, input.period);
     if (!plan) throw notFound("套餐不存在或暂未开放购买");
 
     const pricing = await computeOrderPricing(connection, user, plan, input.period, input.couponCode);
@@ -1111,12 +1100,30 @@ export async function settleOrder(
   adminId: number | null,
   providerTradeNo: string | null,
 ): Promise<void> {
+  // 先锁用户行再判断：生效中买别的套餐要排队，等当前套餐到期后按付款顺序生效。
+  const user = await getUserForUpdate(connection, userId);
+  const [queued] = await connection.execute<RowDataPacket[]>(
+    "SELECT 1 FROM orders WHERE user_id = ? AND status = ? AND id <> ? LIMIT 1",
+    [userId, ORDER_STATUS.PROVISIONING, order.id],
+  );
+  const activation = decideActivation({
+    isReset: String(order.period) === RESET_PERIOD,
+    targetPlanId: asNumber(order.plan_id),
+    user: {
+      planId: user.plan_id === null ? null : asNumber(user.plan_id),
+      expiresAt: user.expired_at === null ? null : asNumber(user.expired_at),
+      now: nowSeconds(),
+    },
+    hasQueued: queued.length > 0,
+  });
+  const nextStatus = activation === "queue" ? ORDER_STATUS.PROVISIONING : ORDER_STATUS.COMPLETED;
+
   // 条件 UPDATE 兼作并发闸门：只有把订单从「待支付」成功推进的那一次才继续履约。
   const [claimed] = await connection.execute<ResultSetHeader>(
-    `UPDATE orders SET status = ?, paid_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP,
+    `UPDATE orders SET status = ?, paid_at = CURRENT_TIMESTAMP, completed_at = IF(? = ?, CURRENT_TIMESTAMP, NULL),
        fulfillment_source = ?, fulfilled_by_admin_id = ?, provider_trade_no = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ? AND status = ?`,
-    [ORDER_STATUS.COMPLETED, source, adminId, providerTradeNo, order.id, ORDER_STATUS.PENDING],
+    [nextStatus, nextStatus, ORDER_STATUS.COMPLETED, source, adminId, providerTradeNo, order.id, ORDER_STATUS.PENDING],
   );
   if (claimed.affectedRows !== 1) throw conflict("订单已被处理，请刷新后查看");
   // 同一订单可能发起过多次支付，入账后其余未完成的流水一并关闭；调用方随后把本次流水标记为 completed。
@@ -1133,9 +1140,14 @@ export async function settleOrder(
     );
   }
 
-  await fulfillOrder(connection, order, userId);
-  // 开通与「要求同步到 3x-ui」同事务提交（outbox），worker 随后下发客户端。
-  await markPanelClientDirty(connection, userId);
+  if (activation === "activate") {
+    await fulfillOrder(connection, order, userId);
+    // 开通与「要求同步到 3x-ui」同事务提交（outbox），worker 随后下发客户端。
+    await markPanelClientDirty(connection, userId);
+  } else {
+    // 排队的订单：当前套餐若恰好已到期（例如有更早的排队单还没轮到），立即推进队首。
+    await activateNextQueuedOrder(connection, userId);
+  }
 
   // 给邀请人记佣金。与履约同一事务：订单完成但佣金没记、或佣金记了但订单没成，都会对不上账。
   // 网关回调与后台补单共用此函数，因此两条来源的返佣行为一致。
@@ -1160,6 +1172,62 @@ export async function settleOrder(
       [userId, refund, nextBalance, order.id],
     );
   }
+}
+
+/**
+ * 当前套餐已到期（或没有套餐）时，开通最早付款的一笔待生效订单。
+ * 调用方必须在事务中；返回是否开通了订单。按新购语义开通：流量清零，到期时间从现在起算。
+ */
+async function activateNextQueuedOrder(connection: PoolConnection, userId: number): Promise<boolean> {
+  const user = await getUserForUpdate(connection, userId);
+  const expiresAt = user.expired_at === null ? null : asNumber(user.expired_at);
+  // 永久套餐不会到期；有生效中的套餐时继续排队。
+  if (user.plan_id !== null && (expiresAt === null || expiresAt > nowSeconds())) return false;
+
+  const [rows] = await connection.execute<OrderRow[]>(
+    `${orderSelect} WHERE o.user_id = ? AND o.status = ? ORDER BY o.paid_at ASC, o.id ASC LIMIT 1 FOR UPDATE`,
+    [userId, ORDER_STATUS.PROVISIONING],
+  );
+  const next = rows[0];
+  if (!next) return false;
+
+  const [updated] = await connection.execute<ResultSetHeader>(
+    `UPDATE orders SET status = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?`,
+    [ORDER_STATUS.COMPLETED, next.id, ORDER_STATUS.PROVISIONING],
+  );
+  if (updated.affectedRows !== 1) return false;
+  // 排队单下单时可能被判为「续费」（当时同套餐仍生效），轮到它时上一段已到期，统一按新购开通。
+  await fulfillOrder(connection, { ...next, order_type: ORDER_TYPE.NEW } as OrderRow, userId);
+  await markPanelClientDirty(connection, userId);
+  return true;
+}
+
+/**
+ * worker 定时任务：为当前套餐已到期、且有待生效订单的用户开通下一个套餐。
+ * 每个用户单独一个事务，一轮最多处理 100 个用户，剩下的下一轮继续。
+ */
+export async function activateQueuedSubscriptions(): Promise<number> {
+  const [rows] = await getDbPool().query<RowDataPacket[]>(
+    `SELECT DISTINCT o.user_id FROM orders o INNER JOIN users u ON u.id = o.user_id
+      WHERE o.status = ? AND (u.plan_id IS NULL OR (u.expired_at IS NOT NULL AND u.expired_at <= UNIX_TIMESTAMP()))
+      LIMIT 100`,
+    [ORDER_STATUS.PROVISIONING],
+  );
+  let activated = 0;
+  for (const row of rows) {
+    const connection = await getDbPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      if (await activateNextQueuedOrder(connection, asNumber(row.user_id))) activated += 1;
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      console.error("[queued-subscription] 开通失败", row.user_id, error);
+    } finally {
+      connection.release();
+    }
+  }
+  return activated;
 }
 
 /**

@@ -372,9 +372,10 @@ export async function getRechargeCardBatchDetailsAction(batchId: number, page = 
 // 套餐
 // ---------------------------------------------------------------------------
 
+// 流量重置价不再按套餐单独设置，统一为「月付价 × 系统设置里的比例」；reset_price 列保留但不再写入。
 const PLAN_PRICE_FIELDS = [
   "monthPrice", "quarterPrice", "halfYearPrice", "yearPrice",
-  "twoYearPrice", "threeYearPrice", "onetimePrice", "resetPrice",
+  "twoYearPrice", "threeYearPrice", "onetimePrice",
 ] as const;
 
 const PLAN_PRICE_COLUMNS: Record<(typeof PLAN_PRICE_FIELDS)[number], string> = {
@@ -385,7 +386,6 @@ const PLAN_PRICE_COLUMNS: Record<(typeof PLAN_PRICE_FIELDS)[number], string> = {
   twoYearPrice: "two_year_price",
   threeYearPrice: "three_year_price",
   onetimePrice: "onetime_price",
-  resetPrice: "reset_price",
 };
 
 export async function savePlanAction(formData: FormData): Promise<ActionResult> {

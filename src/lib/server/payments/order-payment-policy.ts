@@ -8,6 +8,7 @@ export const PENDING_ORDER_TIMEOUT_MINUTES = 10;
 
 // 与 subscription.ts 的 ORDER_STATUS / ORDER_TYPE 保持一致；这里不 import，保持纯函数零依赖。
 const PENDING = 0;
+const QUEUED = 1;
 const CANCELLED = 2;
 const COMPLETED = 3;
 const UPGRADE = 3;
@@ -29,7 +30,8 @@ export function decideConfirmedPayment(order: {
   fulfillmentSource: string | null;
 }): ConfirmedPaymentAction {
   if (order.status === PENDING) return "settle";
-  if (order.status === COMPLETED && order.fulfillmentSource === "admin") return "confirm";
+  // 人工补单后的订单可能已开通（已完成），也可能在排队（待生效）。
+  if ((order.status === COMPLETED || order.status === QUEUED) && order.fulfillmentSource === "admin") return "confirm";
   if (order.status === CANCELLED && order.orderType !== UPGRADE && !order.hasSurplus) return "reopen";
   return "credit";
 }

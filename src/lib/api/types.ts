@@ -70,6 +70,25 @@ export interface UserSubscribe {
   plan?: Plan;
   subscribe_url: string;
   reset_day?: number;
+  /** 已付款、排队等当前套餐到期后依次生效的套餐。 */
+  queued_plans?: QueuedPlan[];
+}
+
+export interface QueuedPlan {
+  trade_no: string;
+  plan_name: string;
+  period: string;
+  period_label: string;
+  paid_at: number | null;
+}
+
+/** 流量重置报价：当前套餐月付价 × 后台比例。 */
+export interface ResetTrafficQuote {
+  plan_id: number;
+  plan_name: string;
+  period: string;
+  price: number; // 分
+  percent: number;
 }
 
 export interface UserStat {

@@ -32,7 +32,7 @@ export const PERIOD_LABELS: Record<string, string> = {
   reset_price: "流量重置",
 };
 
-/** orders.order_type：1 新购，2 续费，3 升级，4 流量重置 */
+/** orders.order_type：1 新购，2 续费，3 升级（已停用，仅历史订单），4 流量重置 */
 export const ORDER_TYPE = {
   NEW: 1,
   RENEW: 2,
@@ -47,7 +47,10 @@ export const ORDER_TYPE_LABELS: Record<number, string> = {
   4: "流量重置",
 };
 
-/** orders.status：0 待支付，1 开通中，2 已取消，3 已完成，4 已折抵，5 已退款 */
+/**
+ * orders.status：0 待支付，1 待生效，2 已取消，3 已完成，4 已折抵（仅历史升级单），5 已退款
+ * 待生效 = 已付款、排队等当前套餐到期后开通（见 subscription-rules.ts）。
+ */
 export const ORDER_STATUS = {
   PENDING: 0,
   PROVISIONING: 1,
@@ -59,7 +62,7 @@ export const ORDER_STATUS = {
 
 export const ORDER_STATUS_LABELS: Record<number, string> = {
   0: "待支付",
-  1: "开通中",
+  1: "待生效",
   2: "已取消",
   3: "已完成",
   4: "已折抵",
@@ -104,11 +107,11 @@ export function resolveSubscriptionState(
 }
 
 /**
- * 推导订单类型，与 V2Board OrderService::setOrderType 完全一致：
+ * 推导订单类型：
  * - reset_price 一律为流量重置；
- * - 已有套餐、购买不同套餐、且订阅仍生效（或永久）→ 升级；
  * - 订阅仍生效且购买同一套餐 → 续费；
- * - 其余 → 新购。
+ * - 其余（含生效中购买其它套餐，付款后排队）→ 新购。
+ * 与 V2Board 不同，不再有「升级折抵」。
  */
 export function resolveOrderType(input: {
   period: string;
@@ -123,9 +126,7 @@ export function resolveOrderType(input: {
   const state = resolveSubscriptionState(currentPlanId, currentExpiresAt, nowSeconds);
   const isUnexpired = currentExpiresAt !== null && currentExpiresAt > nowSeconds;
 
-  if (state.planId !== null && targetPlanId !== state.planId && (isUnexpired || state.isPermanent)) {
-    return ORDER_TYPE.UPGRADE;
-  }
+  // 不再有「升级」：生效中买别的套餐是新购，付款后排队，当前套餐到期再生效，互不折抵。
   if (isUnexpired && targetPlanId === state.planId) return ORDER_TYPE.RENEW;
   return ORDER_TYPE.NEW;
 }

@@ -11,6 +11,7 @@ import {
   getInvites,
   getOrderDetail,
   getOrderStatus,
+  getResetTrafficQuote,
   getTicket,
   getUserStats,
   listKnowledge,
@@ -85,6 +86,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
         data: result.items,
         meta: { total: result.total, page: result.page, page_size: result.pageSize, has_more: result.hasMore },
       });
+    }
+
+    if (key === "orders/reset-quote") {
+      return NextResponse.json({ data: await getResetTrafficQuote(user.id) });
     }
 
     if (key === "orders/status") {
