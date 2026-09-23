@@ -139,6 +139,20 @@ function PurchaseEffectHint({ subscribe, planId }: { subscribe: UserSubscribe | 
   return text ? <small className="field-hint" style={{ margin: 0 }}>{text}</small> : null;
 }
 
+/** 支付方式图标：易支付的支付宝 / 微信用品牌图标（public/payment-icons，TDesign MIT），余额用钱包，其余通用卡片。 */
+const PAYMENT_BRAND_ICONS: Record<string, { src: string; alt: string }> = {
+  epay_alipay: { src: "/payment-icons/alipay.svg", alt: "支付宝" },
+  epay_wxpay: { src: "/payment-icons/wechatpay.svg", alt: "微信支付" },
+};
+
+function PaymentMethodIcon({ payment }: { payment: string }) {
+  const brand = PAYMENT_BRAND_ICONS[payment];
+  // eslint-disable-next-line @next/next/no-img-element -- 22px 的静态 SVG，无需 next/image 的优化管线
+  if (brand) return <img src={brand.src} alt={brand.alt} width={22} height={22} />;
+  if (payment === "balance") return <Wallet size={22} style={{ color: "var(--v2-primary)" }} />;
+  return <CreditCard size={22} style={{ color: "var(--v2-primary)" }} />;
+}
+
 const ORDER_STATUS_META: Record<number, { label: string; tone: string }> = {
   0: { label: "待支付", tone: "badge-warning" },
   1: { label: "待生效", tone: "badge-info" },
@@ -805,7 +819,7 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
                           if (event.key === "Enter" || event.key === " ") setSelectedMethod(method.id);
                         }}
                       >
-                        <CreditCard size={22} style={{ color: "var(--v2-primary)" }} />
+                        <PaymentMethodIcon payment={method.payment} />
                         <span className="payment-channel-name">{method.name}</span>
                       </div>
                     ))}
