@@ -10,8 +10,7 @@
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
-  <rect width="64" height="64" rx="14" fill="#0B1220"/>
-  <g transform="translate(32 32.5) scale(.74) translate(-32 -32.25)">
+  <g transform="translate(0 -.25)">
     <g fill="none" stroke="url(#an-g)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
       <path d="M8.5 53.5 32 11 55.5 53.5"/>
       <path d="M8.5 53.5C18 40 25 38.3 32 38.3S46 40 55.5 53.5"/>

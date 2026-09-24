@@ -61,6 +61,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 9px;
   color: rgba(255, 255, 255, .68);
   background: #4d67cf;
   font-size: 20px;
@@ -678,6 +679,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   box-shadow: 0 .5rem 2rem rgba(0, 0, 0, .08);
 }
 .login-card-body { padding: 29px 25px 23px; text-align: center; }
+.login-brand-icon { display: block; margin: 0 auto 14px; border-radius: 14px; }
 .login-card h1 { margin: 0; color: #292e33; font-size: 38px; font-weight: 400; line-height: 1.25; }
 .login-card-body > p { margin: 4px 0 16px; color: #6c757d; font-size: 14px; }
 .login-card form { display: grid; gap: 18px; }

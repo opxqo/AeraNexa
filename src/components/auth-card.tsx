@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Globe2, KeyRound, LogIn, UserPlus, Check, AlertCircle, Loader2 } from "lucide-react";
@@ -197,6 +198,7 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
     <main className="login-page">
       <section className="login-card">
         <div className="login-card-body">
+          <Image alt="" aria-hidden="true" className="login-brand-icon" height={56} priority src="/brand/aeranexa-icon.svg" width={56} />
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <h1 style={{ margin: 0 }}>AeraNexa</h1>
             {isDemo && <span className="v2-mode-badge demo">Demo演示</span>}

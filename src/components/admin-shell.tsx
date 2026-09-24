@@ -36,6 +36,7 @@ import { adminSections, type AdminIcon } from "@/lib/admin-navigation";
 import { authApi } from "@/lib/api/auth";
 import { clearAuthToken } from "@/lib/api/client";
 import { ToastProvider, useToast } from "@/components/v2-modal";
+import { BrandMark } from "@/components/brand-mark";
 
 const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number; "aria-hidden"?: boolean }>> = {
   dashboard: Home20Regular,
@@ -124,6 +125,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
 
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <Link className="brand" href="/admin" onClick={() => setOpen(false)}>
+          <BrandMark />
           AeraNexa
         </Link>
         <nav className="primary-nav" aria-label="管理员面板导航">

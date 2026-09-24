@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { portalSections, type PortalIcon } from "@/lib/navigation";
 import { useToast } from "@/components/v2-modal";
+import { BrandMark } from "@/components/brand-mark";
 
 const languages = [
   { code: "zh-CN", label: "简体中文" },
@@ -153,6 +154,7 @@ export function PortalShell({
       {/* 左侧经典边栏 */}
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <Link className="brand" href={`${effectiveBasePath}/dashboard`} onClick={() => setOpen(false)}>
+          <BrandMark />
           AeraNexa
         </Link>
 
