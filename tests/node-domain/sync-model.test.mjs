@@ -8,6 +8,8 @@ import {
   computeDesiredClient,
   diffClient,
   isEligible,
+  VISION_FLOW,
+  visionEligible,
 } from "../../src/lib/server/panel/sync-model.ts";
 
 const NOW = 1_800_000_000;
@@ -134,4 +136,56 @@ test("实际状态：只收 u{数字} 客户端，按 email 合并多个入站�
   assert.equal(actual.get("u7").expiryTime, 5);
   assert.equal(actual.get("u8").id, "p", "Trojan 客户端没有 id 时取 password");
   assert.equal(actual.get("u8").enable, false);
+});
+
+function inbound(protocol, streamSettings, extra = {}) {
+  return { protocol, settings: { encryption: "none", decryption: "none" }, streamSettings, ...extra };
+}
+
+test("Vision 适用性：与 3x-ui inboundCanEnableTlsFlow + disableFlow 一致", () => {
+  assert.equal(visionEligible(inbound("vless", { network: "tcp", security: "reality" })), true);
+  assert.equal(visionEligible(inbound("vless", { network: "tcp", security: "tls" })), true);
+  assert.equal(visionEligible(inbound("vless", JSON.stringify({ network: "tcp", security: "tls" }))), true, "兼容字符串");
+  assert.equal(visionEligible(inbound("vless", { network: "tcp", security: "none" })), false);
+  assert.equal(visionEligible(inbound("vless", { network: "ws", security: "tls" })), false);
+  assert.equal(visionEligible(inbound("vless", { network: "grpc", security: "reality" })), false);
+  assert.equal(visionEligible(inbound("trojan", { network: "tcp", security: "tls" })), false);
+  assert.equal(visionEligible(inbound("vless", { network: "tcp", security: "reality" }, { disableFlow: true })), false);
+  assert.equal(visionEligible(inbound("vless", { network: "xhttp", security: "none" })), false, "xhttp 需 VLESS encryption");
+  assert.equal(
+    visionEligible({ protocol: "vless", settings: { decryption: "mlkem768x25519plus.native.0rtt.KEY" }, streamSettings: { network: "xhttp" } }),
+    true,
+  );
+  assert.equal(visionEligible(null), false);
+});
+
+test("期望 flow：开关与适用入站同时满足才下发 Vision", () => {
+  assert.equal(computeDesiredClient(user({ visionFlow: true }), NOW).client.flow, VISION_FLOW);
+  assert.equal(computeDesiredClient(user({ visionFlow: false }), NOW).client.flow, "");
+  assert.equal(computeDesiredClient(user(), NOW).client.flow, "");
+});
+
+test("实际 flow：只取适用入站上的值；不适用入站的空 flow 不参与比较", () => {
+  const reality = inbound("vless", { network: "tcp", security: "reality" });
+  const ws = inbound("vless", { network: "ws", security: "tls" });
+  const actual = collectActualClients([
+    { ...ws, id: 1, settings: { clients: [{ email: "u7", id: UUID, flow: "" }] } },
+    { ...reality, id: 3, settings: { clients: [{ email: "u7", id: UUID, flow: VISION_FLOW }] } },
+    { ...ws, id: 5, settings: { clients: [{ email: "u8", id: UUID, flow: "" }] } },
+  ]);
+  assert.equal(actual.get("u7").flow, VISION_FLOW, "后出现的适用入站覆盖先前不适用入站的空值");
+  assert.equal(actual.get("u7").onVisionInbound, true);
+  assert.equal(actual.get("u8").flow, "");
+  assert.equal(actual.get("u8").onVisionInbound, false);
+});
+
+test("diff：flow 不一致触发 update；未挂适用入站时忽略 flow", () => {
+  const desired = computeDesiredClient(user({ visionFlow: true }), NOW);
+  const onVision = actualFrom(desired, { flow: VISION_FLOW, onVisionInbound: true });
+  assert.deepEqual(diffClient("u7", desired, onVision), []);
+  assert.equal(diffClient("u7", desired, { ...onVision, flow: "" })[0].type, "update", "开启 Vision 后改写");
+
+  const off = computeDesiredClient(user({ visionFlow: false }), NOW);
+  assert.equal(diffClient("u7", off, onVision)[0].type, "update", "关闭后回收 flow");
+  assert.deepEqual(diffClient("u7", off, actualFrom(off, { flow: "", onVisionInbound: false })), []);
 });

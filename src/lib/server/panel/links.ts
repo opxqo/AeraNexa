@@ -14,6 +14,8 @@ export type LinkNode = {
   port: number;
   protocol: string;
   snapshot: JsonObject;
+  /** VLESS 流控（如 xtls-rprx-vision），须与 3x-ui 中该用户客户端的 flow 一致，否则 xray 拒绝连接。 */
+  flow?: string;
 };
 
 function obj(value: unknown): JsonObject {
@@ -201,7 +203,8 @@ export function buildLink(node: LinkNode, uuid: string): string | null {
   switch (node.protocol) {
     case "vless": {
       const encryption = str(obj(node.snapshot.settings).encryption) || "none";
-      return `vless://${uuid}@${authority}?${toQuery([["encryption", encryption], ...stream.query])}${fragment}`;
+      const flow: Array<[string, string]> = node.flow ? [["flow", node.flow]] : [];
+      return `vless://${uuid}@${authority}?${toQuery([["encryption", encryption], ...flow, ...stream.query])}${fragment}`;
     }
     case "trojan":
       return `trojan://${encodeURIComponent(uuid)}@${authority}?${toQuery(stream.query)}${fragment}`;

@@ -53,6 +53,18 @@ test("VLESS + Reality：带 pbk / sid / sni / fp，不泄露私钥", () => {
   assert.equal(q.spx, "/");
 });
 
+test("VLESS 流控：node.flow 有值才带 flow，其余协议不受影响", () => {
+  const reality = {
+    network: "tcp",
+    security: "reality",
+    realitySettings: { serverNames: ["a.com"], shortIds: ["01"], settings: { publicKey: "PUBKEY" } },
+  };
+  assert.equal(parse(buildLink(node("vless", reality, { flow: "xtls-rprx-vision" }), UUID)).q.flow, "xtls-rprx-vision");
+  assert.equal(parse(buildLink(node("vless", reality), UUID)).q.flow, undefined);
+  const trojan = buildLink(node("trojan", { network: "tcp", security: "tls", tlsSettings: { serverName: "a.com" } }, { flow: "xtls-rprx-vision" }), UUID);
+  assert.equal(parse(trojan).q.flow, undefined);
+});
+
 test("Reality 缺公钥 → 返回 null（客户端无法连接，宁可不下发）", () => {
   assert.equal(buildLink(node("vless", { network: "tcp", security: "reality", realitySettings: { settings: {} } }), UUID), null);
 });

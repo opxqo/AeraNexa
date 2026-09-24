@@ -127,6 +127,8 @@ export function buildInboundSnapshot(raw: JsonObject): JsonObject {
     settings,
     streamSettings: asJsonObject(raw.streamSettings),
     sniffing: asJsonObject(raw.sniffing),
+    // 3x-ui「禁用流控」决定该入站是否保留 Vision；仅在勾选时写入，避免未勾选的节点快照哈希变化。
+    ...(raw.disableFlow === true ? { disableFlow: true } : {}),
   }) as JsonObject;
 }
 

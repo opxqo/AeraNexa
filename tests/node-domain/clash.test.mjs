@@ -38,6 +38,16 @@ test("VLESS + Reality：servername / client-fingerprint / reality-opts", () => {
   assert.equal(proxy.network, undefined, "tcp 不写 network");
 });
 
+test("VLESS 流控：node.flow 有值才写 flow", () => {
+  const reality = {
+    network: "tcp",
+    security: "reality",
+    realitySettings: { serverNames: ["www.microsoft.com"], shortIds: ["6ba8"], settings: { publicKey: "PUB" } },
+  };
+  assert.equal(buildClashProxy(node("vless", reality, { flow: "xtls-rprx-vision" }), UUID).flow, "xtls-rprx-vision");
+  assert.equal(buildClashProxy(node("vless", reality), UUID).flow, undefined);
+});
+
 test("Trojan + WS + TLS：password、sni、ws-opts.headers.Host、alpn 数组", () => {
   const proxy = buildClashProxy(node("trojan", {
     network: "ws",

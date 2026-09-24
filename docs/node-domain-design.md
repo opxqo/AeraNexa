@@ -274,7 +274,9 @@ src/worker/
 >
 > 流量采集与设备数限制（第 5 步、§4.7）已完成并实测：超额后下一轮采集即标脏、3x-ui 停用、订阅显示「流量已用尽」；套餐设备上限 1 时 limitIp=1 下发，第二台 HWID 设备拿到「设备数已达上限」提示节点。
 >
-> 第一版限制：只分配 **vless / vmess / trojan** 入站（`SYNC_PROTOCOLS`，凭据都能直接用 UUID 表达；Shadowsocks-2022 需要定长密钥，另行设计）；VLESS `flow` 固定为空（不启用 Vision）。
+> 第一版限制：只分配 **vless / vmess / trojan** 入站（`SYNC_PROTOCOLS`，凭据都能直接用 UUID 表达；Shadowsocks-2022 需要定长密钥，另行设计）。
+>
+> **VLESS Vision（2026-09-23）**：由系统设置 `panel.vless_flow` 控制，默认关闭。开启后每个 `u{id}` 客户端统一下发 `xtls-rprx-vision`，3x-ui 在 add/update 时按入站剥离不适用的 flow（`clientWithInboundFlow`，v3.2.5 起）。适用条件与 3x-ui 一致：VLESS + (tcp + tls/reality，或 xhttp + VLESS encryption)，且入站未勾选「禁用流控」（`visionEligible`，`sync-model.ts`）。Reconciler 只从适用入站读取实际 flow 做比较；订阅链接与 Clash 用同一函数判定是否带 flow，保证服务端与客户端一致。切换开关会全量标脏；用户需更新订阅，旧链接会被 xray 拒绝。
 
 1. ✅ `PanelClient` + 导入器 + 后台"同步入站"（只读）——`src/lib/server/panel/{client,inbounds,import-inbounds}.ts`，迁移 `20260920_002`，测试 `pnpm test:node`；已对本地 3x-ui 3.8.5 实测导入与重复导入幂等
 2. ✅ schema 迁移（`20260920_003` `panel_clients`）+ `markPanelClientDirty` 接入：订单履约、后台改用户、重置安全信息、套餐 / 节点 / 权限组变更（`markAllPanelClientsDirty`）；后台节点页新增「权限组」管理，套餐可选权限组
@@ -283,4 +285,4 @@ src/worker/
 5. ✅ `src/lib/server/panel/collect-traffic.ts`（纯函数 `traffic-model.ts`）：每分钟读 `inbounds/list` 的 clientStats / 入站计数，按游标（`panel_traffic_cursors`，迁移 `20260920_004`）求增量；首次见到从 0 起算、计数变小视为重置。用户明细按东八区自然日、`node_id = NULL` 归档（3x-ui 只给客户端合计）。`/api/node/traffic` 推送接口保留给非 3x-ui 节点，**不参与计费**，避免与采集器重复计数
 6. ✅ 设备数限制：`plans.device_limit` / `users.device_limit_override`，连接层下发 limitIp（需节点启用 fail2ban，本地 Docker 版 3x-ui 已启用），订阅层 `src/lib/server/devices.ts` + `user_devices`；门户个人中心「我的设备」，后台用户可设覆盖值、清空设备。
 7. 🟡 订阅：Base64 与 Clash / Mihomo 已完成（`/api/client/subscribe`，旧路径 `/api/v1/client/subscribe` 兼容保留；`flag=clash|meta|mihomo|stash` 或 Clash 系 UA 返回 YAML，门户 Clash / Stash 导入按钮自动带 `flag=clash`）。Clash 默认由 AeraNexa 生成（`src/lib/server/panel/clash.ts`），也可在系统设置中切换为 3x-ui 规则：AeraNexa 保留用户鉴权、权限组、流量、设备限制和响应头，服务端只代理合格且已同步用户的 3x-ui YAML。Clash 第一版不下发 xhttp / kcp 传输。待做：sing-box、Surge / Quantumult X
-8. 后台可观测性：节点页展示挂载数/同步失败数，用户详情展示 `sync_status/last_error`，"立即重同步"按钮
+8. ✅ 后台可观测性：worker 每个任务执行后写 `worker_runs`（迁移 `20260923_001`，`src/lib/server/worker-status.ts`），事件同步每轮都执行即心跳；后台节点页顶部「同步状态」面板展示 worker 是否存活（超过 max(120s, 事件间隔×3+60s) 无记录判定未运行）、四个任务的上次结果、客户端同步计数与最近 20 个失败用户（含 `last_error`，可逐个「立即重试」或「全部重试」）；用户列表新增「节点同步」列，编辑弹窗可「立即重同步」（即 `markPanelClientDirty`）

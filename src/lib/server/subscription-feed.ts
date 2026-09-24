@@ -7,8 +7,8 @@ import { PANEL_NAME } from "./panel/import-inbounds";
 import { buildClashProxy, clashNoticeProxy, renderClashConfig } from "./panel/clash";
 import { fetchPanelClashSubscription, PanelSubscriptionError } from "./panel/subscription";
 import { buildLink, noticeLink, type LinkNode } from "./panel/links";
-import { isEligible, SYNC_PROTOCOLS } from "./panel/sync-model";
-import { getClashSubscriptionProvider } from "./settings";
+import { isEligible, SYNC_PROTOCOLS, VISION_FLOW, visionEligible } from "./panel/sync-model";
+import { getClashSubscriptionProvider, isVisionFlowEnabled } from "./settings";
 
 /**
  * 用户订阅（docs/node-domain-design.md §4.6）。
@@ -101,6 +101,7 @@ export async function getSubscriptionFeed(
       subId: "",
       deviceLimit: 0,
       inboundIds: [],
+      visionFlow: false,
     },
     nowSeconds,
   );
@@ -117,11 +118,14 @@ export async function getSubscriptionFeed(
         ORDER BY n.sort_order ASC, n.id ASC`,
       [user.group_id, PANEL_NAME],
     );
+    // 与 Reconciler 同一判定：3x-ui 只在适用入站上保留 flow，链接也只在这些节点上带。
+    const vision = await isVisionFlowEnabled();
     for (const row of rows) {
       const protocol = String(row.protocol);
       if (!SYNC_PROTOCOLS.has(protocol)) continue;
       const snapshot = typeof row.inbound_snapshot === "string" ? JSON.parse(row.inbound_snapshot) : row.inbound_snapshot;
-      nodes.push({ name: String(row.name), host: String(row.host), port: Number(row.port), protocol, snapshot });
+      const flow = vision && visionEligible(snapshot) ? VISION_FLOW : undefined;
+      nodes.push({ name: String(row.name), host: String(row.host), port: Number(row.port), protocol, snapshot, flow });
     }
   }
 

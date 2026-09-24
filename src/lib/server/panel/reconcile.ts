@@ -2,6 +2,7 @@ import "server-only";
 
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "../db";
+import { isVisionFlowEnabled } from "../settings";
 import { addClient, deleteClient, detachClient, listRawInbounds, PanelError, updateClient } from "./client";
 import { PANEL_NAME } from "./import-inbounds";
 import {
@@ -9,6 +10,7 @@ import {
   computeDesiredClient,
   diffClient,
   SYNC_PROTOCOLS,
+  visionEligible,
   type DesiredClient,
   type PanelOp,
   type UserEntitlement,
@@ -51,7 +53,7 @@ type ClientRow = RowDataPacket & {
   device_limit: number;
 };
 
-type AssignableNode = { nodeId: number; inboundId: number; protocol: string };
+type AssignableNode = { nodeId: number; inboundId: number; protocol: string; vision: boolean };
 
 const MAX_BACKOFF_SECONDS = 30 * 60;
 
@@ -59,9 +61,18 @@ function backoffSeconds(attempts: number): number {
   return Math.min(MAX_BACKOFF_SECONDS, 10 * 2 ** Math.min(attempts, 12));
 }
 
+function parseSnapshot(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 async function loadAssignableNodes(): Promise<Map<number, AssignableNode[]>> {
   const [rows] = await getDbPool().query<RowDataPacket[]>(
-    `SELECT nag.group_id, n.id AS node_id, n.external_inbound_id, n.protocol
+    `SELECT nag.group_id, n.id AS node_id, n.external_inbound_id, n.protocol, n.inbound_snapshot
        FROM node_access_groups nag
        JOIN nodes n ON n.id = nag.node_id
       WHERE n.external_panel = ? AND n.is_enabled = 1 AND n.missing_since IS NULL
@@ -75,7 +86,7 @@ async function loadAssignableNodes(): Promise<Map<number, AssignableNode[]>> {
     if (!Number.isInteger(inboundId) || inboundId <= 0 || !SYNC_PROTOCOLS.has(protocol)) continue;
     const groupId = Number(row.group_id);
     const list = byGroup.get(groupId) ?? [];
-    list.push({ nodeId: Number(row.node_id), inboundId, protocol });
+    list.push({ nodeId: Number(row.node_id), inboundId, protocol, vision: visionEligible(parseSnapshot(row.inbound_snapshot)) });
     byGroup.set(groupId, list);
   }
   return byGroup;
@@ -110,7 +121,7 @@ async function loadClientRows(scope: { userIds: number[] } | "all"): Promise<Cli
   return rows;
 }
 
-function toEntitlement(row: ClientRow, nodes: AssignableNode[]): UserEntitlement {
+function toEntitlement(row: ClientRow, nodes: AssignableNode[], visionEnabled: boolean): UserEntitlement {
   return {
     userId: Number(row.user_id),
     email: String(row.user_email ?? ""),
@@ -123,6 +134,7 @@ function toEntitlement(row: ClientRow, nodes: AssignableNode[]): UserEntitlement
     subId: String(row.sub_id),
     deviceLimit: Number(row.device_limit),
     inboundIds: nodes.map((node) => node.inboundId),
+    visionFlow: visionEnabled && nodes.some((node) => node.vision),
   };
 }
 
@@ -191,13 +203,17 @@ export async function reconcileClients(scope: { userIds: number[] } | "all"): Pr
 
   // 先读 3x-ui：不可达就整轮放弃，不动任何用户的状态。
   const actualClients = collectActualClients(await listRawInbounds());
-  const [rows, nodesByGroup] = await Promise.all([loadClientRows(scope), loadAssignableNodes()]);
+  const [rows, nodesByGroup, visionEnabled] = await Promise.all([
+    loadClientRows(scope),
+    loadAssignableNodes(),
+    isVisionFlowEnabled(),
+  ]);
   const nowSeconds = Math.floor(Date.now() / 1000);
 
   for (const row of rows) {
     result.checked += 1;
     const nodes = row.group_id === null ? [] : (nodesByGroup.get(Number(row.group_id)) ?? []);
-    const desired = computeDesiredClient(toEntitlement(row, nodes), nowSeconds);
+    const desired = computeDesiredClient(toEntitlement(row, nodes, visionEnabled), nowSeconds);
     const actual = actualClients.get(row.email) ?? null;
     actualClients.delete(row.email);
     const ops = diffClient(row.email, desired, actual);

@@ -93,6 +93,20 @@ export const SETTING_DEFS: readonly SettingDef[] = [
     unit: "毫秒",
   },
   {
+    key: "panel.vless_flow",
+    group: "节点",
+    label: "VLESS 流控（Vision）",
+    description:
+      "开启后为 VLESS + TCP（TLS / Reality）入站下发 xtls-rprx-vision，订阅链接同步带上 flow；在 3x-ui 里勾选了「禁用流控」的入站除外。切换后用户需更新订阅，旧链接会被拒绝连接。",
+    kind: "select",
+    env: "PANEL_VLESS_FLOW",
+    defaultValue: "none",
+    options: [
+      { value: "none", label: "关闭" },
+      { value: "xtls-rprx-vision", label: "xtls-rprx-vision" },
+    ],
+  },
+  {
     key: "node.traffic_secret",
     group: "节点",
     label: "节点流量上报密钥",

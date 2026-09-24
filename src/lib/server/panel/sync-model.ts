@@ -9,6 +9,8 @@ export const SYNC_PROTOCOLS: ReadonlySet<string> = new Set(["vless", "vmess", "t
 /** 节点域管理的客户端 email 命名空间。其他 email（管理员手工建的）一律不碰。 */
 export const MANAGED_EMAIL = /^u(\d+)$/;
 
+export const VISION_FLOW = "xtls-rprx-vision";
+
 /** 下发给 3x-ui 的客户端对象（字段名对齐 3x-ui model.Client）。 */
 export type PanelClientPayload = {
   email: string;
@@ -39,6 +41,10 @@ export type ActualClient = {
   totalGB: number;
   limitIp: number;
   comment: string;
+  /** 取自适用 Vision 的入站；其余入站上的 flow 已被 3x-ui 置空，不可作为依据。 */
+  flow: string;
+  /** 客户端是否挂在至少一个适用 Vision 的入站上；否则 flow 无从比较。 */
+  onVisionInbound: boolean;
   inboundIds: number[];
 };
 
@@ -64,6 +70,8 @@ export type UserEntitlement = {
   deviceLimit: number;
   /** 该用户套餐可用的入站 ID（已按权限组、节点启用、协议过滤）。 */
   inboundIds: number[];
+  /** 下发 Vision 流控：系统设置已开启，且可用入站中至少一个适用。 */
+  visionFlow: boolean;
 };
 
 export function isEligible(user: UserEntitlement, nowSeconds: number): boolean {
@@ -97,7 +105,8 @@ export function computeDesiredClient(user: UserEntitlement, nowSeconds: number):
       totalGB: 0,
       limitIp: Math.max(0, Math.floor(user.deviceLimit) || 0),
       tgId: 0,
-      flow: "",
+      // 3x-ui 按入站剥离不适用的 flow（clientWithInboundFlow），统一下发是安全的。
+      flow: user.visionFlow ? VISION_FLOW : "",
       // 备注只在 3x-ui 面板里给管理员看，不会进入订阅或节点名。
       comment: user.email ? `AeraNexa · ${user.email}` : "AeraNexa",
     },
@@ -123,9 +132,33 @@ function asJsonObject(value: unknown): JsonObject {
   return {};
 }
 
+function isVlessEncryptionSet(value: unknown): boolean {
+  return typeof value === "string" && value !== "" && value !== "none";
+}
+
+/**
+ * 入站是否适用 XTLS Vision，与 3x-ui inboundCanEnableTlsFlow + DisableFlow 一致
+ * （source/3x-ui internal/web/service/inbound_protocol.go、client_crud.go clientWithInboundFlow）：
+ * VLESS 且 (tcp + tls/reality，或 xhttp + 已启用 VLESS encryption)，且入站未勾选「禁用流控」。
+ * 接受原始入站或 inbound_snapshot，settings / streamSettings 可以是 JSON 字符串。
+ */
+export function visionEligible(inbound: unknown): boolean {
+  if (!isObject(inbound) || inbound.protocol !== "vless" || inbound.disableFlow === true) return false;
+  const stream = asJsonObject(inbound.streamSettings);
+  const network = String(stream.network ?? "");
+  const security = String(stream.security ?? "");
+  if (network === "tcp") return security === "tls" || security === "reality";
+  if (network === "xhttp") {
+    const settings = asJsonObject(inbound.settings);
+    return isVlessEncryptionSet(settings.encryption) || isVlessEncryptionSet(settings.decryption);
+  }
+  return false;
+}
+
 /**
  * 从 `inbounds/list` 汇总出每个受管客户端的实际状态。
- * 同一 email 挂在多个入站上时，凭据与开关以第一次出现为准（3x-ui 保证它们一致）。
+ * 同一 email 挂在多个入站上时，凭据与开关以第一次出现为准（3x-ui 保证它们一致）；
+ * flow 只从适用 Vision 的入站读取。
  */
 export function collectActualClients(rawInbounds: unknown[]): Map<string, ActualClient> {
   const clients = new Map<string, ActualClient>();
@@ -135,14 +168,20 @@ export function collectActualClients(rawInbounds: unknown[]): Map<string, Actual
     if (!Number.isInteger(inboundId) || inboundId <= 0) continue;
     const list = asJsonObject(raw.settings).clients;
     if (!Array.isArray(list)) continue;
+    const vision = visionEligible(raw);
 
     for (const item of list) {
       if (!isObject(item)) continue;
       const email = String(item.email ?? "");
       if (!MANAGED_EMAIL.test(email)) continue;
+      const flow = String(item.flow ?? "");
       const existing = clients.get(email);
       if (existing) {
         if (!existing.inboundIds.includes(inboundId)) existing.inboundIds.push(inboundId);
+        if (vision && !existing.onVisionInbound) {
+          existing.onVisionInbound = true;
+          existing.flow = flow;
+        }
         continue;
       }
       clients.set(email, {
@@ -154,6 +193,8 @@ export function collectActualClients(rawInbounds: unknown[]): Map<string, Actual
         totalGB: Number(item.totalGB ?? 0) || 0,
         limitIp: Number(item.limitIp ?? 0) || 0,
         comment: String(item.comment ?? ""),
+        flow: vision ? flow : "",
+        onVisionInbound: vision,
         inboundIds: [inboundId],
       });
     }
@@ -170,7 +211,8 @@ function fieldsDiffer(desired: PanelClientPayload, actual: ActualClient): boolea
     desired.expiryTime !== actual.expiryTime ||
     desired.totalGB !== actual.totalGB ||
     desired.limitIp !== actual.limitIp ||
-    desired.comment !== actual.comment
+    desired.comment !== actual.comment ||
+    (actual.onVisionInbound && desired.flow !== actual.flow)
   );
 }
 

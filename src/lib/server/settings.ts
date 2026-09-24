@@ -107,6 +107,11 @@ export async function getClashSubscriptionProvider(): Promise<ClashSubscriptionP
   return (await getSetting("subscribe.clash_provider")) === "3x-ui" ? "3x-ui" : "aeranexa";
 }
 
+/** 系统设置「VLESS 流控」是否开启 Vision。Reconciler 与订阅必须用同一判定，否则 xray 会拒绝连接。 */
+export async function isVisionFlowEnabled(): Promise<boolean> {
+  return (await getSetting("panel.vless_flow")) === "xtls-rprx-vision";
+}
+
 export type AdminSettingView = {
   key: string;
   group: SettingGroup;

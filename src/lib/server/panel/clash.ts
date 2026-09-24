@@ -23,6 +23,7 @@ export function buildClashProxy(node: LinkNode, uuid: string): ClashProxy | null
   switch (node.protocol) {
     case "vless":
       Object.assign(proxy, { type: "vless", uuid });
+      if (node.flow) proxy.flow = node.flow;
       break;
     case "vmess":
       Object.assign(proxy, { type: "vmess", uuid, alterId: 0, cipher: "auto" });
