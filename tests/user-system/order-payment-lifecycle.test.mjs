@@ -109,7 +109,7 @@ async function confirmPayment(tradeNo, providerTradeNo, amount) {
   });
 }
 
-const orderRow = async (tradeNo) => (await query("SELECT id, status, admin_remark FROM orders WHERE trade_no = ?", [tradeNo]))[0];
+const orderRow = async (tradeNo) => (await query("SELECT id, status, cancel_reason, admin_remark FROM orders WHERE trade_no = ?", [tradeNo]))[0];
 const transactionStatus = async (id) => (await query("SELECT status FROM payment_transactions WHERE id = ?", [id]))[0].status;
 const balanceOf = async (userId) => Number((await query("SELECT balance FROM users WHERE id = ?", [userId]))[0].balance);
 
@@ -128,16 +128,41 @@ test("取消订单会关闭未完成的支付流水；之后渠道确认收款�
   const cancel = await post("/api/client/orders/cancel", { trade_no: tradeNo }, cookie);
   assert.equal(cancel.status, 200, await cancel.clone().text());
   assert.equal((await orderRow(tradeNo)).status, 2);
+  assert.equal((await orderRow(tradeNo)).cancel_reason, "user");
   assert.equal(await transactionStatus(transactionId), "closed");
 
   const callback = await confirmPayment(tradeNo, providerTradeNo, amount);
   assert.equal(callback.status, 200, await callback.clone().text());
   const order = await orderRow(tradeNo);
   assert.equal(order.status, 3, "迟到付款应恢复并开通订单");
+  assert.equal(order.cancel_reason, null, "恢复后应清除取消原因");
   assert.match(order.admin_remark ?? "", /自动恢复并开通/);
   assert.equal(await transactionStatus(transactionId), "completed");
   const [user] = await query("SELECT plan_id FROM users WHERE id = ?", [userId]);
   assert.equal(Number(user.plan_id), planId);
+});
+
+test("一个账户只能有一笔待支付订单：取消后才能再下单", async () => {
+  const { cookie } = await createUser();
+  const first = await post("/api/client/orders", { plan_id: planId, period: "month_price" }, cookie);
+  assert.equal(first.status, 201, await first.clone().text());
+  const tradeNo = (await first.json()).data;
+
+  const second = await post("/api/client/orders", { plan_id: planId, period: "month_price" }, cookie);
+  assert.equal(second.status, 409, await second.clone().text());
+  const conflict = await second.json();
+  assert.equal(conflict.code, "conflict");
+  assert.equal(conflict.details?.pending_trade_no, tradeNo, "冲突响应应带回已有待支付订单号");
+
+  const cancel = await post("/api/client/orders/cancel", { trade_no: tradeNo }, cookie);
+  assert.equal(cancel.status, 200, await cancel.clone().text());
+  const third = await post("/api/client/orders", { plan_id: planId, period: "month_price" }, cookie);
+  assert.equal(third.status, 201, await third.clone().text());
+  const pending = await query(
+    "SELECT COUNT(*) AS total FROM orders o JOIN orders t ON t.user_id = o.user_id WHERE t.trade_no = ? AND o.status = 0",
+    [tradeNo],
+  );
+  assert.equal(Number(pending[0].total), 1);
 });
 
 test("已完成订单再次收款（重复支付）转入余额", async () => {
@@ -184,6 +209,7 @@ test("超时未付的订单被 worker 自动关闭，未超时的保留", async 
   const result = await sweepOrderPayments();
   assert.ok(result.closedOrders >= 1, JSON.stringify(result));
   assert.equal((await orderRow(expired.tradeNo)).status, 2);
+  assert.equal((await orderRow(expired.tradeNo)).cancel_reason, "timeout");
   assert.equal(await transactionStatus(expired.transactionId), "closed");
 
   const { cookie: otherCookie } = await createUser();

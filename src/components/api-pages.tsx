@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowRight,
   Copy,
   CreditCard,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { planApi } from "@/lib/api/plan";
-import { orderApi } from "@/lib/api/order";
+import { orderApi, pendingTradeNoOf } from "@/lib/api/order";
 import { serverApi } from "@/lib/api/server";
 import { ticketApi } from "@/lib/api/ticket";
 import { inviteApi } from "@/lib/api/invite";
@@ -179,6 +180,25 @@ const TICKET_LEVEL_META: Record<number, { label: string; tone: string }> = {
    1. 套餐购买
    ========================================================================= */
 
+/** 已有待支付订单时拦截下单：一个账户同一时间只能有一笔待支付订单。 */
+export function PendingOrderModal({ tradeNo, onClose }: { tradeNo: string | null; onClose: () => void }) {
+  const router = useRouter();
+  return (
+    <ConfirmModal
+      open={tradeNo !== null}
+      title="您有一笔未支付的订单"
+      content="一个账户同一时间只能存在一笔待支付订单。请先完成支付，或在订单页取消后再重新下单。"
+      okText="前往支付"
+      cancelText="稍后处理"
+      onOk={() => {
+        if (tradeNo) router.push(`/order/${encodeURIComponent(tradeNo)}`);
+        onClose();
+      }}
+      onCancel={onClose}
+    />
+  );
+}
+
 export function ApiPlanPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -194,6 +214,7 @@ export function ApiPlanPage() {
   );
 
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [pendingTradeNo, setPendingTradeNo] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string>("");
   const [planFilter, setPlanFilter] = useState<"all" | "renew" | "traffic">("all");
   const [couponCode, setCouponCode] = useState("");
@@ -279,6 +300,12 @@ export function ApiPlanPage() {
         setOrderModalOpen(false);
         router.push(`/order/${tradeNo}`);
       } catch (error: unknown) {
+        const existing = pendingTradeNoOf(error);
+        if (existing) {
+          setOrderModalOpen(false);
+          setPendingTradeNo(existing);
+          return;
+        }
         showToast(toErrorMessage(error, "创建订单失败，请稍后重试"), "error");
       }
     });
@@ -289,6 +316,7 @@ export function ApiPlanPage() {
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      <PendingOrderModal tradeNo={pendingTradeNo} onClose={() => setPendingTradeNo(null)} />
       <div>
         <h1 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 500, color: "var(--v2-heading)" }}>
           选择最适合您的计划
@@ -483,6 +511,7 @@ const ORDER_FILTERS: { label: string; status: number | undefined }[] = [
 ];
 
 export function ApiOrderPage() {
+  const router = useRouter();
   const { showToast } = useToast();
   const [filterStatus, setFilterStatus] = useState<number | undefined>(undefined);
   const [page, setPage] = useState(1);
@@ -504,9 +533,8 @@ export function ApiOrderPage() {
     void cancelGuard.run(async () => {
       try {
         await orderApi.cancelOrder(tradeNo);
-        showToast("订单已取消", "success");
         setCancellingTradeNo(null);
-        ordersState.reload();
+        router.push(`/order/${encodeURIComponent(tradeNo)}`);
       } catch (error: unknown) {
         showToast(toErrorMessage(error, "取消订单失败"), "error");
       }
@@ -639,6 +667,55 @@ export function ApiOrderPage() {
    3. 收银台
    ========================================================================= */
 
+const CANCEL_REASON_TEXT: Record<string, string> = {
+  timeout: "订单由于超时未支付已被取消。",
+  user: "您已取消该订单。",
+  admin: "订单已由管理员取消。",
+};
+
+/** 已取消订单的结果页：状态说明 + 商品 / 订单信息，引导重新下单。 */
+function OrderCancelledView({ order }: { order: OrderItem }) {
+  const reason = order.cancel_reason ? CANCEL_REASON_TEXT[order.cancel_reason] : undefined;
+  return (
+    <div className="order-result-page">
+      <section className="v2-block order-result">
+        <AlertTriangle className="order-result-icon" size={56} strokeWidth={1.8} aria-hidden="true" />
+        <h1>已取消</h1>
+        <p>{reason ?? "订单已取消。"}</p>
+        {order.cancel_reason === "timeout" ? (
+          <small>如您已完成付款，系统确认到账后会自动恢复订单并开通。</small>
+        ) : null}
+        <div className="order-result-actions">
+          <Link href="/plan" className="btn btn-primary">重新购买</Link>
+          <Link href="/order" className="btn btn-secondary">返回订单列表</Link>
+        </div>
+      </section>
+
+      <section className="v2-block">
+        <header className="v2-block-header"><h2>商品信息</h2></header>
+        <dl className="detail-list">
+          <div><dt>产品名称</dt><dd>{order.plan?.name ?? "—"}</dd></div>
+          {order.plan?.transfer_enable ? (
+            <div><dt>产品流量</dt><dd>{formatBytes(order.plan.transfer_enable)}</dd></div>
+          ) : null}
+          <div><dt>购买类型</dt><dd>{order.type_label ?? "新购"}</dd></div>
+          <div><dt>付款周期</dt><dd>{order.period_label ?? PERIOD_LABELS[order.period] ?? order.period}</dd></div>
+        </dl>
+      </section>
+
+      <section className="v2-block">
+        <header className="v2-block-header"><h2>订单信息</h2></header>
+        <dl className="detail-list">
+          <div><dt>订单号</dt><dd className="mono">{order.trade_no}</dd></div>
+          <div><dt>订单金额</dt><dd>{formatAmount(order.total_amount)}</dd></div>
+          <div><dt>创建时间</dt><dd>{formatTime(order.created_at)}</dd></div>
+          {order.cancelled_at ? <div><dt>取消时间</dt><dd>{formatTime(order.cancelled_at)}</dd></div> : null}
+        </dl>
+      </section>
+    </div>
+  );
+}
+
 /** 轮询上限：约 5 分钟后停止，避免用户长时间停留在页面上空转请求。 */
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 100;
@@ -665,6 +742,8 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
   const [polling, setPolling] = useState(resumePolling);
 
   const payGuard = useSubmitGuard();
+  const cancelGuard = useSubmitGuard();
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const pollAttemptsRef = useRef(0);
 
   const order = orderState.data;
@@ -735,6 +814,24 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
     void refreshUser();
   };
 
+  const handleCancel = () => {
+    void cancelGuard.run(async () => {
+      try {
+        await orderApi.cancelOrder(tradeNo);
+        setPolling(false);
+        setCancelConfirmOpen(false);
+        orderState.reload();
+      } catch (error: unknown) {
+        setCancelConfirmOpen(false);
+        // 取消前服务端会先向渠道查单，已付款的订单此时已开通，刷新后展示真实状态
+        orderState.reload();
+        showToast(toErrorMessage(error, "取消订单失败"), "error");
+      }
+    });
+  };
+
+  if (order?.status === 2) return <OrderCancelledView order={order} />;
+
   const subtotal =
     order?.subtotal_amount ?? (order ? order.total_amount + (order.discount_amount ?? 0) + (order.surplus_amount ?? 0) : 0);
 
@@ -753,8 +850,24 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
           <Link href="/order" className="btn btn-secondary btn-sm">
             返回订单列表
           </Link>
+          {order?.status === 0 ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCancelConfirmOpen(true)}>
+              取消订单
+            </button>
+          ) : null}
         </div>
       </div>
+
+      <ConfirmModal
+        open={cancelConfirmOpen}
+        title="确定取消该订单？"
+        content="取消后如需购买需要重新下单；订单使用的优惠券会被释放。"
+        okText={cancelGuard.pending ? "取消中..." : "确定取消"}
+        okType="danger"
+        cancelText="再想想"
+        onOk={handleCancel}
+        onCancel={() => setCancelConfirmOpen(false)}
+      />
 
       <AsyncBoundary
         loading={orderState.loading}

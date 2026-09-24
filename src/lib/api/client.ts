@@ -7,6 +7,8 @@ export class ApiError extends Error {
     public errors?: Record<string, string[]>,
     /** 服务端业务错误码，用于前端做分支处理而不必解析文案。 */
     public code?: string,
+    /** 服务端 details 中的字符串字段（如下单冲突时的 pending_trade_no）。 */
+    public details?: Record<string, string>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -39,6 +41,13 @@ function getApiErrors(value: unknown): Record<string, string[]> | undefined {
       Array.isArray(entry[1]) && entry[1].every((message) => typeof message === "string"),
   );
   return validEntries.length ? Object.fromEntries(validEntries) : undefined;
+}
+
+function getApiDetails(value: unknown): Record<string, string> | undefined {
+  const details = toJsonObject(toJsonObject(value)?.details);
+  if (!details) return undefined;
+  const entries = Object.entries(details).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
 function getApiCode(value: unknown): string | undefined {
@@ -118,7 +127,7 @@ export async function localApiRequestFull<T = unknown>(
     if (response.status === 401 && !silentUnauthorized && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("v2:unauthorized"));
     }
-    throw new ApiError(response.status, message, getApiErrors(json), getApiCode(json));
+    throw new ApiError(response.status, message, getApiErrors(json), getApiCode(json), getApiDetails(json));
   }
 
   const root = toJsonObject(json);
@@ -184,7 +193,7 @@ export async function localApiRequest<T = unknown>(
     if (response.status === 401 && !silentUnauthorized && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("v2:unauthorized"));
     }
-    throw new ApiError(response.status, message, getApiErrors(json), getApiCode(json));
+    throw new ApiError(response.status, message, getApiErrors(json), getApiCode(json), getApiDetails(json));
   }
 
   if (json && typeof json === "object" && "data" in json) {

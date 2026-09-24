@@ -241,7 +241,7 @@ export async function applyGatewayCallback(input: GatewayCallbackInput) {
  */
 async function reopenCancelledOrder(connection: PoolConnection, order: OrderRow, userId: number): Promise<void> {
   const [reopened] = await connection.execute<ResultSetHeader>(
-    `UPDATE orders SET status = ?, cancelled_at = NULL,
+    `UPDATE orders SET status = ?, cancelled_at = NULL, cancel_reason = NULL,
        admin_remark = COALESCE(admin_remark, '订单关闭后渠道确认收款，已自动恢复并开通'), updated_at = CURRENT_TIMESTAMP
      WHERE id = ? AND status = ?`,
     [ORDER_STATUS.PENDING, order.id, ORDER_STATUS.CANCELLED],

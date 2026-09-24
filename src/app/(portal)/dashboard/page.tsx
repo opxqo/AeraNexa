@@ -19,7 +19,8 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { noticeApi } from "@/lib/api/notice";
 import type { Notice, ResetTrafficQuote } from "@/lib/api/types";
-import { orderApi } from "@/lib/api/order";
+import { orderApi, pendingTradeNoOf } from "@/lib/api/order";
+import { PendingOrderModal } from "@/components/api-pages";
 import { OneClickSubscribeDrawer } from "@/components/one-click-subscribe";
 import { ConfirmModal, Modal, useToast } from "@/components/v2-modal";
 import { ErrorState, sanitizeHtml, useAsyncData } from "@/components/api-ui";
@@ -34,6 +35,7 @@ export default function ApiDashboardPage() {
   const { showToast } = useToast();
   const [resetQuote, setResetQuote] = useState<ResetTrafficQuote | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
+  const [pendingTradeNo, setPendingTradeNo] = useState<string | null>(null);
   // 先取报价再弹确认框：价格由服务端按「当前套餐月付价 × 后台比例」计算，没有生效中的套餐会直接提示原因。
   const openResetTraffic = async () => {
     setResetBusy(true);
@@ -53,6 +55,12 @@ export default function ApiDashboardPage() {
       setResetQuote(null);
       router.push(`/order/${encodeURIComponent(tradeNo)}`);
     } catch (error) {
+      const existing = pendingTradeNoOf(error);
+      if (existing) {
+        setResetQuote(null);
+        setPendingTradeNo(existing);
+        return;
+      }
       showToast(error instanceof Error ? error.message : "创建流量重置订单失败", "error");
     } finally {
       setResetBusy(false);
@@ -356,6 +364,8 @@ export default function ApiDashboardPage() {
         onClose={() => setSubscribeDrawerOpen(false)}
         subscribeUrl={subscribe?.subscribe_url}
       />
+
+      <PendingOrderModal tradeNo={pendingTradeNo} onClose={() => setPendingTradeNo(null)} />
 
       {/* 重置流量确认弹窗 */}
       <ConfirmModal

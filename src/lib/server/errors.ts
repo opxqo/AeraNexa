@@ -56,8 +56,8 @@ export function notFound(message = "资源不存在"): BusinessError {
   return new BusinessError("not_found", message);
 }
 
-export function conflict(message: string): BusinessError {
-  return new BusinessError("conflict", message);
+export function conflict(message: string, details?: Record<string, string>): BusinessError {
+  return new BusinessError("conflict", message, details);
 }
 
 export function tooManyRequests(message: string): BusinessError {

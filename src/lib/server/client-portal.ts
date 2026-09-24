@@ -59,7 +59,7 @@ export type OrderRow = RowDataPacket & {
   surplus_amount: number | string; refund_amount: number | string; balance_amount: number | string;
   surplus_order_ids: string | null; status: number; commission_amount: number | string;
   fulfillment_source: string | null; fulfilled_by_admin_id: number | null; admin_remark: string | null;
-  paid_at: Date | null; cancelled_at: Date | null; completed_at: Date | null;
+  paid_at: Date | null; cancelled_at: Date | null; cancel_reason: string | null; completed_at: Date | null;
   created_at: Date; updated_at: Date; plan_name: string; transfer_enable: number | string;
   speed_limit: number | null; is_renewable: number;
 };
@@ -80,10 +80,6 @@ type UserSubscriptionRow = RowDataPacket & {
   is_active: number;
 };
 
-/** 同一用户对同一套餐/周期重复下单的冷静期，避免误触产生大量僵尸订单。 */
-const DUPLICATE_ORDER_WINDOW_MINUTES = 15;
-/** 单用户同时存在的待支付订单上限。 */
-const MAX_PENDING_ORDERS = 5;
 /** 单用户同时存在的未关闭工单上限。 */
 const MAX_OPEN_TICKETS = 10;
 const DEFAULT_PAGE_SIZE = 20;
@@ -222,6 +218,7 @@ function serializeOrder(row: OrderRow) {
     pay_deadline: status === ORDER_STATUS.PENDING ? (unix(row.updated_at) ?? 0) + PENDING_ORDER_TIMEOUT_MINUTES * 60 : null,
     paid_at: unix(row.paid_at),
     cancelled_at: unix(row.cancelled_at),
+    cancel_reason: row.cancel_reason ?? null,
     completed_at: unix(row.completed_at),
     created_at: unix(row.created_at),
     updated_at: unix(row.updated_at),
@@ -379,6 +376,20 @@ async function getUserForUpdate(connection: PoolConnection, userId: number): Pro
   return user;
 }
 
+/** 用户当前的待支付订单号；没有则返回 null。 */
+export async function findPendingTradeNo(executor: SqlExecutor, userId: number): Promise<string | null> {
+  const [rows] = await executor.execute<RowDataPacket[]>(
+    `SELECT trade_no FROM orders WHERE user_id = ? AND status = ? ORDER BY id DESC LIMIT 1`,
+    [userId, ORDER_STATUS.PENDING],
+  );
+  return rows[0] ? String(rows[0].trade_no) : null;
+}
+
+/** 已有待支付订单时的下单冲突；details.pending_trade_no 供前端直接跳转到那笔订单。 */
+function pendingOrderExists(tradeNo: string) {
+  return conflict("您有一笔未支付的订单，请先支付或取消后再下单", { pending_trade_no: tradeNo });
+}
+
 export type CreateOrderInput = { planId: number; period: string; couponCode?: string };
 
 type OrderPricing = {
@@ -520,24 +531,10 @@ export async function createOrder(userId: number, input: CreateOrderInput) {
     const plan = await getPlanForOrder(connection, input.planId, input.period);
     if (!plan) throw notFound("套餐不存在或暂未开放购买");
 
-    const [pendingRows] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) AS total FROM orders WHERE user_id = ? AND status = ?`,
-      [userId, ORDER_STATUS.PENDING],
-    );
-    if (asNumber(pendingRows[0]?.total) >= MAX_PENDING_ORDERS) {
-      throw conflict(`待支付订单已达 ${MAX_PENDING_ORDERS} 笔，请先完成或取消后再下单`);
-    }
-
-    const [duplicates] = await connection.execute<RowDataPacket[]>(
-      `SELECT trade_no FROM orders
-        WHERE user_id = ? AND plan_id = ? AND period = ? AND status = ?
-          AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? MINUTE)
-        ORDER BY id DESC LIMIT 1`,
-      [userId, input.planId, input.period, ORDER_STATUS.PENDING, DUPLICATE_ORDER_WINDOW_MINUTES],
-    );
-    if (duplicates[0]) {
-      throw conflict(`您在 ${DUPLICATE_ORDER_WINDOW_MINUTES} 分钟内已创建过相同订单（${String(duplicates[0].trade_no)}），请先处理该订单`);
-    }
+    // 一个账户同一时间只允许一笔待支付订单。上面已对用户行加 FOR UPDATE，
+    // 同一用户的并发下单在这里串行，不会各自查到「没有待支付」后同时插入。
+    const pendingTradeNo = await findPendingTradeNo(connection, userId);
+    if (pendingTradeNo) throw pendingOrderExists(pendingTradeNo);
 
     const pricing = await computeOrderPricing(connection, user, plan, input.period, input.couponCode ?? "");
     const tradeNo = newTradeNo();
@@ -721,7 +718,7 @@ export async function cancelOrder(userId: number, tradeNo: string) {
     if (asNumber(order.status) !== ORDER_STATUS.PENDING) throw conflict("该订单当前不可取消");
 
     const [updated] = await connection.execute<ResultSetHeader>(
-      `UPDATE orders SET status = ?, cancelled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      `UPDATE orders SET status = ?, cancelled_at = CURRENT_TIMESTAMP, cancel_reason = 'user', updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = ?`,
       [ORDER_STATUS.CANCELLED, order.id, ORDER_STATUS.PENDING],
     );

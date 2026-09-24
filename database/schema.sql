@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS orders (
   admin_remark VARCHAR(500) NULL COMMENT '后台内部备注（补单原因等），仅后台可见',
   paid_at DATETIME NULL,
   cancelled_at DATETIME NULL,
+  cancel_reason VARCHAR(16) NULL COMMENT '取消原因：user 用户取消，timeout 超时关闭，admin 后台取消',
   completed_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1099,3 +1100,20 @@ DEALLOCATE PREPARE audit_request_id_statement;
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260924_002', 'Runtime logs, capture switches, ingestion health and audit request correlation');
+
+-- 20260924_003：订单取消原因，用户端结果页据此区分「主动取消」与「超时关闭」。
+SET @orders_cancel_reason_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'cancel_reason'
+);
+SET @orders_cancel_reason_sql = IF(
+  @orders_cancel_reason_exists = 0,
+  'ALTER TABLE orders ADD COLUMN cancel_reason VARCHAR(16) NULL COMMENT ''取消原因：user 用户取消，timeout 超时关闭，admin 后台取消'' AFTER cancelled_at',
+  'SELECT 1'
+);
+PREPARE orders_cancel_reason_statement FROM @orders_cancel_reason_sql;
+EXECUTE orders_cancel_reason_statement;
+DEALLOCATE PREPARE orders_cancel_reason_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260924_003', 'Order cancel_reason to distinguish user cancel, timeout close and admin cancel');

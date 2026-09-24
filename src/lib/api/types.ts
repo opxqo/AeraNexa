@@ -168,6 +168,8 @@ export interface OrderItem {
   actual_commission_balance?: number;
   paid_at?: number | null;
   cancelled_at?: number | null;
+  /** 取消原因：user 用户取消，timeout 超时关闭，admin 后台取消。 */
+  cancel_reason?: "user" | "timeout" | "admin" | null;
   completed_at?: number | null;
   created_at: number;
   updated_at: number;

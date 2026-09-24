@@ -8,6 +8,7 @@ import { requireAdminUser } from "@/lib/server/admin";
 import { getAdminKnowledgeArticle, getAdminRechargeCardBatchDetails, getAdminTicketMessages } from "@/lib/server/admin-editor";
 import {
   closePendingTransactions,
+  findPendingTradeNo,
   fulfillOrderByAdmin,
   updateOrderRemark,
   updatePendingOrder,
@@ -1190,7 +1191,7 @@ export async function updateOrderStatusAction(formData: FormData): Promise<Actio
       await connection.beginTransaction();
 
       const [rows] = await connection.execute<RowDataPacket[]>(
-        `SELECT id, coupon_id, status FROM orders WHERE id = ? LIMIT 1 FOR UPDATE`,
+        `SELECT id, user_id, coupon_id, status FROM orders WHERE id = ? LIMIT 1 FOR UPDATE`,
         [id],
       );
       const order = rows[0];
@@ -1203,10 +1204,21 @@ export async function updateOrderStatusAction(formData: FormData): Promise<Actio
         return fail("订单不存在，或已进入不可手动修改的状态");
       }
 
+      // 恢复为待支付同样受「一个账户只能有一笔待支付订单」约束
+      if (status === ORDER_STATUS.PENDING && Number(order.status) !== ORDER_STATUS.PENDING) {
+        await connection.execute(`SELECT id FROM users WHERE id = ? FOR UPDATE`, [order.user_id]);
+        const pendingTradeNo = await findPendingTradeNo(connection, Number(order.user_id));
+        if (pendingTradeNo) {
+          await connection.rollback();
+          return fail(`该用户已有待支付订单 ${pendingTradeNo}，需先处理后才能恢复本单`);
+        }
+      }
+
       const [result] = await connection.execute<ResultSetHeader>(
-        `UPDATE orders SET status = ?, cancelled_at = IF(? = 2, CURRENT_TIMESTAMP, NULL), updated_at = CURRENT_TIMESTAMP
+        `UPDATE orders SET status = ?, cancelled_at = IF(? = 2, CURRENT_TIMESTAMP, NULL),
+           cancel_reason = IF(? = 2, 'admin', NULL), updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND status IN (0, 2)`,
-        [status, status, id],
+        [status, status, status, id],
       );
       if (result.affectedRows !== 1) {
         await connection.rollback();

@@ -463,7 +463,7 @@ test("[订单] 非法周期与不存在套餐被拒绝", async () => {
   await expectStatus(noPlan, 400, "缺少套餐");
 });
 
-test("[订单] 15 分钟内重复下单同一套餐被 409 拦截", async () => {
+test("[订单] 已有待支付订单时重复下单同一套餐被 409 拦截", async () => {
   const planId = await createPlan({ monthPrice: 990 });
   const { cookie } = await register();
 
@@ -989,22 +989,21 @@ test("[限流] 同一账号连续登录失败达到阈值后触发 429", async (
   assert.equal(body.code, "too_many_requests");
 });
 
-test("[上限] 待支付订单达到 5 笔后被拒绝继续下单", async () => {
+test("[上限] 已有一笔待支付订单时，换其它套餐也不能再下单", async () => {
   const { cookie } = await register();
 
-  for (let index = 1; index <= 5; index += 1) {
-    const planId = await createPlan({ monthPrice: 990 });
-    await expectStatus(
-      await post("/api/client/orders", cookie, { plan_id: planId, period: "month_price" }),
-      201,
-      `第 ${index} 笔待支付订单`,
-    );
-  }
+  const firstPlan = await createPlan({ monthPrice: 990 });
+  const first = await expectStatus(
+    await post("/api/client/orders", cookie, { plan_id: firstPlan, period: "month_price" }),
+    201,
+    "第一笔待支付订单",
+  );
 
-  const overflowPlan = await createPlan({ monthPrice: 990 });
-  const overflow = await post("/api/client/orders", cookie, { plan_id: overflowPlan, period: "month_price" });
-  const body = await expectStatus(overflow, 409, "超出待支付上限");
+  const otherPlan = await createPlan({ monthPrice: 990 });
+  const overflow = await post("/api/client/orders", cookie, { plan_id: otherPlan, period: "month_price" });
+  const body = await expectStatus(overflow, 409, "已有待支付订单");
   assert.equal(body.code, "conflict");
+  assert.equal(body.details?.pending_trade_no, first.data, "冲突响应应指向已有的待支付订单");
 });
 
 test("[上限] 未关闭工单达到 10 个后被限流", async () => {

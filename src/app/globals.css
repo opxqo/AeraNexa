@@ -1843,6 +1843,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .checkout-card { padding: 20px; }
 .checkout-channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
 
+/* 订单结果页（已取消） */
+.order-result-page { display: grid; gap: 20px; }
+.order-result { padding: 30px 20px 26px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.order-result-icon { color: #f0b429; }
+.order-result h1 { margin: 14px 0 6px; color: var(--v2-heading); font-size: 24px; font-weight: 400; }
+.order-result p { margin: 0; color: var(--v2-muted); font-size: 14px; }
+.order-result small { margin-top: 6px; color: var(--v2-muted); font-size: 12px; }
+.order-result-actions { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.order-result-page .detail-list dd { overflow-wrap: anywhere; }
+
 /* 个人中心 · 账户基础资料 */
 .profile-basic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; font-size: 14px; }
 .profile-basic-grid > div { min-width: 0; overflow-wrap: anywhere; }
@@ -1855,6 +1865,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .checkout-card { padding: 16px 15px; }
   .checkout-channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .profile-basic-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .order-result-page { gap: 16px; }
+  .order-result { padding: 24px 15px 20px; }
+  .order-result-actions .btn { flex: 1 1 0; }
+  .order-result-page .detail-list { padding: 4px 15px; }
+  .order-result-page .detail-list div { min-height: 46px; grid-template-columns: 88px minmax(0, 1fr); }
 }
 .summary-row.total {
   padding-top: 10px;

@@ -192,7 +192,7 @@ async function closeExpiredOrder(orderId: number): Promise<boolean> {
   try {
     await connection.beginTransaction();
     const [updated] = await connection.execute<ResultSetHeader>(
-      `UPDATE orders SET status = 2, cancelled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      `UPDATE orders SET status = 2, cancelled_at = CURRENT_TIMESTAMP, cancel_reason = 'timeout', updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = 0 AND updated_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? MINUTE)`,
       [orderId, PENDING_ORDER_TIMEOUT_MINUTES],
     );

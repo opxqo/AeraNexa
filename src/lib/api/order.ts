@@ -1,4 +1,4 @@
-import { localApiRequest, localApiRequestFull } from "./client";
+import { ApiError, localApiRequest, localApiRequestFull } from "./client";
 import type { CheckoutResult, OrderItem, PagedMeta, PaymentMethod, ResetTrafficQuote } from "./types";
 
 export interface SaveOrderParams {
@@ -15,6 +15,11 @@ export interface CheckoutParams {
 export interface OrderStatusResult {
   status: number;
   status_label: string;
+}
+
+/** 下单被拒是因为已有一笔待支付订单时，返回那笔订单的订单号。 */
+export function pendingTradeNoOf(error: unknown): string | null {
+  return error instanceof ApiError && error.code === "conflict" ? error.details?.pending_trade_no ?? null : null;
 }
 
 export const orderApi = {
