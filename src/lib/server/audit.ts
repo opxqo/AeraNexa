@@ -2,6 +2,7 @@ import "server-only";
 
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
+import { safeLogPath, safeError, safeLogMessage } from "./runtime-logs";
 
 export type AuditAction =
   | "auth.register"
@@ -37,6 +38,7 @@ export type AuditAction =
   | "admin.user_resynced"
   | "admin.sync_failures_retried"
   | "admin.settings_saved"
+  | "admin.logs_exported"
   | "admin.ticket_updated"
   | "admin.ticket_replied"
   | "admin.order_status_changed"
@@ -84,6 +86,19 @@ function resolveIp(request?: Request): string | null {
   return request.headers.get("x-real-ip")?.slice(0, 45) ?? null;
 }
 
+function safeAuditContext(value: unknown, depth = 0): unknown {
+  if (depth > 5) return "[truncated]";
+  if (Array.isArray(value)) return value.slice(0, 50).map((item) => safeAuditContext(item, depth + 1));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).slice(0, 50).map(([key, item]) => [
+      key.slice(0, 80),
+      /password|passwd|secret|token|api[_-]?key|authorization|cookie|credential|private[_-]?key/i.test(key)
+        ? "[redacted]" : safeAuditContext(item, depth + 1),
+    ]));
+  }
+  return typeof value === "string" ? safeLogMessage(value) : value;
+}
+
 /**
  * 写入审计日志。
  * 审计失败绝不能影响主业务，因此这里吞掉异常并只记录日志。
@@ -91,24 +106,33 @@ function resolveIp(request?: Request): string | null {
 export async function recordAudit(input: AuditInput): Promise<void> {
   try {
     const url = input.request ? new URL(input.request.url) : null;
+    let requestId = input.request?.headers.get("x-request-id") ?? null;
+    if (!requestId) {
+      try {
+        const { headers } = await import("next/headers");
+        requestId = (await headers()).get("x-request-id");
+      } catch { /* Worker 和 Bot 没有 HTTP 请求上下文。 */ }
+    }
+    if (requestId && !/^[0-9a-f-]{36}$/i.test(requestId)) requestId = null;
     await getDbPool().execute(
       `INSERT INTO audit_logs
-        (user_id, action, resource_type, resource_id, request_method, request_path, ip_address, user_agent, context)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (user_id, request_id, action, resource_type, resource_id, request_method, request_path, ip_address, user_agent, context)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.userId ?? null,
+        requestId,
         input.action,
         input.resourceType ?? null,
         input.resourceId === undefined ? null : String(input.resourceId).slice(0, 128),
         input.request?.method ?? null,
-        url ? `${url.pathname}${url.search}`.slice(0, 255) : null,
+        url ? safeLogPath(url.pathname) : null,
         resolveIp(input.request),
-        input.request?.headers.get("user-agent")?.slice(0, 500) ?? null,
-        input.context ? JSON.stringify(input.context) : null,
+        input.request?.headers.get("user-agent") ? safeLogMessage(input.request.headers.get("user-agent")).slice(0, 500) : null,
+        input.context ? JSON.stringify(safeAuditContext(input.context)) : null,
       ],
     );
   } catch (error) {
-    console.error("[aeranexa] audit log write failed", error);
+    process.stderr.write(`${JSON.stringify({ event: "audit.write_failed", error: safeError(error) })}\n`);
   }
 }
 

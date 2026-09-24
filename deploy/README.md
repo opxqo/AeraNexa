@@ -4,7 +4,7 @@ AeraNexa 生产环境需要**三个独立进程**，不是一个：
 
 | 进程 | 命令 | 职责 | 是否必需 |
 | --- | --- | --- | --- |
-| Web | `pnpm start` | 启动前自动跑数据库迁移，然后 `next start` | 必需 |
+| Web | `pnpm start` | 启动前自动跑数据库迁移，然后启动自定义 Node 服务入口采集请求日志 | 必需 |
 | Worker | `pnpm worker` | 把用户的套餐/到期/额度变化同步到 3x-ui、采集流量、导入入站 | **只要用到节点域（3x-ui）就必需** |
 | Bot | `pnpm bot` | AeraNexaBot 查询与通知 | 仅在后台「系统设置 → Telegram」启用时需要 |
 

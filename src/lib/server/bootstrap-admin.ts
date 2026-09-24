@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
 import { hashPassword } from "./users";
+import { safeError } from "./runtime-logs";
 
 const DEFAULT_ADMIN_EMAIL = "admin@admin.com";
 const DEFAULT_ADMIN_PASSWORD = "admin123456";
@@ -31,12 +32,12 @@ async function ensureDefaultAdmin(): Promise<void> {
     );
 
     console.log(
-      `[bootstrap-admin] 用户表为空，已自动创建默认管理员账号 ${DEFAULT_ADMIN_EMAIL} / ${DEFAULT_ADMIN_PASSWORD}，请登录后立即修改密码。`,
+      `[bootstrap-admin] 用户表为空，已自动创建默认管理员账号 ${DEFAULT_ADMIN_EMAIL}，请登录后立即修改密码。`,
     );
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (code === "ER_DUP_ENTRY") return; // 多实例同时启动导致的竞态，忽略即可
-    console.error("[bootstrap-admin] 检测/创建默认管理员账号失败：", error);
+    process.stderr.write(`${JSON.stringify({ event: "bootstrap_admin.failed", error: safeError(error) })}\n`);
   }
 }
 

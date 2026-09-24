@@ -1,7 +1,7 @@
 export type AdminIcon =
   | "dashboard" | "users" | "plans" | "orders" | "coupons" | "payments" | "refunds"
   | "reconciliation" | "rechargeCards" | "nodes" | "tickets" | "notices" | "knowledge"
-  | "traffic" | "mail" | "settings";
+  | "traffic" | "mail" | "settings" | "logs";
 
 export type AdminSectionKey =
   | "users"
@@ -46,6 +46,7 @@ export const adminSections: AdminSection[] = [
   { href: "/admin/knowledge", key: "knowledge", label: "文档管理", description: "使用文档与分类", icon: "knowledge", group: "资源与支持" },
   { href: "/admin/traffic", key: "traffic", label: "流量统计", description: "节点上报的流量汇总", icon: "traffic", group: "资源与支持" },
   { href: "/admin/mail", key: "mail", label: "邮件服务", description: "SMTP 配置与验证码状态", icon: "mail", group: "系统" },
+  { href: "/admin/logs", label: "日志中心", description: "审计、访问与运行监控", icon: "logs", group: "系统" },
   { href: "/admin/settings", key: "settings", label: "系统设置", description: "节点、订阅、佣金与 Worker", icon: "settings", group: "系统" },
 ];
 

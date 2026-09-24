@@ -780,6 +780,49 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 全站运行日志与采集状态。审计日志独立保留，不受运行日志清理与开关影响。
+CREATE TABLE IF NOT EXISTS runtime_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  service VARCHAR(16) NOT NULL,
+  category VARCHAR(24) NOT NULL,
+  level VARCHAR(8) NOT NULL,
+  event_code VARCHAR(80) NOT NULL,
+  message VARCHAR(500) NOT NULL,
+  request_id CHAR(36) NULL,
+  actor_id BIGINT UNSIGNED NULL,
+  request_method VARCHAR(10) NULL,
+  request_path VARCHAR(255) NULL,
+  status_code SMALLINT UNSIGNED NULL,
+  duration_ms INT UNSIGNED NULL,
+  details JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY runtime_logs_created_index (created_at, id),
+  KEY runtime_logs_category_created_index (category, created_at),
+  KEY runtime_logs_level_created_index (level, created_at),
+  KEY runtime_logs_request_index (request_id),
+  KEY runtime_logs_actor_created_index (actor_id, created_at),
+  KEY runtime_logs_path_created_index (request_path, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS log_capture_settings (
+  category VARCHAR(24) NOT NULL,
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  updated_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS log_ingestion_status (
+  service VARCHAR(16) NOT NULL,
+  last_success_at DATETIME NULL,
+  last_failure_at DATETIME NULL,
+  last_error VARCHAR(255) NULL,
+  dropped_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (service)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- users 先于 plans 创建；通过条件语句补上可重复执行的套餐外键。
 SET @users_plan_fk_exists = (
   SELECT COUNT(*)
@@ -1039,3 +1082,20 @@ DEALLOCATE PREPARE payment_tx_queried_statement;
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260924_001', 'Payment transaction last_queried_at for active gateway order query');
+
+-- 20260924_002：为现有审计记录补请求关联，运行日志按独立策略保留。
+SET @audit_request_id_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs' AND COLUMN_NAME = 'request_id'
+);
+SET @audit_request_id_sql = IF(
+  @audit_request_id_exists = 0,
+  'ALTER TABLE audit_logs ADD COLUMN request_id CHAR(36) NULL AFTER user_id, ADD KEY audit_logs_request_index (request_id)',
+  'SELECT 1'
+);
+PREPARE audit_request_id_statement FROM @audit_request_id_sql;
+EXECUTE audit_request_id_statement;
+DEALLOCATE PREPARE audit_request_id_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260924_002', 'Runtime logs, capture switches, ingestion health and audit request correlation');

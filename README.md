@@ -15,7 +15,11 @@ pnpm dev
 
 首次运行前，请复制 `.env.example` 为 `.env.local` 并填写本地 MySQL 密码、会话密钥、各加密主密钥（SMTP / 支付 / 系统设置）和哈希 pepper。环境变量只放这些必须与数据库分离的配置；3x-ui 连接、订阅域名、佣金比例、Worker 调度等在后台 `/admin/settings`「系统设置」中调整，保存后数秒内生效。用户系统的数据库名由 `DB_NAME` 决定（不填默认为 `aeranexa`，也可以指向任意已有的库，比如托管平台自带的默认库），表结构见 [`database/schema.sql`](database/schema.sql)，`pnpm db:migrate` 会按 `DB_NAME` 自动建库建表。SMTP 主机、账号、发件人由 `/admin/mail` 配置；服务未启用时注册和找回密码会安全拒绝，不会回显验证码。
 
-生产启动命令 `pnpm start` 会先跑一遍 [`scripts/migrate-database.mjs`](scripts/migrate-database.mjs) 再 `next start`：schema.sql 通篇按幂等写（`CREATE TABLE IF NOT EXISTS`、每个 `ALTER` 前用 `information_schema` 探测、版本号 `INSERT IGNORE`），所以每次部署重放都是安全的，新环境不需要手动建库建表。迁移失败会直接中断启动，不会让服务带着不完整的表结构对外提供服务。本地 `pnpm dev` 不含这一步，仍用 `pnpm db:migrate` 手动执行。
+生产启动命令 `pnpm start` 会先跑一遍 [`scripts/migrate-database.mjs`](scripts/migrate-database.mjs)，再运行自定义 Node 服务入口 [`scripts/web-server.mjs`](scripts/web-server.mjs)。它在响应完成时记录状态码、耗时和 `x-request-id`；继续使用 Node 部署，不使用 Next.js `standalone`。schema.sql 按幂等方式迁移；迁移失败会中断启动。本地 `pnpm dev` 不自动迁移，首次运行先执行 `pnpm db:migrate`。
+
+管理员可在 `/admin/logs` 查询操作审计、请求访问、运行事件和告警状态。请求访问、慢请求、应用错误、Worker、Bot、支付运行记录可分别关闭，关键操作审计始终写入 `audit_logs`。运行日志写入 `runtime_logs`，同时向服务标准输出写结构化 JSON；采集异常不阻断业务。Web 服务每小时清理超过 30 天的运行日志，多个实例用 MySQL 命名锁协调；审计日志不自动清理。请求正文、Cookie、密钥及 URL 查询参数不会进入新日志。告警状态仅在后台显示，不发送通知。
+
+日志列表为事件显示中文解释，并保留原始事件代码。管理员可按当前时间、类别、级别、操作者、路径和请求 ID 筛选后导出 UTF-8 CSV；导出不受列表分页影响，单次最多 50,000 条，超过上限时请缩小时间范围分批导出。导出操作也会写入审计记录。
 
 首次部署且尚未配置 SMTP 时，注册流程需要的邮箱验证码无法发出，界面上也没有入口能直接建立第一个管理员账号。为此服务启动时（见 [`src/instrumentation.ts`](src/instrumentation.ts) 与 [`src/lib/server/bootstrap-admin.ts`](src/lib/server/bootstrap-admin.ts)）会自动检测 `users` 表：一旦发现一个用户都没有，就会创建默认管理员账号 `admin@admin.com` / `admin123456`（`role = 'admin'`）。配合上面的自动迁移，一个全新环境部署完就能直接登录；表里只要出现任意用户，之后启动都会自动跳过，不会覆盖已有数据。**登录后请立即在「个人中心」修改密码**，并在 `/admin/settings` 补齐 3x-ui、SMTP 等运行时配置。
 

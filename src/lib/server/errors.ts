@@ -1,4 +1,5 @@
 import "server-only";
+import { emitRuntimeLog, safeError } from "./runtime-logs";
 
 /**
  * 业务错误码。前端可据此做分支处理，无需解析中文文案。
@@ -112,7 +113,14 @@ export function toApiError(error: unknown, logLabel: string): { status: number; 
     };
   }
 
-  console.error(`[aeranexa] ${logLabel}`, error);
+  void (async () => {
+    let requestId: string | null = null;
+    try {
+      const { headers } = await import("next/headers");
+      requestId = (await headers()).get("x-request-id");
+    } catch { /* 请求上下文之外没有关联 ID。 */ }
+    await emitRuntimeLog({ service: "web", category: "error", level: "error", eventCode: "api.error", message: `${logLabel}: ${safeError(error)}`, requestId });
+  })().catch((loggingError) => process.stderr.write(`${JSON.stringify({ event: "log.api_error_failed", error: safeError(loggingError) })}\n`));
 
   if (isDatabaseUnavailable(error)) {
     return {

@@ -23,6 +23,7 @@ import { listDirtyUserIds, reconcileClients, type ReconcileResult } from "../lib
 import { activateQueuedSubscriptions } from "../lib/server/client-portal";
 import { sweepOrderPayments } from "../lib/server/payments/order-payments";
 import { recordWorkerRun, type WorkerTask } from "../lib/server/worker-status";
+import { drainRuntimeLogs, emitRuntimeLog, safeError } from "../lib/server/runtime-logs";
 
 const LEADER_LOCK = "aeranexa:node-worker";
 const LEADER_POLL_MS = 5_000;
@@ -48,9 +49,7 @@ const PAYMENTS_INTERVAL = 15_000;
 const PANEL_DOWN_PAUSE = 30_000;
 
 function log(message: string, extra?: unknown): void {
-  const line = `[${new Date().toISOString()}] [node-worker] ${message}`;
-  if (extra === undefined) console.log(line);
-  else console.log(line, extra);
+  void emitRuntimeLog({ service: "worker", category: "worker", level: extra === undefined ? "info" : "error", eventCode: "worker.lifecycle", message: extra === undefined ? message : `${message}: ${safeError(extra)}` });
 }
 
 function describe(result: ReconcileResult): string {
@@ -94,6 +93,7 @@ async function acquireLeadership(): Promise<PoolConnection> {
 /** 运行记录写失败只打日志：后台看不到状态不应影响同步本身。 */
 async function record(key: WorkerTask, outcome: { ok: boolean; summary?: string | null; error?: string | null }): Promise<void> {
   await recordWorkerRun(key, outcome).catch((error: unknown) => log("写入运行记录失败", error));
+  await emitRuntimeLog({ service: "worker", category: key === "payments" ? "payment" : "worker", level: outcome.ok ? "info" : "error", eventCode: `worker.${key}`, message: outcome.ok ? outcome.summary ?? "无变更" : outcome.error ?? "任务失败" });
 }
 
 /** 返回下一次执行前应额外暂停的毫秒数（面板不可达时暂停）。 */
@@ -214,6 +214,7 @@ main()
     }
   })
   .finally(async () => {
-    await getDbPool().end().catch(() => {});
     log("已退出");
+    await drainRuntimeLogs();
+    await getDbPool().end().catch(() => {});
   });

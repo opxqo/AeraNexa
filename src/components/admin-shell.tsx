@@ -54,6 +54,7 @@ const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number;
   traffic: DataUsage20Regular,
   mail: Mail20Regular,
   settings: Settings20Regular,
+  logs: DocumentCheckmark20Regular,
 };
 
 function AdminShellInner({ children, userEmail }: { children: React.ReactNode; userEmail: string }) {

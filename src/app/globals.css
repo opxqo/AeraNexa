@@ -407,6 +407,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .monitor-card-age { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; flex-shrink: 0; font-style: normal; color: var(--v2-muted); }
 
 .admin-page-stack { display: grid; gap: 22px; }
+.admin-payment-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--v2-border); }
+.admin-payment-tabs a { padding: 10px 16px; color: var(--v2-muted); text-decoration: none; border-bottom: 2px solid transparent; }
+.admin-payment-tabs a:hover { color: var(--v2-heading); }
+.admin-payment-tabs a.active { color: var(--v2-primary); border-bottom-color: var(--v2-primary); font-weight: 600; }
+.log-filter { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 16px; }
+.log-filter label { display: grid; gap: 5px; color: var(--v2-muted); font-size: 12px; }
+.log-filter input, .log-filter select { min-height: 34px; max-width: 190px; padding: 6px 9px; color: var(--v2-text); background: var(--v2-surface); border: 1px solid var(--v2-border); border-radius: 3px; }
+.log-filter .button { min-height: 34px; text-decoration: none; }
+.log-export-hint { align-self: center; color: var(--v2-muted); font-size: 12px; }
+.log-table { min-width: 960px; }
+.log-table td { vertical-align: top; }
+.log-table td small { display: block; margin-top: 4px; color: var(--v2-muted); }
+.log-time { white-space: nowrap; }
+.log-message { max-width: 260px; overflow-wrap: anywhere; }
+.log-table details pre { max-width: 370px; max-height: 230px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.log-alert-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+.log-alert-card { display: grid; gap: 8px; padding: 18px; }
+.log-alert-card strong { color: var(--v2-heading); font-size: 21px; }
+.log-alert-card.warning strong, .log-alert-card.warning small { color: var(--v2-danger, #bd382b); }
+.log-health { grid-column: 1 / -1; padding: 18px; }
+.log-health h2, .log-settings h2 { margin: 0 0 12px; font-size: 18px; }
+.log-settings { padding: 20px; }
+.log-settings form { display: grid; gap: 12px; max-width: 380px; }
+.log-settings label { display: flex; align-items: center; gap: 9px; }
+.log-settings button { justify-self: start; }
 .admin-page-heading { min-height: 92px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--v2-surface); border-radius: 3px; box-shadow: 0 1px 3px rgba(219, 226, 239, .6); }
 .admin-page-heading h1 { margin: 0; color: var(--v2-heading); font-size: 22px; font-weight: 400; }
 .admin-page-heading p:not(.admin-kicker) { margin: 4px 0 0; color: var(--v2-muted); }
