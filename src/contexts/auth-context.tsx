@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { clearAuthToken } from "@/lib/api/client";
 import { authApi } from "@/lib/api/auth";
 import { userApi } from "@/lib/api/user";
@@ -46,16 +46,11 @@ async function fetchSessionSnapshot(): Promise<SessionSnapshot> {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
 
   const [user, setUser] = useState<UserInfo | null>(null);
   const [subscribe, setSubscribe] = useState<UserSubscribe | null>(null);
   const [stat, setStat] = useState<UserStat | null>(null);
-  const [isLoadingState, setIsLoading] = useState(true);
-
-  const isDemo = pathname.startsWith("/demo");
-  // Demo 路由不请求真实接口，直接视为加载完成。
-  const isLoading = isDemo ? false : isLoadingState;
+  const [isLoading, setIsLoading] = useState(true);
 
   /** 把快照写入状态；失败的单项保留原值，避免界面被清空。 */
   const applySnapshot = useCallback((snapshot: SessionSnapshot) => {
@@ -65,14 +60,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    if (isDemo) return;
     setIsLoading(true);
     try {
       applySnapshot(await fetchSessionSnapshot());
     } finally {
       setIsLoading(false);
     }
-  }, [isDemo, applySnapshot]);
+  }, [applySnapshot]);
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -86,15 +80,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("v2:unauthorized", handleUnauthorized);
 
     // isLoading 初值即为 true，首屏加载结果只在异步回调中写入状态。
-    if (!isDemo) {
-      void fetchSessionSnapshot().then((snapshot) => {
-        applySnapshot(snapshot);
-        setIsLoading(false);
-      });
-    }
+    void fetchSessionSnapshot().then((snapshot) => {
+      applySnapshot(snapshot);
+      setIsLoading(false);
+    });
 
     return () => window.removeEventListener("v2:unauthorized", handleUnauthorized);
-  }, [isDemo, applySnapshot, router]);
+  }, [applySnapshot, router]);
 
   const logout = async () => {
     await authApi.logout().catch(() => undefined);

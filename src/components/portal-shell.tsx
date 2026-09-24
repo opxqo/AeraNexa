@@ -55,7 +55,6 @@ const portalIconByKey: Record<PortalIcon, React.ComponentType<{ fontSize?: numbe
 
 interface PortalShellProps {
   children: React.ReactNode;
-  basePath?: string;
   userEmail?: string;
   userRole?: string;
   onLogout?: () => Promise<void>;
@@ -63,7 +62,6 @@ interface PortalShellProps {
 
 export function PortalShell({
   children,
-  basePath = "",
   userEmail,
   userRole,
   onLogout,
@@ -71,9 +69,6 @@ export function PortalShell({
   const pathname = usePathname();
   const router = useRouter();
   const { showToast } = useToast();
-
-  const isDemo = basePath === "/demo" || pathname.startsWith("/demo");
-  const effectiveBasePath = isDemo ? "/demo" : "";
 
   const [open, setOpen] = useState(false);
   const contentRef = useRef<HTMLElement>(null);
@@ -86,12 +81,8 @@ export function PortalShell({
   const accountRef = useRef<HTMLDivElement>(null);
   const langRef = useRef<HTMLDivElement>(null);
 
-  const strippedPathname = effectiveBasePath
-    ? pathname.replace(new RegExp(`^${effectiveBasePath}`), "") || "/dashboard"
-    : pathname;
-
   const current = portalSections.find(
-    ({ href }) => strippedPathname === href || strippedPathname.startsWith(`${href}/`),
+    ({ href }) => pathname === href || pathname.startsWith(`${href}/`),
   );
   const groups = [undefined, "订阅", "财务", "用户"] as const;
 
@@ -122,7 +113,7 @@ export function PortalShell({
   const handleLogout = async () => {
     if (onLogout) await onLogout();
     showToast("已成功登出", "info");
-    if (!onLogout) router.push(isDemo ? "/demo/login" : "/login");
+    if (!onLogout) router.push("/login");
   };
 
   const handleToggleTheme = () => {
@@ -139,7 +130,7 @@ export function PortalShell({
     }
   };
 
-  const displayEmail = userEmail || (isDemo ? "demo@aeranexa.com" : "未登录用户");
+  const displayEmail = userEmail || "未登录用户";
 
   return (
     <div className="portal-shell">
@@ -156,7 +147,7 @@ export function PortalShell({
 
       {/* 左侧经典边栏 */}
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
-        <Link className="brand" href={`${effectiveBasePath}/dashboard`} onClick={() => setOpen(false)}>
+        <Link className="brand" href="/dashboard" onClick={() => setOpen(false)}>
           <BrandMark />
           AeraNexa
         </Link>
@@ -169,16 +160,11 @@ export function PortalShell({
                 .filter((section) => section.group === group)
                 .map(({ href, label, icon }) => {
                   const Icon = portalIconByKey[icon];
-                  const targetHref = `${effectiveBasePath}${href}`;
-                  const active =
-                    pathname === targetHref ||
-                    pathname === href ||
-                    pathname.startsWith(`${targetHref}/`) ||
-                    (effectiveBasePath === "" && pathname.startsWith(`${href}/`));
+                  const active = pathname === href || pathname.startsWith(`${href}/`);
                   return (
                     <Link
                       key={href}
-                      href={targetHref}
+                      href={href}
                       className={`nav-item ${active ? "nav-item-active" : ""}`}
                       aria-current={active ? "page" : undefined}
                       onClick={() => setOpen(false)}
@@ -193,7 +179,7 @@ export function PortalShell({
         </nav>
 
         <p className="sidebar-version">
-          {isDemo ? "AeraNexa Demo Preview" : "AeraNexa v0.1.0"}
+          AeraNexa v0.1.0
         </p>
       </aside>
 
@@ -208,112 +194,102 @@ export function PortalShell({
       {/* 主界面 */}
       <div className="portal-main">
         <header className="topbar">
-          <div className="topbar-heading">
-            <p className="topbar-title">{current?.label ?? "AeraNexa"}</p>
-            {/* 模式状态切换按钮 */}
-            {isDemo ? (
-              <Link href="/dashboard" className="v2-mode-badge demo" title="点击切换至 API 生产模式">
-                <span className="v2-mode-badge-full">演示模式 · 切换至生产</span>
-                <span className="v2-mode-badge-short">演示</span>
-              </Link>
-            ) : (
-              <Link href="/demo/dashboard" className="v2-mode-badge prod" title="点击查看纯前端 Mock 演示页面">
-                <span className="v2-mode-badge-full">生产模式 · 查看Demo演示</span>
-                <span className="v2-mode-badge-short">Demo</span>
-              </Link>
-            )}
-          </div>
+          <div className="topbar-inner">
+            <div className="topbar-heading">
+              <p className="topbar-title">{current?.label ?? "AeraNexa"}</p>
+            </div>
 
-          <div className="topbar-actions">
-            {/* 主题切换 */}
-            <button
-              className="icon-button"
-              type="button"
-              aria-label="切换主题"
-              onClick={handleToggleTheme}
-            >
-              {isDarkMode ? <Moon size={17} /> : <Sun size={17} />}
-            </button>
-
-            {/* 语言切换菜单 */}
-            <div style={{ position: "relative" }} ref={langRef}>
+            <div className="topbar-actions">
+              {/* 主题切换 */}
               <button
                 className="icon-button"
                 type="button"
-                aria-label="切换语言"
-                onClick={() => setLangMenuOpen((v) => !v)}
+                aria-label="切换主题"
+                onClick={handleToggleTheme}
               >
-                <Languages size={17} />
+                {isDarkMode ? <Moon size={17} /> : <Sun size={17} />}
               </button>
 
-              {langMenuOpen && (
-                <div className="v2-dropdown-menu" style={{ minWidth: 120 }}>
-                  {languages.map((lang) => (
-                    <div
-                      key={lang.code}
-                      onClick={() => {
-                        setCurrentLang(lang.code);
-                        setLangMenuOpen(false);
-                        showToast(`已切换至 ${lang.label}`, "info");
-                      }}
-                      className={`v2-dropdown-item ${currentLang === lang.code ? "active" : ""}`}
-                    >
-                      <span>{lang.label}</span>
-                      {currentLang === lang.code && <Check size={14} />}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+              {/* 语言切换菜单 */}
+              <div style={{ position: "relative" }} ref={langRef}>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label="切换语言"
+                  onClick={() => setLangMenuOpen((v) => !v)}
+                >
+                  <Languages size={17} />
+                </button>
 
-            {/* 用户菜单下拉 */}
-            <div style={{ position: "relative" }} ref={accountRef}>
-              <button
-                className="account-button"
-                type="button"
-                onClick={() => setAccountMenuOpen((v) => !v)}
-              >
-                <UserCircle size={18} aria-hidden="true" />
-                <span className="account-copy">{displayEmail}</span>
-                <ChevronDown className="account-caret" size={14} aria-hidden="true" />
-              </button>
-
-              {accountMenuOpen && (
-                <div className="v2-dropdown-menu" style={{ minWidth: 140 }}>
-                  {userRole === "admin" ? (
-                    <>
-                      <Link
-                        href="/admin"
-                        onClick={() => setAccountMenuOpen(false)}
-                        className="v2-dropdown-item"
+                {langMenuOpen && (
+                  <div className="v2-dropdown-menu" style={{ minWidth: 120 }}>
+                    {languages.map((lang) => (
+                      <div
+                        key={lang.code}
+                        onClick={() => {
+                          setCurrentLang(lang.code);
+                          setLangMenuOpen(false);
+                          showToast(`已切换至 ${lang.label}`, "info");
+                        }}
+                        className={`v2-dropdown-item ${currentLang === lang.code ? "active" : ""}`}
                       >
-                        <UserCircle size={15} />
-                        <span>管理员面板</span>
-                      </Link>
-                      <div className="v2-dropdown-divider" />
-                    </>
-                  ) : null}
-                  <Link
-                    href={`${effectiveBasePath}/profile`}
-                    onClick={() => setAccountMenuOpen(false)}
-                    className="v2-dropdown-item"
-                  >
-                    <User size={15} />
-                    <span>个人中心</span>
-                  </Link>
-                  <div className="v2-dropdown-divider" />
-                  <div
-                    onClick={handleLogout}
-                    className="v2-dropdown-item"
-                    style={{ color: "#ff4d4f" }}
-                  >
-                    <LogOut size={15} />
-                    <span>登出</span>
+                        <span>{lang.label}</span>
+                        {currentLang === lang.code && <Check size={14} />}
+                      </div>
+                    ))}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
+              {/* 用户菜单下拉 */}
+              <div style={{ position: "relative" }} ref={accountRef}>
+                <button
+                  className="account-button"
+                  type="button"
+                  onClick={() => setAccountMenuOpen((v) => !v)}
+                >
+                  <UserCircle size={18} aria-hidden="true" />
+                  <span className="account-copy">{displayEmail}</span>
+                  <ChevronDown className="account-caret" size={14} aria-hidden="true" />
+                </button>
+
+                {accountMenuOpen && (
+                  <div className="v2-dropdown-menu" style={{ minWidth: 140 }}>
+                    {userRole === "admin" ? (
+                      <>
+                        <Link
+                          href="/admin"
+                          onClick={() => setAccountMenuOpen(false)}
+                          className="v2-dropdown-item"
+                        >
+                          <UserCircle size={15} />
+                          <span>管理员面板</span>
+                        </Link>
+                        <div className="v2-dropdown-divider" />
+                      </>
+                    ) : null}
+                    <Link
+                      href="/profile"
+                      onClick={() => setAccountMenuOpen(false)}
+                      className="v2-dropdown-item"
+                    >
+                      <User size={15} />
+                      <span>个人中心</span>
+                    </Link>
+                    <div className="v2-dropdown-divider" />
+                    <div
+                      onClick={handleLogout}
+                      className="v2-dropdown-item"
+                      style={{ color: "#ff4d4f" }}
+                    >
+                      <LogOut size={15} />
+                      <span>登出</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
           </div>
         </header>
 

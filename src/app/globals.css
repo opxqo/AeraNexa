@@ -111,23 +111,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .topbar-title { min-width: 0; margin: 0; flex-shrink: 0; white-space: nowrap; font-size: 16px; font-weight: 400; }
 .topbar-heading { min-width: 0; display: flex; align-items: center; gap: 12px; }
-.v2-mode-badge-short { display: none; }
+/* 与 .content 同宽居中（1256px - 左右各 28px 内边距），标题与操作区对齐下方卡片边缘 */
+.topbar-inner { width: 100%; max-width: 1200px; height: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .v2-mode-badge {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 12px;
-  text-decoration: none;
-  transition: opacity 0.15s ease;
   font-weight: 500;
   white-space: nowrap;
-}
-.v2-mode-badge:hover {
-  opacity: 0.85;
-}
-.v2-mode-badge.demo {
-  background: rgba(250, 173, 20, 0.25);
-  color: #ffe58f;
-  border: 1px solid rgba(250, 173, 20, 0.45);
 }
 .v2-mode-badge.prod {
   background: rgba(82, 196, 26, 0.25);
@@ -238,23 +229,36 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .plan-filter-tabs button { min-width: 54px; padding: 4px 10px; border: 0; border-radius: 999px; color: var(--v2-primary); background: transparent; font-size: 12px; cursor: pointer; }
 .plan-filter-tabs button.active { color: #fff; background: var(--v2-primary); }
 .plan-catalog { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
-.api-plan-card { min-height: 470px; padding: 0; border: 1px solid var(--v2-border); border-top: 0; border-radius: 3px; box-shadow: 0 1px 3px rgba(39, 67, 112, .08); transition: box-shadow .18s ease, border-color .18s ease; }
+.api-plan-card { min-height: 0; padding: 0; border: 1px solid var(--v2-border); border-top: 0; border-radius: 3px; box-shadow: 0 1px 3px rgba(39, 67, 112, .08); transition: box-shadow .18s ease, border-color .18s ease; }
+.plan-catalog .api-plan-card { min-height: 0; }
 .api-plan-card:hover { border-color: #b9c9e3; box-shadow: 0 3px 10px rgba(39, 67, 112, .1); }
-.api-plan-card-header { padding: 16px 16px 12px; background: var(--v2-surface); border-bottom: 1px solid var(--v2-border); }
+.api-plan-card-header { padding: 14px 16px 10px; background: var(--v2-surface); border-bottom: 1px solid var(--v2-border); }
 .api-plan-card-header h2 { font-size: 16px; line-height: 1.35; }
-.api-plan-price-band { min-height: 94px; padding: 20px 16px; display: grid; align-content: center; gap: 5px; background: var(--v2-header); }
-.api-plan-price-band strong { color: var(--v2-heading); font-size: 28px; line-height: 1; letter-spacing: -.02em; }
+.api-plan-price-band { padding: 14px 16px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; background: var(--v2-header); }
+.api-plan-price-band strong { color: var(--v2-heading); font-size: 26px; line-height: 1; letter-spacing: -.02em; }
 .api-plan-price-band span { color: var(--v2-muted); font-size: 13px; }
-.api-plan-periods { min-height: 28px; margin: 14px 16px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
-.api-plan-description { margin: 0 16px 14px; color: var(--v2-muted); font-size: 13px; line-height: 1.75; }
-.api-plan-description > :first-child { margin-top: 0; }
-.api-plan-description > :last-child { margin-bottom: 0; }
-.api-plan-action { margin: auto 16px 16px; padding-top: 18px; }
+.api-plan-periods { margin: 12px 16px 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.api-plan-description { position: relative; margin: 0 16px; color: var(--v2-muted); font-size: 13px; line-height: 1.6; }
+.api-plan-description-body { max-height: 320px; overflow: hidden; overflow-wrap: anywhere; }
+.api-plan-description.expanded .api-plan-description-body { max-height: none; }
+.api-plan-description.overflowing:not(.expanded) .api-plan-description-body { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
+.api-plan-description-body p, .api-plan-description-body ul, .api-plan-description-body ol { margin: 0 0 6px; }
+.api-plan-description-body ul, .api-plan-description-body ol { display: block; padding-left: 18px; list-style: revert; }
+.api-plan-description-body li { display: list-item; color: inherit; }
+.api-plan-description-body li + li { margin-top: 2px; }
+.api-plan-description-body a { color: var(--v2-primary); }
+.api-plan-description-body img { max-width: 100%; height: auto; }
+.api-plan-description-toggle { margin-top: 2px; padding: 2px 0; border: 0; color: var(--v2-primary); background: none; font-size: 12px; cursor: pointer; }
+.api-plan-description-toggle:hover { text-decoration: underline; }
+.api-plan-description-body > :first-child { margin-top: 0; }
+.api-plan-description-body > :last-child { margin-bottom: 0; }
+.api-plan-action { margin: auto 16px 16px; padding-top: 14px; }
 .api-plan-action .btn { min-width: 86px; }
 .plan-filter-empty { margin: 0; color: var(--v2-muted); font-size: 14px; }
 .api-plan-modal-description { padding: 11px 13px; color: var(--v2-muted); background: var(--v2-header); border-left: 3px solid var(--v2-primary); font-size: 13px; line-height: 1.65; }
 .api-plan-modal-description > :first-child { margin-top: 0; }
 .api-plan-modal-description > :last-child { margin-bottom: 0; }
+.api-plan-modal-description p { margin: 0 0 4px; }
 .api-plan-order-form { display: grid; gap: 16px; font-size: 14px; }
 .api-plan-order-form label { display: block; margin-bottom: 6px; color: var(--v2-heading); font-weight: 500; }
 .api-plan-period-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -2147,6 +2151,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme="dark"] .api-plan-price-band strong { color: #e4e4e4; }
 [data-theme="dark"] .api-plan-price-band span { color: #8e8e8e; }
 [data-theme="dark"] .api-plan-description { color: #b8b8b8; }
+[data-theme="dark"] .api-plan-description-toggle, [data-theme="dark"] .api-plan-description-body a { color: #78a8d4; }
 [data-theme="dark"] .api-plan-periods .v2-badge { color: #b8b8b8; background: #2b2e32; border: 1px solid #3a3d42; }
 [data-theme="dark"] .api-plan-action .btn-primary { background: #2f68a7; border-color: #2f68a7; box-shadow: none; }
 [data-theme="dark"] .api-plan-action .btn-primary:hover { background: #3977b5; border-color: #3977b5; box-shadow: none; transform: none; }
@@ -2264,13 +2269,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .ant-modal { max-width: 100%; }
 
 @media (max-width: 760px) {
-  /* 顶栏：标题可截断，模式徽章换短文案，账户按钮去掉下拉箭头，保证右侧按钮不被挤出屏幕 */
-  .topbar { gap: 8px; }
+  /* 顶栏：标题可截断，账户按钮去掉下拉箭头，保证右侧按钮不被挤出屏幕 */
+  .topbar-inner { gap: 8px; }
   .topbar-heading { flex: 1 1 auto; gap: 8px; }
   .topbar-title { flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; }
-  .v2-mode-badge { flex: none; }
-  .v2-mode-badge-full { display: none; }
-  .v2-mode-badge-short { display: inline; }
   .topbar-actions { flex: none; }
   .account-caret { display: none; }
 

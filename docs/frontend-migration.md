@@ -10,7 +10,7 @@
 - 服务端 API：`/api/auth/login`、`/api/auth/register`、`/api/auth/logout`、`/api/auth/me`。
 - 账户 API：`/api/user/info`、`/api/user/update`、`/api/user/changePassword`、`/api/user/resetSecurity`。
 - 会话：服务端签发 HttpOnly、SameSite=Lax Cookie，并在 `auth_sessions` 表记录可撤销会话；浏览器不保存 V2Board `auth_data` 或数据库密码。
-- 路由保护：生产面板由 `proxy.ts` 快速验证会话签名，再由服务端布局确认用户和数据库会话仍有效；`/demo/*` 不经过生产门禁。
+- 路由保护：生产面板由 `proxy.ts` 快速验证会话签名，再由服务端布局确认用户和数据库会话仍有效。
 - 账户安全：注销撤销当前会话；修改密码撤销该账户全部旧会话，并拒绝继续使用原密码。
 - 订阅资料：`/api/user/getSubscribe` 返回 `aeranexa.users.subscription_token` 对应的私有订阅地址；重置安全信息会轮换 UUID 与订阅 Token。
 - 邮箱验证码：`/admin/mail` 配置并启用 SMTP 后，注册和找回密码使用服务端签发的限时、一次性六位验证码；验证码不会返回浏览器。
@@ -31,7 +31,7 @@
 | `/profile` | `/profile` | 钱包、密码、通知和重置功能界面已完成 |
 | `/login`、`/register`、`/forgetpassword` | 保持不变 | 登录、注册和验证码式找回密码已接入 AeraNexa 用户 API |
 
-以上页面延续源项目 V2Board 1.7.x 的左侧分组导航、深色顶栏、块级卡片、表格密度、表单和中文字段。`/demo/*` 页面继续使用演示数据，生产路由只有已迁移的用户系统会写入新数据库。
+以上页面延续源项目 V2Board 1.7.x 的左侧分组导航、深色顶栏、块级卡片、表格密度、表单和中文字段。（`/demo/*` 演示路由已于 2026-09-25 删除。）
 
 ## API 过渡原则
 

@@ -11,8 +11,6 @@ pnpm dev
 
 默认访问 `http://localhost:3000/dashboard`。
 
-`/demo/*` 提供一套完整的静态业务 Demo，覆盖认证、仪表盘、套餐购买、订单、节点、邀请、文档、工单、流量和个人中心。生产路由保留在根路径下，当前已接入第一阶段用户系统：注册、登录、登出、当前用户、个人资料、偏好设置和修改密码。
-
 首次运行前，请复制 `.env.example` 为 `.env.local` 并填写本地 MySQL 密码、会话密钥、各加密主密钥（SMTP / 支付 / 系统设置）和哈希 pepper。环境变量只放这些必须与数据库分离的配置；3x-ui 连接、订阅域名、佣金比例、Worker 调度等在后台 `/admin/settings`「系统设置」中调整，保存后数秒内生效。用户系统的数据库名由 `DB_NAME` 决定（不填默认为 `aeranexa`，也可以指向任意已有的库，比如托管平台自带的默认库），表结构见 [`database/schema.sql`](database/schema.sql)，`pnpm db:migrate` 会按 `DB_NAME` 自动建库建表。SMTP 主机、账号、发件人由 `/admin/mail` 配置；服务未启用时注册和找回密码会安全拒绝，不会回显验证码。
 
 生产启动命令 `pnpm start` 会先跑一遍 [`scripts/migrate-database.mjs`](scripts/migrate-database.mjs)，再运行自定义 Node 服务入口 [`scripts/web-server.mjs`](scripts/web-server.mjs)。它在响应完成时记录状态码、耗时和 `x-request-id`；继续使用 Node 部署，不使用 Next.js `standalone`。schema.sql 按幂等方式迁移；迁移失败会中断启动。本地 `pnpm dev` 不自动迁移，首次运行先执行 `pnpm db:migrate`。

@@ -199,6 +199,46 @@ export function PendingOrderModal({ tradeNo, onClose }: { tradeNo: string | null
   );
 }
 
+/** 套餐说明常以纯文本逐行录入；不含块级 HTML 时按行拆成段落，避免换行被折叠成一整段。 */
+function planContentHtml(content: string): string {
+  if (/<(p|div|ul|ol|li|br|h[1-6]|table|blockquote|pre)\b/i.test(content)) return content;
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<p>${line}</p>`)
+    .join("");
+}
+
+/** 套餐卡片简介：紧凑排版，超出折叠高度时渐隐并提供展开/收起。 */
+function PlanDescription({ html }: { html: string }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const safeHtml = useMemo(() => sanitizeHtml(planContentHtml(html)), [html]);
+
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const measure = () => setOverflowing(body.scrollHeight > body.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [safeHtml, expanded]);
+
+  return (
+    <div className={`api-plan-description${expanded ? " expanded" : ""}${overflowing ? " overflowing" : ""}`}>
+      <div ref={bodyRef} className="api-plan-description-body" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+      {(overflowing || expanded) && (
+        <button type="button" className="api-plan-description-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "收起" : "展开全部"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ApiPlanPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -360,12 +400,7 @@ export function ApiPlanPage() {
                     </span>
                   ))}
                 </div>
-                {plan.content && (
-                  <div
-                    className="api-plan-description"
-                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(plan.content) }}
-                  />
-                )}
+                {plan.content && <PlanDescription html={plan.content} />}
                 <div className="api-plan-action">
                   <button
                     type="button"
@@ -411,7 +446,7 @@ export function ApiPlanPage() {
         >
           <div className="api-plan-order-form">
             {selectedPlan.content && (
-              <div className="api-plan-modal-description" dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedPlan.content) }} />
+              <div className="api-plan-modal-description" dangerouslySetInnerHTML={{ __html: sanitizeHtml(planContentHtml(selectedPlan.content)) }} />
             )}
             <div>
               <label style={{ display: "block", marginBottom: 6, fontWeight: 500 }}>选择付款周期</label>

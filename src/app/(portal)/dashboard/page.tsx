@@ -142,10 +142,10 @@ export default function ApiDashboardPage() {
             <AlertCircle size={20} style={{ color: "var(--v2-primary)" }} />
             <div>
               <strong style={{ display: "block", color: "var(--v2-heading)" }}>
-                API 生产模式运行中（未检测到有效登录态）
+                未检测到有效登录态
               </strong>
               <small style={{ color: "var(--v2-muted)" }}>
-                请登入您的 V2Board 账户以同步真实数据；您也可随时前往 Demo 路由查看 1:1 演示页面。
+                登录已过期或尚未登录，请重新登录后查看订阅与流量信息。
               </small>
             </div>
           </div>
@@ -153,9 +153,6 @@ export default function ApiDashboardPage() {
             <Link href="/login" className="btn btn-primary btn-sm">
               <LogIn size={14} />
               <span>登录账户</span>
-            </Link>
-            <Link href="/demo/dashboard" className="btn btn-secondary btn-sm">
-              <span>查看 Demo 演示</span>
             </Link>
           </div>
         </div>

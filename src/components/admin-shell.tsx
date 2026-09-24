@@ -162,38 +162,40 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
 
       <div className="portal-main">
         <header className="topbar">
-          <div className="admin-topbar-heading">
-            <p className="topbar-title">{current?.label ?? "管理员面板"}</p>
-            <span className="v2-mode-badge prod"><ShieldCheck size={12} /> 管理员</span>
-          </div>
-          <div className="topbar-actions">
-            <button className="icon-button" type="button" aria-label="切换主题" onClick={toggleTheme}>
-              {isDarkMode ? <Moon size={17} /> : <Sun size={17} />}
-            </button>
-            <div className="admin-account-menu" ref={accountRef}>
-              <button
-                className="account-button"
-                type="button"
-                aria-expanded={accountMenuOpen}
-                onClick={() => setAccountMenuOpen((value) => !value)}
-              >
-                <UserCircle size={18} aria-hidden="true" />
-                <span className="account-copy">{userEmail}</span>
-                <ChevronDown className="account-caret" size={14} aria-hidden="true" />
+          <div className="topbar-inner">
+            <div className="admin-topbar-heading">
+              <p className="topbar-title">{current?.label ?? "管理员面板"}</p>
+              <span className="v2-mode-badge prod"><ShieldCheck size={12} /> 管理员</span>
+            </div>
+            <div className="topbar-actions">
+              <button className="icon-button" type="button" aria-label="切换主题" onClick={toggleTheme}>
+                {isDarkMode ? <Moon size={17} /> : <Sun size={17} />}
               </button>
-              {accountMenuOpen ? (
-                <div className="v2-dropdown-menu admin-account-dropdown">
-                  <Link href="/dashboard" className="v2-dropdown-item" onClick={() => setAccountMenuOpen(false)}>
-                    <ExternalLink size={15} />
-                    <span>返回用户面板</span>
-                  </Link>
-                  <div className="v2-dropdown-divider" />
-                  <button type="button" className="v2-dropdown-item admin-logout" onClick={logout}>
-                    <LogOut size={15} />
-                    <span>登出</span>
-                  </button>
-                </div>
-              ) : null}
+              <div className="admin-account-menu" ref={accountRef}>
+                <button
+                  className="account-button"
+                  type="button"
+                  aria-expanded={accountMenuOpen}
+                  onClick={() => setAccountMenuOpen((value) => !value)}
+                >
+                  <UserCircle size={18} aria-hidden="true" />
+                  <span className="account-copy">{userEmail}</span>
+                  <ChevronDown className="account-caret" size={14} aria-hidden="true" />
+                </button>
+                {accountMenuOpen ? (
+                  <div className="v2-dropdown-menu admin-account-dropdown">
+                    <Link href="/dashboard" className="v2-dropdown-item" onClick={() => setAccountMenuOpen(false)}>
+                      <ExternalLink size={15} />
+                      <span>返回用户面板</span>
+                    </Link>
+                    <div className="v2-dropdown-divider" />
+                    <button type="button" className="v2-dropdown-item admin-logout" onClick={logout}>
+                      <LogOut size={15} />
+                      <span>登出</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </header>

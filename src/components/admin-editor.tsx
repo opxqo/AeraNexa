@@ -537,7 +537,7 @@ function PlansEditor({ page, groups }: { page: Extract<AdminEditorData, { sectio
             <small className="admin-hint">至少需要配置一个周期，否则套餐无法在前台下单。</small>
           </fieldset>
 
-          <label className="v2-field"><span>套餐说明（可选）</span><textarea name="content" rows={3} maxLength={5000} defaultValue={item?.content ?? ""} /></label>
+          <label className="v2-field"><span>套餐说明（可选）</span><textarea name="content" rows={8} maxLength={5000} defaultValue={item?.content ?? ""} placeholder="每行一条卖点，前台逐行展示；也支持常用 HTML 标签。" /></label>
 
           <div className="admin-check-list">
             <label className="admin-check-row"><input name="isVisible" type="checkbox" defaultChecked={item?.isVisible ?? true} /><span>前台展示</span></label>

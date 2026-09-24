@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Globe2, KeyRound, LogIn, UserPlus, Check, AlertCircle, Loader2 } from "lucide-react";
 import { authApi } from "@/lib/api/auth";
 
@@ -24,11 +24,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; initialInviteCode?: string }) {
-  const pathname = usePathname();
   const router = useRouter();
-
-  const isDemo = pathname.startsWith("/demo");
-  const basePath = isDemo ? "/demo" : "";
 
   const isLogin = mode === "login";
   const isRegister = mode === "register";
@@ -62,10 +58,6 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
     if (!isRegister || typeof window === "undefined") return;
     const code = initialInviteCode.trim();
     if (!code) return;
-    if (isDemo) {
-      queueMicrotask(() => setInviteMessage("演示邀请码已自动填入"));
-      return;
-    }
 
     const controller = new AbortController();
     fetch(`/api/auth/invite?code=${encodeURIComponent(code)}`, { signal: controller.signal })
@@ -85,7 +77,7 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
         if (!(error instanceof DOMException && error.name === "AbortError")) setInviteMessage("暂时无法校验邀请码，提交注册时将再次验证");
       });
     return () => controller.abort();
-  }, [initialInviteCode, isDemo, isRegister]);
+  }, [initialInviteCode, isRegister]);
 
   // 发送邮箱验证码
   const handleSendCode = async () => {
@@ -95,12 +87,6 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
       return;
     }
     setErrorMessage("");
-
-    if (isDemo) {
-      setCountdown(60);
-      setSuccessMessage("验证码已模拟发送至邮箱");
-      return;
-    }
 
     try {
       const result = await authApi.sendEmailVerify(email, isForget ? "reset-password" : "register");
@@ -117,15 +103,7 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
     setErrorMessage("");
     setSuccessMessage("");
 
-    // Demo 模式下直接跳转
-    if (isDemo) {
-      if (isLogin) router.push("/demo/dashboard");
-      else if (isRegister) router.push("/demo/dashboard");
-      else router.push("/demo/login");
-      return;
-    }
-
-    // 生产模式表单基础校验
+    // 表单基础校验
     if (!email || !email.includes("@")) {
       setErrorMessage("请输入有效的邮箱地址");
       return;
@@ -199,10 +177,7 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
       <section className="login-card">
         <div className="login-card-body">
           <Image alt="" aria-hidden="true" className="login-brand-icon" height={56} priority src="/brand/aeranexa-icon.svg" width={56} />
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <h1 style={{ margin: 0 }}>AeraNexa</h1>
-            {isDemo && <span className="v2-mode-badge demo">Demo演示</span>}
-          </div>
+          <h1 style={{ margin: "0 0 4px" }}>AeraNexa</h1>
           <p>Connect beyond boundaries.</p>
 
           {/* 错误提示框 */}
@@ -393,11 +368,11 @@ export function AuthCard({ mode, initialInviteCode = "" }: { mode: AuthMode; ini
           <span>
             {isLogin ? (
               <>
-                <Link href={`${basePath}/register`}>注册</Link>
-                <Link href={`${basePath}/forgetpassword`}>忘记密码</Link>
+                <Link href={"/register"}>注册</Link>
+                <Link href={"/forgetpassword"}>忘记密码</Link>
               </>
             ) : (
-              <Link href={`${basePath}/login`}>返回登入</Link>
+              <Link href={"/login"}>返回登入</Link>
             )}
           </span>
 
