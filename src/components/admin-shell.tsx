@@ -179,7 +179,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
               >
                 <UserCircle size={18} aria-hidden="true" />
                 <span className="account-copy">{userEmail}</span>
-                <ChevronDown size={14} aria-hidden="true" />
+                <ChevronDown className="account-caret" size={14} aria-hidden="true" />
               </button>
               {accountMenuOpen ? (
                 <div className="v2-dropdown-menu admin-account-dropdown">

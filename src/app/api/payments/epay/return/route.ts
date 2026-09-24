@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     void emitRuntimeLog({ service: "web", category: "payment", level: "error", eventCode: "payment.epay_return_failed", message: safeError(error), requestId: request.headers.get("x-request-id"), path: request.nextUrl.pathname });
   }
-  // 后台测试单跳回支付测试台，并自动恢复该测试单的查询。
-  if (testTradeNo) return redirect(`/admin/payment-test?epay=${encodeURIComponent(testTradeNo)}`);
+  // 后台测试单跳回支付管理中的测试页签，并自动恢复该测试单的查询。
+  if (testTradeNo) return redirect(`/admin/payments?tab=test&epay=${encodeURIComponent(testTradeNo)}`);
   return redirect(tradeNo ? `/order/${encodeURIComponent(tradeNo)}?paying=1` : "/order");
 }
 

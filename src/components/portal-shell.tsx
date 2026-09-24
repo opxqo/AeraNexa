@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { portalSections, type PortalIcon } from "@/lib/navigation";
 import { useToast } from "@/components/v2-modal";
+import { useStackedTables } from "@/components/use-stacked-tables";
 import { BrandMark } from "@/components/brand-mark";
 
 const languages = [
@@ -75,6 +76,8 @@ export function PortalShell({
   const effectiveBasePath = isDemo ? "/demo" : "";
 
   const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLElement>(null);
+  useStackedTables(contentRef);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState("zh-CN");
@@ -205,16 +208,18 @@ export function PortalShell({
       {/* 主界面 */}
       <div className="portal-main">
         <header className="topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="topbar-heading">
             <p className="topbar-title">{current?.label ?? "AeraNexa"}</p>
             {/* 模式状态切换按钮 */}
             {isDemo ? (
               <Link href="/dashboard" className="v2-mode-badge demo" title="点击切换至 API 生产模式">
-                演示模式 · 切换至生产
+                <span className="v2-mode-badge-full">演示模式 · 切换至生产</span>
+                <span className="v2-mode-badge-short">演示</span>
               </Link>
             ) : (
               <Link href="/demo/dashboard" className="v2-mode-badge prod" title="点击查看纯前端 Mock 演示页面">
-                生产模式 · 查看Demo演示
+                <span className="v2-mode-badge-full">生产模式 · 查看Demo演示</span>
+                <span className="v2-mode-badge-short">Demo</span>
               </Link>
             )}
           </div>
@@ -270,7 +275,7 @@ export function PortalShell({
               >
                 <UserCircle size={18} aria-hidden="true" />
                 <span className="account-copy">{displayEmail}</span>
-                <ChevronDown size={14} aria-hidden="true" />
+                <ChevronDown className="account-caret" size={14} aria-hidden="true" />
               </button>
 
               {accountMenuOpen && (
@@ -312,7 +317,7 @@ export function PortalShell({
           </div>
         </header>
 
-        <main className="content">{children}</main>
+        <main className="content" ref={contentRef}>{children}</main>
       </div>
     </div>
   );

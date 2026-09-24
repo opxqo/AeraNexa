@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { adminSectionKeys, type AdminSectionKey } from "@/lib/admin-navigation";
 import { AdminEditor } from "@/components/admin-editor";
 import { AdminListPager } from "@/components/admin-pagination";
 import { getAdminEditorData } from "@/lib/server/admin-editor";
+import { getEpayTestOverview, getEpayTestStatus, type EpayTestStatus } from "@/lib/server/payments/epay-test";
+import { EpayLiveTest } from "@/app/admin/payment-test/epay-live-test";
+import { PaymentTestLab } from "@/app/admin/payment-test/payment-test-lab";
 
 const DESCRIPTIONS: Record<string, string> = {
   users: "管理账户信息、身份标签、订阅额度与启用状态。",
@@ -60,6 +64,29 @@ export default async function AdminSectionPage({
   };
   const q = readParam("q") ?? "";
   const page = Number(readParam("page") ?? "1");
+  const isPaymentTest = section === "payments" && readParam("tab") === "test";
+
+  if (isPaymentTest) {
+    const overview = await getEpayTestOverview();
+    const epay = readParam("epay");
+    let initialStatus: EpayTestStatus | null = null;
+    if (epay && /^ET[0-9A-F]{20}$/.test(epay)) initialStatus = await getEpayTestStatus(epay).catch(() => null);
+
+    return (
+      <div className="admin-page-stack">
+        <section className="admin-page-heading">
+          <div>
+            <p className="admin-kicker">AeraNexa 管理控制台</p>
+            <h1>支付管理</h1>
+            <p>检查支付渠道连通性与回调流程，或在本地模拟支付场景。</p>
+          </div>
+        </section>
+        <PaymentTabs active="test" />
+        <EpayLiveTest overview={overview} initialStatus={initialStatus} />
+        <PaymentTestLab />
+      </div>
+    );
+  }
 
   const data = await getAdminEditorData(section as AdminSectionKey, { q, page: Number.isFinite(page) ? page : 1 });
 
@@ -75,6 +102,7 @@ export default async function AdminSectionPage({
           ? <span className="v2-badge">只读</span>
           : <span className="v2-badge badge-success">可编辑</span>}
       </section>
+      {data.section === "payments" ? <PaymentTabs active="channels" /> : null}
       <AdminEditor data={data} q={q} />
       {data.section !== "recharge-cards" && data.section !== "mail" && data.section !== "settings" ? <AdminListPager
         section={data.section}
@@ -87,5 +115,14 @@ export default async function AdminSectionPage({
         数据源：本地 <span className="mono">aeranexa</span> 数据库。所有写操作都会写入 <span className="mono">audit_logs</span>。
       </p>
     </div>
+  );
+}
+
+function PaymentTabs({ active }: { active: "channels" | "test" }) {
+  return (
+    <nav className="admin-payment-tabs" aria-label="支付管理功能">
+      <Link href="/admin/payments" aria-current={active === "channels" ? "page" : undefined} className={active === "channels" ? "active" : ""}>支付渠道</Link>
+      <Link href="/admin/payments?tab=test" aria-current={active === "test" ? "page" : undefined} className={active === "test" ? "active" : ""}>支付测试台</Link>
+    </nav>
   );
 }

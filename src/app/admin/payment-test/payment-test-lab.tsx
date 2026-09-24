@@ -201,7 +201,7 @@ export function PaymentTestLab() {
       <header className="payment-lab-hero">
         <div>
           <p className="payment-lab-kicker"><FlaskConical size={14} /> PAYMENT SANDBOX</p>
-          <h1>支付测试台</h1>
+          <h2>支付测试台</h2>
           <p>用一笔隔离的模拟订单，演练支付状态、重复通知、金额校验与关单边界。</p>
         </div>
         <span className="payment-lab-hero-note"><ShieldCheck size={15} /> 纯前端沙箱 · 不发起真实交易</span>

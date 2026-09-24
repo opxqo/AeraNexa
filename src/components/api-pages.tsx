@@ -739,13 +739,13 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
     order?.subtotal_amount ?? (order ? order.total_amount + (order.discount_amount ?? 0) + (order.surplus_amount ?? 0) : 0);
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div className="checkout-page">
+      <div className="checkout-head">
         <div>
           <h1 style={{ margin: "0 0 4px", fontSize: 22, color: "var(--v2-heading)" }}>收银台</h1>
-          <p style={{ margin: 0, color: "var(--v2-muted)", fontSize: 13 }}>订单号：{tradeNo}</p>
+          <p className="checkout-trade-no">订单号：{tradeNo}</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="checkout-head-actions">
           <button type="button" className="btn btn-secondary btn-sm" onClick={refreshStatus}>
             <RotateCcw size={13} />
             <span>刷新状态</span>
@@ -763,9 +763,9 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
         loadingText="正在读取订单与支付渠道..."
       >
         {order && (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(260px, 1fr)", gap: 20 }}>
-            <div style={{ display: "grid", gap: 16 }}>
-              <section className="v2-block" style={{ padding: 20 }}>
+          <div className="checkout-layout">
+            <div className="checkout-main">
+              <section className="v2-block checkout-card">
                 <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>商品信息</h3>
                 <div style={{ display: "grid", gap: 10 }}>
                   <div className="summary-row">
@@ -797,7 +797,7 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
                 </div>
               </section>
 
-              <section className="v2-block" style={{ padding: 20 }}>
+              <section className="v2-block checkout-card">
                 <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>选择支付方式</h3>
                 <AsyncBoundary
                   loading={methodsState.loading}
@@ -807,7 +807,7 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
                   minHeight={90}
                   empty={methods.length === 0 ? "管理员尚未配置可用支付方式，请联系客服。" : undefined}
                 >
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
+                  <div className="checkout-channel-grid">
                     {methods.map((method) => (
                       <div
                         key={method.id}
@@ -828,7 +828,7 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
               </section>
             </div>
 
-            <section className="v2-block" style={{ padding: 20, height: "fit-content" }}>
+            <section className="v2-block checkout-card checkout-pay-card">
               <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>支付汇总</h3>
               <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
                 <div className="summary-row">
@@ -2215,7 +2215,7 @@ export function ApiProfilePage() {
     <div style={{ display: "grid", gap: 20 }}>
       <section className="v2-block" style={{ padding: 20 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>账户基础资料</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, fontSize: 14 }}>
+        <div className="profile-basic-grid">
           <div>
             <span style={{ color: "var(--v2-muted)" }}>登录邮箱：</span>
             <strong>{user?.email ?? "未登录"}</strong>
