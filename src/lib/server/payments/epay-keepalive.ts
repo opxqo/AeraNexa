@@ -13,7 +13,7 @@ import { resolveChannel } from "./epay-test";
 
 /**
  * 易支付商户保活：渠道条款规定商户号连续 5 天没有账单会被封禁，未支付的「白账单」也算。
- * worker 定期检查，距上一张保活账单超过间隔就通过 API 接口 mapi.php 下一笔 0.01 元的单（不付款），
+ * worker 定期检查，距上一张保活账单超过间隔就通过 API 接口 mapi.php 下一笔 1 元的单（不付款），
  * 再用 act=order 确认网关确实记录了这笔单，确认后才写审计，否则下一轮重试。
  * 不能用 submit.php：那是给浏览器跳转收银台的，服务器单独请求它渠道不会建单（实测 act=order 查不到）。
  * 开关与间隔在后台「支付管理 → 商户保活」调整（同时出现在系统设置的支付分组）。
@@ -23,7 +23,8 @@ import { resolveChannel } from "./epay-test";
  */
 
 const CREATED_ACTION = "payment.epay_keepalive_created" as const;
-const KEEPALIVE_AMOUNT_CENTS = 1;
+/** 渠道规定单笔最小支付金额 1 元（mapi.php 返回「最小支付金额是1元」）；只下单不付款，不产生扣款。 */
+const KEEPALIVE_AMOUNT_CENTS = 100;
 const KEEPALIVE_PREFIX = `${EPAY_TEST_PREFIX}K`;
 /** 渠道条款：连续这么久没有账单就可能被封。 */
 export const EPAY_BAN_AFTER_SECONDS = 5 * 24 * 3600;

@@ -97,7 +97,7 @@ export function EpayKeepalivePanel({ initial }: { initial: EpayKeepaliveOverview
       <header className="v2-block-header">
         <div>
           <h2><HeartPulse size={17} /> 商户保活 <Badge tone={status.tone}>{status.label}</Badge></h2>
-          <p className="admin-audit-note">渠道规定商户号连续 5 天没有账单会被封禁，未支付的白账单也算。启用后 worker 按间隔自动向网关下一笔 ¥0.01 的账单，只下单不付款，不建站内订单。</p>
+          <p className="admin-audit-note">渠道规定商户号连续 5 天没有账单会被封禁，未支付的白账单也算。启用后 worker 按间隔自动向网关下一笔 ¥1.00 的账单，只下单不付款，不建站内订单。</p>
         </div>
         <button type="button" className="button button-secondary" disabled={pending} onClick={refresh}><RefreshCw size={15} /> 刷新</button>
       </header>

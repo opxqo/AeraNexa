@@ -66,7 +66,7 @@ export const SETTING_DEFS: readonly SettingDef[] = [
     key: "payment.epay.keepalive_enabled",
     group: "支付",
     label: "易支付商户保活",
-    description: "渠道规定商户号连续 5 天没有账单会被封禁；启用后 worker 定期向网关下一笔 0.01 元的未支付账单。",
+    description: "渠道规定商户号连续 5 天没有账单会被封禁；启用后 worker 定期向网关下一笔 1 元的未支付账单。",
     kind: "select",
     defaultValue: "true",
     options: [{ value: "true", label: "启用" }, { value: "false", label: "停用" }],
