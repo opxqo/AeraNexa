@@ -144,6 +144,8 @@ test("worker 在运行时拒绝恢复，且不会去连旧面板，迁移码保�
     await assert.rejects(restoreBackup(() => { opened = true; return migration.openRemoteBackup(code); }), /worker 正在运行/);
     assert.equal(opened, false, "worker 在跑时不应连接旧面板");
   } finally {
+    // 显式释放：只关连接的话，服务端释放锁有短暂延迟，紧接着的恢复偶尔会撞上「worker 正在运行」
+    await holder.query("SELECT RELEASE_LOCK('aeranexa:node-worker')");
     await holder.end();
   }
   // worker 停下后，同一个迁移码仍然能完成迁移
