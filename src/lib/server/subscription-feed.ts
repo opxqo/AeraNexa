@@ -3,6 +3,7 @@ import "server-only";
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
 import { deviceGateHeaders, gateDevice, type DeviceInfo } from "./devices";
+import { recordSubscriptionPull } from "./subscription-pulls";
 import { PANEL_NAME } from "./panel/import-inbounds";
 import { buildClashProxy, clashNoticeProxy, renderClashConfig } from "./panel/clash";
 import { fetchPanelClashSubscription, PanelSubscriptionError } from "./panel/subscription";
@@ -77,6 +78,11 @@ export async function getSubscriptionFeed(
   );
   const user = users[0];
   if (!user) return null;
+  // 拉取记录：不阻塞订阅下发，失败也不影响（只影响「我的设备」页的展示）
+  if (device) {
+    void recordSubscriptionPull(Number(user.id), { userAgent: device.userAgent, ip: device.ip, hasHwid: device.hwid.length > 0 })
+      .catch((error: unknown) => console.error("[subscribe] pull record failed", error));
+  }
 
   const nowSeconds = Math.floor(Date.now() / 1000);
   const upload = Number(user.upload_bytes);

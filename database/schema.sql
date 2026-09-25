@@ -1152,3 +1152,22 @@ DEALLOCATE PREPARE telegram_delivery_message_statement;
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260925_002', 'Telegram notification deliveries carry an optional message body');
+
+-- 20260925_003：订阅拉取记录。所有客户端（含不上报 HWID 的 Clash 系）每次拉取订阅都记一条，只保留 30 天；
+-- 用于用户在「我的设备」查看最近哪些客户端、从哪个网络拉取过订阅。仅供参考，不参与设备数限制。
+CREATE TABLE IF NOT EXISTS subscription_pulls (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  client VARCHAR(64) NOT NULL COMMENT '由 User-Agent 解析出的客户端名称',
+  user_agent VARCHAR(255) NULL,
+  ip VARCHAR(45) NULL,
+  has_hwid TINYINT(1) NOT NULL DEFAULT 0,
+  pulled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY subscription_pulls_user_time_index (user_id, pulled_at),
+  CONSTRAINT subscription_pulls_user_id_foreign
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260925_003', 'Subscription pull records for the devices page (all clients, 30-day retention)');

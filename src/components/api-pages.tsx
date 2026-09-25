@@ -2188,7 +2188,10 @@ function describeDevice(device: UserDevice): string {
   return parts.length ? parts.join(" · ") : device.user_agent ?? "未知设备";
 }
 
-/** 我的设备：订阅层按 HWID 登记的设备。上限来自套餐（或管理员单独设置），0 表示不限。 */
+/**
+ * 我的设备：以最近 30 天的订阅拉取记录为主（所有客户端，含不上报设备标识的 Clash 系）；
+ * 上报 HWID 的客户端另有「已登记设备」表，可移除以腾出名额。上限来自套餐或管理员单独设置，0 表示不限。
+ */
 function DevicesSection() {
   const { showToast } = useToast();
   const devicesState = useAsyncData<UserDevices>(() => userApi.fetchDevices(), [], { fallbackMessage: "设备列表加载失败" });
@@ -2208,36 +2211,57 @@ function DevicesSection() {
     });
   };
 
+  const pulls = data?.pulls ?? [];
+  const hasDevices = Boolean(data?.items.length);
+
   return (
     <section className="v2-block" style={{ padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
         <h3 style={{ margin: 0, fontSize: 16 }}>我的设备</h3>
-        {data?.items.length ? (
-          <button type="button" className="btn" onClick={() => setConfirmAll(true)} disabled={removeGuard.pending}>全部移除</button>
-        ) : null}
       </div>
       <p className="field-hint" style={{ marginTop: 0 }}>
-        {data
-          ? data.limit > 0
-            ? `当前套餐最多 ${data.limit} 台设备，已登记 ${data.items.length} 台。已满时新设备将无法获取节点，可在此移除不再使用的设备。`
-            : "当前套餐不限设备数量。"
-          : "拉取订阅时自动登记支持设备标识的客户端。"}
-        {" "}同时在线的设备（按网络地址计）同样受此数量限制；部分客户端（如 Clash 系）不上报设备标识，不会出现在列表中。
+        {data ? (data.limit > 0 ? `当前套餐最多 ${data.limit} 台设备同时在线（按网络地址计）。` : "当前套餐不限设备数量。") : null}
+        {" "}下面是最近 30 天拉取过订阅的客户端，按客户端和网络地址合并，仅供参考：同一台设备换网络会显示成多条，同一网络下的多台设备可能合并成一条。
       </p>
       <AsyncBoundary loading={devicesState.loading} error={devicesState.error} onRetry={devicesState.reload} loadingText="正在读取设备..." minHeight={60}>
         <div className="table-wrap">
           <table className="v2-table">
-            <thead><tr><th>设备</th><th>首次登记</th><th>最近拉取订阅</th><th>操作</th></tr></thead>
-            <tbody>{data?.items.length ? data.items.map((device) => (
-              <tr key={device.id}>
-                <td>{describeDevice(device)}{device.user_agent ? <small style={{ display: "block", color: "var(--v2-muted)" }}>{device.user_agent}</small> : null}</td>
-                <td>{formatTime(device.first_seen_at)}</td>
-                <td>{formatTime(device.last_seen_at)}</td>
-                <td><button type="button" className="btn" onClick={() => remove(device.id)} disabled={removeGuard.pending}>移除</button></td>
+            <thead><tr><th>客户端</th><th>网络地址</th><th>最近拉取订阅</th><th>30 天内次数</th></tr></thead>
+            <tbody>{pulls.length ? pulls.map((pull) => (
+              <tr key={`${pull.client}|${pull.ip ?? ""}`}>
+                <td>{pull.client}{pull.userAgent ? <small style={{ display: "block", color: "var(--v2-muted)" }}>{pull.userAgent}</small> : null}</td>
+                <td className="mono">{pull.ip ?? "—"}</td>
+                <td>{formatTime(pull.last_pulled_at)}</td>
+                <td>{pull.times}</td>
               </tr>
-            )) : <tr><td colSpan={4} className="admin-empty">暂无登记的设备</td></tr>}</tbody>
+            )) : <tr><td colSpan={4} className="admin-empty">最近 30 天还没有客户端拉取过订阅</td></tr>}</tbody>
           </table>
         </div>
+
+        {hasDevices ? (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, margin: "20px 0 8px" }}>
+              <h4 style={{ margin: 0, fontSize: 14 }}>已登记设备（{data?.items.length}{data && data.limit > 0 ? ` / ${data.limit}` : ""}）</h4>
+              <button type="button" className="btn" onClick={() => setConfirmAll(true)} disabled={removeGuard.pending}>全部移除</button>
+            </div>
+            <p className="field-hint" style={{ marginTop: 0 }}>
+              上报设备标识的客户端（如 Happ、v2RayTun）会在这里登记并占用设备名额{data && data.limit > 0 ? "，名额已满时新设备将无法获取节点，可移除不再使用的设备" : ""}。
+            </p>
+            <div className="table-wrap">
+              <table className="v2-table">
+                <thead><tr><th>设备</th><th>首次登记</th><th>最近拉取订阅</th><th>操作</th></tr></thead>
+                <tbody>{data?.items.map((device) => (
+                  <tr key={device.id}>
+                    <td>{describeDevice(device)}{device.user_agent ? <small style={{ display: "block", color: "var(--v2-muted)" }}>{device.user_agent}</small> : null}</td>
+                    <td>{formatTime(device.first_seen_at)}</td>
+                    <td>{formatTime(device.last_seen_at)}</td>
+                    <td><button type="button" className="btn" onClick={() => remove(device.id)} disabled={removeGuard.pending}>移除</button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
       </AsyncBoundary>
       <ConfirmModal
         open={confirmAll}

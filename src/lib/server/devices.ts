@@ -18,6 +18,8 @@ const MIN_HWID_LENGTH = 6;
 
 export type DeviceInfo = {
   hwid: string;
+  /** 拉取订阅的来源 IP（反向代理透传的真实地址），只用于拉取记录展示 */
+  ip: string;
   userAgent: string;
   deviceOs: string;
   osVersion: string;
@@ -39,6 +41,7 @@ function trimMeta(value: string | null | undefined, max: number): string {
 export function readDeviceInfo(headers: Headers): DeviceInfo {
   return {
     hwid: String(headers.get("x-hwid") ?? "").trim(),
+    ip: trimMeta(headers.get("x-forwarded-for")?.split(",")[0] || headers.get("x-real-ip"), 45),
     userAgent: trimMeta(headers.get("user-agent"), 255),
     deviceOs: trimMeta(headers.get("x-device-os"), 64),
     osVersion: trimMeta(headers.get("x-ver-os"), 64),

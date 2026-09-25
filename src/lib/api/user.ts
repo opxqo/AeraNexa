@@ -19,10 +19,21 @@ export interface UserDevice {
   last_seen_at: number;
 }
 
+/** 最近 30 天的订阅拉取记录，按「客户端 + IP」合并。仅供参考，不参与设备数限制。 */
+export interface SubscriptionPull {
+  client: string;
+  ip: string | null;
+  userAgent: string | null;
+  times: number;
+  first_pulled_at: number;
+  last_pulled_at: number;
+}
+
 export interface UserDevices {
   /** 设备数上限，0 表示不限。 */
   limit: number;
   items: UserDevice[];
+  pulls: SubscriptionPull[];
 }
 
 export const userApi = {

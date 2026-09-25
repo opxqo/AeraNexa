@@ -35,7 +35,7 @@ export const ALWAYS_SKIPPED_TABLES: ReadonlySet<string> = new Set([
 ]);
 
 /** 勾选「包含日志」才导出。 */
-export const LOG_TABLES: ReadonlySet<string> = new Set(["audit_logs", "runtime_logs"]);
+export const LOG_TABLES: ReadonlySet<string> = new Set(["audit_logs", "runtime_logs", "subscription_pulls"]);
 
 /** 恢复时从不清空：迁移记录由目标库自己的 schema 迁移维护。 */
 const NEVER_CLEARED_TABLES: ReadonlySet<string> = new Set(["schema_migrations"]);

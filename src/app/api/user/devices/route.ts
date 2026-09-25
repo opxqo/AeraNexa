@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 import { listUserDevices, getUserDeviceLimit, removeUserDevices } from "@/lib/server/devices";
+import { listSubscriptionPulls } from "@/lib/server/subscription-pulls";
 import { badRequest, readJsonBody, toApiError, unauthenticated } from "@/lib/server/errors";
 import { getCurrentUser } from "@/lib/server/users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** 我的设备：订阅层登记的设备（HWID），以及当前设备数上限（0 表示不限）。 */
+/** 我的设备：最近 30 天的订阅拉取记录（所有客户端）、订阅层登记的设备（HWID），以及设备数上限（0 表示不限）。 */
 export async function GET() {
   try {
     const user = await getCurrentUser();
     if (!user) throw unauthenticated();
-    const [limit, items] = await Promise.all([getUserDeviceLimit(user.id), listUserDevices(user.id)]);
-    return NextResponse.json({ data: { limit, items } });
+    const [limit, items, pulls] = await Promise.all([getUserDeviceLimit(user.id), listUserDevices(user.id), listSubscriptionPulls(user.id)]);
+    return NextResponse.json({ data: { limit, items, pulls } });
   } catch (error) {
     const { status, payload } = toApiError(error, "user devices list");
     return NextResponse.json(payload, { status });
