@@ -667,14 +667,21 @@ function PaymentsEditor({ page }: { page: Extract<AdminEditorData, { section: "p
         </form>
       </EditorModal>
 
-      <section className="v2-block">
-        <header className="v2-block-header"><div><h2>签名回调沙箱</h2><p className="admin-audit-note">仅处理待支付的 mock 交易；会通过与真实网关相同的 HMAC 回调链路履约。</p></div></header>
-        <form className="admin-inline-form" onSubmit={(event) => { event.preventDefault(); submit(sendSandboxPaymentCallbackAction, event.currentTarget, () => {}); }}>
-          <input name="transactionId" type="number" min="1" required placeholder="待支付 mock 交易编号" aria-label="待支付 mock 交易编号" />
-          <button type="submit" className="button button-secondary" disabled={pending}><Send size={15} />投递签名回调</button>
-        </form>
-      </section>
     </>
+  );
+}
+
+/** 签名回调沙箱：给待支付的 mock 交易投递一次签名回调（放在支付测试台）。 */
+export function SandboxCallbackCard() {
+  const { pending, submit } = useSubmit();
+  return (
+    <section className="v2-block">
+      <header className="v2-block-header"><div><h2>签名回调沙箱</h2><p className="admin-audit-note">仅处理待支付的 mock 交易；会通过与真实网关相同的 HMAC 回调链路履约。</p></div></header>
+      <form className="admin-inline-form" onSubmit={(event) => { event.preventDefault(); submit(sendSandboxPaymentCallbackAction, event.currentTarget, () => {}); }}>
+        <input name="transactionId" type="number" min="1" required placeholder="待支付 mock 交易编号" aria-label="待支付 mock 交易编号" />
+        <button type="submit" className="button button-secondary" disabled={pending}><Send size={15} />投递签名回调</button>
+      </form>
+    </section>
   );
 }
 
@@ -872,7 +879,6 @@ function NodesEditor({ page, groups, sync }: { page: NodesData["page"]; groups: 
         </button>
       </div>
       <AccessGroupsModal open={groupsOpen} onClose={() => setGroupsOpen(false)} groups={groups} />
-      <SyncOverviewPanel sync={sync} />
       <section className="v2-block">
         <div className="table-wrap">
           <table className="v2-table">
@@ -924,6 +930,9 @@ function NodesEditor({ page, groups, sync }: { page: NodesData["page"]; groups: 
           入站在 3x-ui 中创建，同步后以「未启用、隐藏」导入；填好对外地址并启用后才会分配给用户。同步只读取 3x-ui，不会修改面板。
         </p>
       </section>
+
+      {/* 同步状态放在节点表格之后：搜索框只作用于节点表格，应紧挨着它 */}
+      <SyncOverviewPanel sync={sync} />
 
       <EditorModal open={selected !== null} title={item ? "编辑节点" : "新建节点"} onClose={close}>
         <form className="admin-editor-form" onSubmit={(event) => { event.preventDefault(); submit(saveNodeAction, event.currentTarget, close); }}>

@@ -87,5 +87,5 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Pr
 }
 
 function StatusCard({ label, count, active }: { label: string; count: number | string; active: boolean }) {
-  return <article className={`v2-block log-alert-card ${active ? "warning" : ""}`}><span>{label}</span><strong>{count}</strong><small>{active ? "需要关注" : "正常"}</small></article>;
+  return <article className={`v2-block log-alert-card ${active ? "warning" : ""}`}><span>{label}</span><strong className={typeof count === "string" ? "text" : undefined}>{count}</strong><small>{active ? "需要关注" : "正常"}</small></article>;
 }

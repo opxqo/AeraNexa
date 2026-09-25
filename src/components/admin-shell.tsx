@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUndo20Regular,
   BookOpen20Regular,
@@ -11,6 +11,7 @@ import {
   DataUsage20Regular,
   DatabaseArrowRight20Regular,
   DocumentCheckmark20Regular,
+  DocumentSearch20Regular,
   Home20Regular,
   Key20Regular,
   Mail20Regular,
@@ -24,22 +25,26 @@ import {
 } from "@fluentui/react-icons";
 import {
   ChevronDown,
+  ChevronRight,
   ExternalLink,
   LogOut,
   Menu,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
   ShieldAlert,
-  ShieldCheck,
   Sun,
   UserCircle,
   X,
 } from "lucide-react";
-import { adminSections, type AdminIcon } from "@/lib/admin-navigation";
+import { adminSections, locateAdminPage, type AdminIcon, type AdminNavCounts } from "@/lib/admin-navigation";
 import { authApi } from "@/lib/api/auth";
 import { clearAuthToken } from "@/lib/api/client";
 import { ToastProvider, useToast } from "@/components/v2-modal";
 import { BrandMark } from "@/components/brand-mark";
 import { useStackedTables } from "@/components/use-stacked-tables";
+import { AdminCommandPalette, isPaletteShortcut } from "@/components/admin-command-palette";
 
 const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number; "aria-hidden"?: boolean }>> = {
   dashboard: Home20Regular,
@@ -58,45 +63,102 @@ const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number;
   traffic: DataUsage20Regular,
   mail: Mail20Regular,
   settings: Settings20Regular,
-  logs: DocumentCheckmark20Regular,
+  logs: DocumentSearch20Regular,
   backup: DatabaseArrowRight20Regular,
 };
+
+const GROUPS = [undefined, "业务管理", "资源与支持", "系统"] as const;
+const COLLAPSE_KEY = "aeranexa-admin-sidebar-collapsed";
+const COUNTS_REFRESH_MS = 60_000;
+
+function isActive(pathname: string, href: string) {
+  return pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
+}
+
+/** 顶栏面包屑：分组 / 页面 / 子页。useSearchParams 需要放在 Suspense 里。 */
+function Breadcrumb() {
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const { section, subPage } = locateAdminPage(pathname, new URLSearchParams(search.toString()));
+  const crumbs = [section?.group ?? "管理后台", section && section.href !== "/admin" ? section.label : "管理概览"];
+  if (subPage && subPage.value) crumbs.push(subPage.label);
+  return (
+    <nav className="admin-breadcrumb" aria-label="当前位置">
+      {crumbs.map((crumb, index) => (
+        <span key={`${crumb}-${index}`} className={index === crumbs.length - 1 ? "current" : undefined}>
+          {index > 0 ? <ChevronRight size={14} aria-hidden="true" /> : null}
+          {index === crumbs.length - 1 ? <b aria-current="page">{crumb}</b> : crumb}
+        </span>
+      ))}
+    </nav>
+  );
+}
 
 function AdminShellInner({ children, userEmail, usesDefaultPassword }: { children: React.ReactNode; userEmail: string; usesDefaultPassword: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { showToast } = useToast();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [counts, setCounts] = useState<AdminNavCounts | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isMac, setIsMac] = useState(true);
   const accountRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLElement>(null);
   // 窄屏把表格折叠成卡片，与用户端一致（样式见 globals.css「移动端表格卡片化」）
   useStackedTables(contentRef);
-  const current = adminSections.find(
-    ({ href }) => pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`)),
-  );
-  const groups = [undefined, "业务管理", "资源与支持", "系统"] as const;
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      setIsDarkMode(
-        document.documentElement.getAttribute("data-theme") === "dark" ||
-          localStorage.getItem("theme") === "dark",
-      );
+      setIsDarkMode(document.documentElement.getAttribute("data-theme") === "dark" || localStorage.getItem("theme") === "dark");
+      setIsMac(/mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent));
+      try { setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1"); } catch { /* 隐私模式等读不到时按展开处理 */ }
     });
     return () => cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (accountRef.current && !accountRef.current.contains(event.target as Node)) {
-        setAccountMenuOpen(false);
-      }
+      if (accountRef.current && !accountRef.current.contains(event.target as Node)) setAccountMenuOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // ⌘K / Ctrl+K 打开快速跳转
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isPaletteShortcut(event)) return;
+      event.preventDefault();
+      setPaletteOpen((value) => !value);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // 待办数字：进入页面、切换页面时各拉一次，之后每分钟刷新；网络抖动时保留上一次的数字
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/admin/nav-counts", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() as Promise<AdminNavCounts> : null))
+        .then((data) => { if (!cancelled && data) setCounts(data); })
+        .catch(() => undefined);
+    };
+    load();
+    const timer = window.setInterval(load, COUNTS_REFRESH_MS);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [pathname]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value;
+      try { localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0"); } catch { /* 存不了就只在本次生效 */ }
+      return next;
+    });
+  };
 
   const toggleTheme = () => {
     const nextDark = !isDarkMode;
@@ -119,7 +181,7 @@ function AdminShellInner({ children, userEmail, usesDefaultPassword }: { childre
   };
 
   return (
-    <div className="portal-shell admin-shell">
+    <div className={`portal-shell admin-shell${collapsed ? " admin-collapsed" : ""}`}>
       <button
         className="mobile-menu"
         type="button"
@@ -134,16 +196,18 @@ function AdminShellInner({ children, userEmail, usesDefaultPassword }: { childre
         <Link className="brand" href="/admin" onClick={() => setOpen(false)}>
           <BrandMark />
           <span className="brand-text">AeraNexa</span>
+          <span className="brand-tag">Admin</span>
         </Link>
         <nav className="primary-nav" aria-label="管理员面板导航">
-          {groups.map((group) => (
+          {GROUPS.map((group) => (
             <div className="nav-group" key={group ?? "main"}>
               {group && <p className="nav-label">{group}</p>}
               {adminSections
                 .filter((section) => section.group === group)
-                .map(({ href, label, icon }) => {
+                .map(({ href, label, icon, count }) => {
                   const Icon = adminIconByKey[icon];
-                  const active = pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
+                  const active = isActive(pathname, href);
+                  const badge = count && counts ? counts[count] : 0;
                   return (
                     <Link
                       key={href}
@@ -155,13 +219,24 @@ function AdminShellInner({ children, userEmail, usesDefaultPassword }: { childre
                     >
                       <Icon fontSize={18} aria-hidden />
                       <span>{label}</span>
+                      {badge > 0 ? (
+                        <em className={`nav-badge${count === "syncFailed" ? " danger" : ""}`} aria-label={`${badge} 项待处理`}>
+                          {badge > 99 ? "99+" : badge}
+                        </em>
+                      ) : null}
                     </Link>
                   );
                 })}
             </div>
           ))}
         </nav>
-        <p className="sidebar-version">AeraNexa Admin v0.1.0</p>
+        <div className="sidebar-footer">
+          <button type="button" className="sidebar-collapse" onClick={toggleCollapsed} title={collapsed ? "展开侧栏" : "收起侧栏"} aria-label={collapsed ? "展开侧栏" : "收起侧栏"}>
+            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            <span>收起侧栏</span>
+          </button>
+          <p className="sidebar-version">v0.1.0</p>
+        </div>
       </aside>
 
       {open ? (
@@ -171,12 +246,15 @@ function AdminShellInner({ children, userEmail, usesDefaultPassword }: { childre
       <div className="portal-main">
         <header className="topbar">
           <div className="topbar-inner">
-            <div className="admin-topbar-heading">
-              {/* 页面标题由页头 AdminPage 显示，顶栏只给出所在分组，避免同一标题出现两次 */}
-              <p className="topbar-title">{current?.group ? `管理后台 · ${current.group}` : "管理后台"}</p>
-              <span className="v2-mode-badge prod"><ShieldCheck size={12} /> 管理员</span>
-            </div>
+            <Suspense fallback={<nav className="admin-breadcrumb" />}>
+              <Breadcrumb />
+            </Suspense>
             <div className="topbar-actions">
+              <button type="button" className="admin-search-trigger" onClick={() => setPaletteOpen(true)} aria-label="搜索并跳转到后台页面">
+                <Search size={15} aria-hidden="true" />
+                <span>搜索页面…</span>
+                <kbd>{isMac ? "⌘K" : "Ctrl K"}</kbd>
+              </button>
               <button className="icon-button" type="button" aria-label="切换主题" onClick={toggleTheme}>
                 {isDarkMode ? <Moon size={17} /> : <Sun size={17} />}
               </button>
@@ -222,6 +300,8 @@ function AdminShellInner({ children, userEmail, usesDefaultPassword }: { childre
           {children}
         </main>
       </div>
+
+      {paletteOpen ? <AdminCommandPalette onClose={() => setPaletteOpen(false)} /> : null}
     </div>
   );
 }

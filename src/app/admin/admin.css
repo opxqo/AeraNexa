@@ -35,16 +35,11 @@
 .admin-shell .admin-editor > .admin-section-actions { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- 表格 ----------
-   表头与徽章、单号、操作不换行；普通文本列在空间不够时换行，而不是把整张表撑出横向滚动。 */
-.admin-shell .v2-table { white-space: normal; }
-.admin-shell .v2-table th { white-space: nowrap; }
-.admin-shell .v2-table td { overflow-wrap: anywhere; }
-.admin-shell .v2-table .v2-badge,
-.admin-shell .v2-table .mono,
-.admin-shell .v2-table td.nowrap,
-.admin-shell .v2-table .admin-action-button,
-.admin-shell .v2-table .admin-danger-button { white-space: nowrap; overflow-wrap: normal; }
-.admin-shell .v2-table td small { overflow-wrap: anywhere; }
+   单元格默认不换行：列多的表在卡片内横向滚动（操作列固定在右侧），而不是把「测试002」「¥62.00」、邮箱拆成几行。
+   只有长文本列（标题、说明、日志内容）用 .wrap 或各自的表格类允许换行。 */
+.admin-shell .v2-table { white-space: nowrap; }
+.admin-shell .v2-table td.wrap, .admin-shell .v2-table .wrap { min-width: 220px; white-space: normal; overflow-wrap: anywhere; }
+.admin-shell .log-table td { white-space: normal; }
 
 /* 行内操作：同一行排开、不换行。
    有几处把这个类直接加在 <td> 上，flex 会让单元格脱离表格布局、整行错位——单元格保持 table-cell，按钮用间距排开。 */
@@ -141,3 +136,300 @@
 .admin-password-alert .button { flex: none; text-decoration: none; }
 [data-theme="dark"] .admin-password-alert { color: #f0b4ad; background: rgba(224, 112, 108, .1); border-color: rgba(224, 112, 108, .3); }
 [data-theme="dark"] .admin-password-alert strong { color: #f3a39b; }
+
+/* =========================================================================
+   现代简洁风格（2026-09 重设计）
+   参考 Vercel / Linear / Stripe：白底浅灰分隔、细边框几乎无阴影、克制的字号与配色，品牌蓝只做强调。
+   全部挂在 .admin-shell 下；通过重设 --v2-* 变量，让沿用 v2 组件的页面自动换上新配色。
+   ========================================================================= */
+.admin-shell {
+  --a-bg: #f7f8fa;
+  --a-surface: #ffffff;
+  --a-surface-2: #f6f7f9;
+  --a-border: #e6e8eb;
+  --a-border-strong: #d4d8dd;
+  --a-divider: #eef0f2;
+  --a-text: #1f2328;
+  --a-text-2: #59636e;
+  --a-text-3: #8a929b;
+  --a-primary: #3f5dcc;
+  --a-primary-hover: #3450bb;
+  --a-primary-soft: rgba(63, 93, 204, .08);
+  --a-success-fg: #1a7f37; --a-success-bg: #e6f4ea;
+  --a-warning-fg: #9a6700; --a-warning-bg: #fff5d1;
+  --a-danger-fg: #cf222e;  --a-danger-bg: #ffebe9;
+  --a-radius: 8px;
+  --a-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+  --a-sidebar: 240px;
+  --a-topbar: 56px;
+
+  --v2-body: var(--a-bg);
+  --v2-surface: var(--a-surface);
+  --v2-header: var(--a-surface-2);
+  --v2-border: var(--a-border);
+  --v2-text: var(--a-text);
+  --v2-heading: var(--a-text);
+  --v2-muted: var(--a-text-3);
+  --v2-primary: var(--a-primary);
+  --v2-primary-dark: var(--a-primary-hover);
+  --v2-primary-soft: var(--a-primary-soft);
+
+  min-height: 100vh;
+  color: var(--a-text);
+  background: var(--a-bg);
+  font-size: 14px;
+}
+[data-theme="dark"] .admin-shell {
+  --a-bg: #0e1014;
+  --a-surface: #15181d;
+  --a-surface-2: #1b1f25;
+  --a-border: #262b33;
+  --a-border-strong: #343a44;
+  --a-divider: #1f242b;
+  --a-text: #e6e8eb;
+  --a-text-2: #a3abb5;
+  --a-text-3: #6f7883;
+  --a-primary: #7089ff;
+  --a-primary-hover: #8399ff;
+  --a-primary-soft: rgba(112, 137, 255, .14);
+  --a-success-fg: #56d364; --a-success-bg: rgba(46, 160, 67, .15);
+  --a-warning-fg: #e3b341; --a-warning-bg: rgba(210, 153, 34, .15);
+  --a-danger-fg: #ff7b72;  --a-danger-bg: rgba(248, 81, 73, .15);
+  --a-shadow: none;
+}
+
+/* ---------- 侧栏 ---------- */
+.admin-shell .sidebar { width: var(--a-sidebar); padding-top: var(--a-topbar); background: var(--a-surface); border-right: 1px solid var(--a-border); box-shadow: none; transition: width .18s ease; }
+.admin-shell .brand { height: var(--a-topbar); padding: 0 18px; justify-content: flex-start; gap: 10px; color: var(--a-text); background: var(--a-surface); border-bottom: 1px solid var(--a-border); font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.admin-shell .brand-tag { padding: 1px 6px; color: var(--a-text-3); border: 1px solid var(--a-border); border-radius: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.admin-shell .primary-nav { padding: 12px 12px 16px; }
+.admin-shell .nav-group + .nav-group { margin-top: 18px; padding-top: 0; border-top: 0; }
+.admin-shell .nav-label { margin: 0 10px 6px; color: var(--a-text-3); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; }
+.admin-shell .nav-item { position: relative; min-height: 34px; margin: 1px 0; padding: 6px 10px; gap: 10px; border-radius: 6px; color: var(--a-text-2); font-size: 13.5px; font-weight: 500; }
+.admin-shell .nav-item svg { flex: none; color: var(--a-text-3); }
+.admin-shell .nav-item:hover { color: var(--a-text); background: var(--a-surface-2); }
+.admin-shell .nav-item-active, .admin-shell .nav-item-active:hover { color: var(--a-primary); background: var(--a-primary-soft); }
+.admin-shell .nav-item-active svg { color: var(--a-primary); }
+.admin-shell .nav-item-active::before { content: ""; position: absolute; top: 7px; bottom: 7px; left: -12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--a-primary); }
+.admin-shell .nav-badge { margin-left: auto; min-width: 20px; height: 18px; padding: 0 6px; color: #fff; background: var(--a-primary); border-radius: 9px; font-size: 11px; font-style: normal; font-weight: 600; line-height: 18px; text-align: center; }
+.admin-shell .nav-badge.danger { background: var(--a-danger-fg); }
+.admin-shell .sidebar-footer { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--a-border); }
+.admin-shell .sidebar-collapse { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; color: var(--a-text-2); background: transparent; border: 0; border-radius: 6px; font-size: 12.5px; cursor: pointer; }
+.admin-shell .sidebar-collapse:hover { color: var(--a-text); background: var(--a-surface-2); }
+.admin-shell .sidebar-version { margin: 0; color: var(--a-text-3); font-size: 11px; }
+
+/* ---------- 顶栏 ---------- */
+.admin-shell .portal-main { margin-left: var(--a-sidebar); transition: margin-left .18s ease; }
+.admin-shell .topbar { left: var(--a-sidebar); height: var(--a-topbar); padding: 0 24px; color: var(--a-text); background: color-mix(in srgb, var(--a-surface) 88%, transparent); border-bottom: 1px solid var(--a-border); backdrop-filter: saturate(1.4) blur(8px); transition: left .18s ease; }
+.admin-shell .topbar-inner { max-width: none; gap: 16px; }
+.admin-breadcrumb { min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--a-text-3); font-size: 13px; }
+.admin-breadcrumb > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.admin-breadcrumb b { overflow: hidden; color: var(--a-text); font-weight: 600; text-overflow: ellipsis; }
+.admin-shell .topbar-actions { gap: 6px; }
+.admin-search-trigger { display: inline-flex; align-items: center; gap: 8px; width: 240px; height: 32px; padding: 0 6px 0 10px; color: var(--a-text-3); background: var(--a-surface-2); border: 1px solid var(--a-border); border-radius: 8px; font-size: 13px; cursor: pointer; }
+.admin-search-trigger:hover { border-color: var(--a-border-strong); color: var(--a-text-2); }
+.admin-search-trigger span { flex: 1; text-align: left; }
+.admin-shell kbd { padding: 2px 5px; color: var(--a-text-2); background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 4px; font: 500 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.admin-shell .icon-button, .admin-shell .account-button { color: var(--a-text-2); }
+.admin-shell .icon-button { width: 32px; height: 32px; border-radius: 6px; }
+.admin-shell .icon-button:hover, .admin-shell .account-button:hover { color: var(--a-text); background: var(--a-surface-2); }
+.admin-shell .account-button { min-height: 32px; border-radius: 6px; }
+.admin-shell .account-copy { font-size: 13px; font-weight: 500; }
+.admin-shell .mobile-menu { color: var(--a-text); background: transparent; }
+
+/* ---------- 内容区与页头 ---------- */
+.admin-shell .content { max-width: 1440px; padding: calc(var(--a-topbar) + 24px) 32px 40px; }
+.admin-page, .admin-page-stack { gap: 20px; }
+.admin-page-head { align-items: center; }
+.admin-page-title h1 { color: var(--a-text); font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.admin-page-title p { margin-top: 4px; color: var(--a-text-2); font-size: 13px; }
+.admin-tabs { gap: 20px; margin-top: -8px; border-bottom-color: var(--a-border); }
+.admin-tabs a { padding: 8px 0 10px; color: var(--a-text-2); font-size: 13.5px; font-weight: 500; }
+.admin-tabs a:hover { color: var(--a-text); }
+.admin-tabs a.active { color: var(--a-text); border-bottom-color: var(--a-primary); font-weight: 600; }
+.admin-footnote { color: var(--a-text-3); }
+
+/* ---------- 卡片 ---------- */
+.admin-shell .v2-block { background: var(--a-surface); border: 1px solid var(--a-border); border-radius: var(--a-radius); box-shadow: var(--a-shadow); overflow: hidden; }
+.admin-shell .v2-block-header { min-height: 52px; padding: 12px 20px; background: transparent; border-bottom: 1px solid var(--a-border); }
+.admin-shell .v2-block-header h2 { color: var(--a-text); font-size: 15px; font-weight: 600; }
+.admin-shell .admin-audit-note { color: var(--a-text-2); }
+.admin-shell .stat-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.admin-shell .stat-grid article { min-height: 0; padding: 16px 20px; gap: 2px; background: var(--a-surface); border: 1px solid var(--a-border); border-radius: var(--a-radius); box-shadow: var(--a-shadow); }
+.admin-shell .stat-grid article svg { width: 32px; height: 32px; margin-bottom: 10px; padding: 7px; color: var(--a-primary); background: var(--a-primary-soft); border-radius: 8px; }
+.admin-shell .stat-grid small { color: var(--a-text-2); font-size: 13px; }
+.admin-shell .stat-grid strong { margin-top: 2px; color: var(--a-text); font-size: 26px; font-weight: 600; letter-spacing: -.02em; }
+.admin-shell .admin-stat-detail { color: var(--a-text-3); font-size: 12px; }
+
+/* ---------- 表格 ---------- */
+.admin-shell .v2-table th { padding: 10px 16px; color: var(--a-text-3); background: var(--a-surface-2); border-bottom: 1px solid var(--a-border); font-size: 12px; font-weight: 500; }
+.admin-shell .v2-table td { padding: 12px 16px; color: var(--a-text); border-bottom: 1px solid var(--a-divider); font-size: 13.5px; }
+.admin-shell .v2-table tbody tr:hover { background: var(--a-surface-2); }
+.admin-shell .v2-table td small { color: var(--a-text-3); font-size: 12px; }
+.admin-shell .admin-empty { height: 120px; color: var(--a-text-3) !important; font-size: 13px; }
+@media (min-width: 761px) {
+  .admin-shell .table-wrap .v2-table th:last-child { background: var(--a-surface-2); }
+  .admin-shell .table-wrap .v2-table td:last-child { background: var(--a-surface); }
+  .admin-shell .table-wrap .v2-table tbody tr:hover td:last-child { background: var(--a-surface-2); }
+}
+
+/* ---------- 按钮 ---------- */
+.admin-shell .button { min-height: 32px; padding: 0 14px; gap: 6px; border-radius: 6px; font-size: 13px; font-weight: 500; line-height: 1; text-decoration: none; transition: background .12s ease, border-color .12s ease, color .12s ease; }
+.admin-shell .button-primary { color: #fff; background: var(--a-primary); }
+.admin-shell .button-primary:hover:not(:disabled) { background: var(--a-primary-hover); }
+.admin-shell .button-secondary { color: var(--a-text); background: var(--a-surface); border-color: var(--a-border-strong); }
+.admin-shell .button-secondary:hover:not(:disabled) { background: var(--a-surface-2); }
+.admin-shell .button-danger { color: #fff; background: var(--a-danger-fg); }
+.admin-shell .button:disabled { opacity: .5; cursor: not-allowed; }
+.admin-shell .admin-action-button, .admin-shell .admin-danger-button { min-height: 28px; padding: 0 10px; gap: 5px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
+.admin-shell .admin-action-button { color: var(--a-text); background: var(--a-surface); border: 1px solid var(--a-border-strong); }
+.admin-shell .admin-action-button:hover:not(:disabled) { background: var(--a-surface-2); border-color: var(--a-border-strong); }
+.admin-shell .admin-action-button.is-active { color: var(--a-primary); border-color: var(--a-primary); background: var(--a-primary-soft); }
+.admin-shell .admin-danger-button { color: var(--a-danger-fg); background: var(--a-surface); border: 1px solid color-mix(in srgb, var(--a-danger-fg) 35%, transparent); }
+.admin-shell .admin-danger-button:hover:not(:disabled) { background: var(--a-danger-bg); }
+.admin-shell .table-link { color: var(--a-primary); font-size: 13px; font-weight: 500; }
+
+/* ---------- 徽章 ---------- */
+.admin-shell .v2-badge { height: 20px; padding: 0 8px; gap: 4px; color: var(--a-text-2); background: var(--a-surface-2); border: 1px solid var(--a-border); border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; }
+.admin-shell .badge-success { color: var(--a-success-fg); background: var(--a-success-bg); border-color: transparent; }
+.admin-shell .badge-warning { color: var(--a-warning-fg); background: var(--a-warning-bg); border-color: transparent; }
+.admin-shell .badge-danger { color: var(--a-danger-fg); background: var(--a-danger-bg); border-color: transparent; }
+.admin-shell .admin-role-badge { color: var(--a-primary); background: var(--a-primary-soft); border-color: transparent; }
+
+/* ---------- 表单 ---------- */
+.admin-shell .v2-field { gap: 6px; }
+.admin-shell .v2-field > span { color: var(--a-text); font-size: 13px; font-weight: 500; }
+.admin-shell .v2-field small, .admin-shell .field-hint { color: var(--a-text-3); font-size: 12px; }
+.admin-shell .v2-field input, .admin-shell .v2-field select, .admin-shell .v2-field textarea,
+.admin-shell .admin-search-box, .admin-shell .log-filter input, .admin-shell .log-filter select {
+  min-height: 34px; padding: 7px 10px; color: var(--a-text); background: var(--a-surface); border: 1px solid var(--a-border-strong); border-radius: 6px; font-size: 13.5px;
+}
+.admin-shell .admin-search-box { padding: 0 10px; }
+.admin-shell .admin-search-box input { min-height: 0; padding: 0; border: 0; }
+.admin-shell .v2-field input:focus, .admin-shell .v2-field select:focus, .admin-shell .v2-field textarea:focus,
+.admin-shell .admin-search-box:focus-within, .admin-shell .log-filter input:focus, .admin-shell .log-filter select:focus {
+  outline: 0; border-color: var(--a-primary); box-shadow: 0 0 0 3px var(--a-primary-soft);
+}
+.admin-shell .v2-field input:disabled { color: var(--a-text-3); background: var(--a-surface-2); }
+
+/* ---------- 弹窗 ---------- */
+.admin-shell .ant-modal-mask { background: rgba(15, 18, 22, .45); backdrop-filter: blur(2px); }
+.admin-shell .ant-modal-content { background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 12px; box-shadow: 0 16px 48px rgba(15, 18, 22, .16); overflow: hidden; }
+.admin-shell .ant-modal-header { padding: 16px 20px; background: var(--a-surface); border-bottom: 1px solid var(--a-border); border-radius: 0; }
+.admin-shell .ant-modal-title { color: var(--a-text); font-size: 15px; font-weight: 600; }
+.admin-shell .ant-modal-close { top: 15px; right: 16px; color: var(--a-text-3); }
+.admin-shell .ant-modal-body { padding: 20px; color: var(--a-text); }
+.admin-shell .admin-form-footer { bottom: -20px; margin: 4px -20px -20px; padding: 12px 20px; }
+
+/* ---------- 提示条 ---------- */
+.admin-shell .admin-notice { color: var(--a-warning-fg); background: var(--a-warning-bg); border: 1px solid color-mix(in srgb, var(--a-warning-fg) 25%, transparent); border-radius: var(--a-radius); }
+.admin-shell .admin-notice strong { color: var(--a-primary); }
+.admin-password-alert { color: var(--a-danger-fg); background: var(--a-danger-bg); border-color: color-mix(in srgb, var(--a-danger-fg) 30%, transparent); border-radius: var(--a-radius); }
+.admin-password-alert strong, .admin-password-alert > svg { color: var(--a-danger-fg); }
+.admin-password-alert span { color: var(--a-text-2); }
+
+/* ---------- 快速跳转（⌘K） ---------- */
+.admin-palette-root { position: fixed; inset: 0; z-index: 1100; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: rgba(15, 18, 22, .4); backdrop-filter: blur(2px); }
+.admin-palette { width: min(560px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 12px; box-shadow: 0 24px 64px rgba(15, 18, 22, .24); overflow: hidden; }
+.admin-palette-search { display: flex; align-items: center; gap: 10px; padding: 12px 16px; color: var(--a-text-3); border-bottom: 1px solid var(--a-border); }
+.admin-palette-search input { flex: 1; min-width: 0; color: var(--a-text); background: transparent; border: 0; outline: 0; font-size: 15px; }
+.admin-palette-list { margin: 0; padding: 6px; overflow-y: auto; list-style: none; }
+.admin-palette-list li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; color: var(--a-text); border-radius: 8px; cursor: pointer; }
+.admin-palette-list li.active { background: var(--a-primary-soft); }
+.admin-palette-list li svg { color: var(--a-text-3); }
+.admin-palette-title { font-size: 14px; font-weight: 500; }
+.admin-palette-context { margin-left: auto; color: var(--a-text-3); font-size: 12px; }
+.admin-palette-empty { justify-content: center; color: var(--a-text-3) !important; cursor: default !important; }
+
+/* ---------- 收起的侧栏（手动收起，或 761–1100px 自动变窄） ---------- */
+.admin-collapsed { --a-sidebar: 64px; }
+@media (min-width: 761px) and (max-width: 1100px) { .admin-shell { --a-sidebar: 64px; } }
+@media (min-width: 761px) {
+  .admin-collapsed .brand-text, .admin-collapsed .brand-tag, .admin-collapsed .nav-label, .admin-collapsed .nav-item span,
+  .admin-collapsed .sidebar-collapse span, .admin-collapsed .sidebar-version { display: none; }
+  .admin-collapsed .brand { justify-content: center; padding: 0; }
+  .admin-collapsed .primary-nav { padding: 12px 10px 16px; }
+  .admin-collapsed .nav-item { justify-content: center; padding: 8px 0; }
+  .admin-collapsed .nav-item-active::before { left: -10px; }
+  .admin-collapsed .nav-badge { position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+  .admin-collapsed .sidebar-footer { justify-content: center; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .admin-shell .brand-text, .admin-shell .brand-tag, .admin-shell .nav-label, .admin-shell .nav-item span,
+  .admin-shell .sidebar-version, .admin-shell .sidebar-footer { display: none; }
+  .admin-shell .brand { justify-content: center; padding: 0; }
+  .admin-shell .nav-item { justify-content: center; padding: 8px 0; }
+  .admin-shell .nav-badge { position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+  .admin-shell .content { padding: calc(var(--a-topbar) + 20px) 20px 32px; }
+  .admin-search-trigger { width: auto; }
+  .admin-search-trigger span { display: none; }
+}
+
+/* ---------- 手机 ---------- */
+@media (max-width: 760px) {
+  .admin-shell .sidebar { width: 80%; max-width: 280px; }
+  .admin-shell .portal-main { margin-left: 0; }
+  .admin-shell .topbar { left: 0; padding: 0 10px 0 52px; }
+  .admin-shell .content { padding: calc(var(--a-topbar) + 16px) 12px 24px; }
+  .admin-shell .mobile-menu { top: 10px; left: 10px; }
+  .admin-search-trigger { width: 32px; padding: 0; justify-content: center; }
+  .admin-search-trigger span, .admin-search-trigger kbd { display: none; }
+  .admin-breadcrumb > span:not(.current) { display: none; }
+  .admin-shell .sidebar-collapse { display: none; }
+}
+
+/* ---------- 逐页整理（2026-09 基于逐页截图的修正） ---------- */
+/* 1. 搜索框与「筛选 / 清除」同高 */
+.admin-shell .admin-list-toolbar .admin-search-box { min-height: 34px; }
+.admin-shell .admin-list-toolbar .admin-action-button { min-height: 34px; padding: 0 14px; font-size: 13px; }
+
+/* 2. 固定在右侧的操作列加一道分隔阴影，横向滚动时看得出是「浮在上面的固定列」而不是遮挡 */
+@media (min-width: 761px) {
+  .admin-shell .table-wrap .v2-table th:last-child,
+  .admin-shell .table-wrap .v2-table td:last-child { box-shadow: -1px 0 0 var(--a-border), -8px 0 12px -10px rgba(16, 24, 40, .18); }
+  .admin-shell .table-wrap .v2-table td[colspan]:last-child { box-shadow: none; }
+}
+
+/* 3. 卡片标题栏里的说明：去掉灰框，作为标题下的一行灰字；卡片底部的说明是一条浅底栏 */
+.admin-shell .v2-block-header .admin-audit-note { margin: 4px 0 0; padding: 0; color: var(--a-text-2); background: none; border: 0; font-size: 13px; line-height: 1.6; }
+.admin-shell .admin-audit-note { padding: 12px 20px; color: var(--a-text-2); background: var(--a-surface-2); border-top: 1px solid var(--a-border); font-size: 12.5px; line-height: 1.6; }
+
+/* 4. 行内表单与文件选择框统一外观 */
+.admin-shell .admin-inline-form { padding: 16px 20px; gap: 10px; }
+.admin-shell .admin-inline-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.admin-shell .admin-inline-form select {
+  min-height: 34px; min-width: min(100%, 280px); padding: 7px 10px; color: var(--a-text); background: var(--a-surface); border: 1px solid var(--a-border-strong); border-radius: 6px; font-size: 13.5px;
+}
+.admin-shell .admin-inline-form input:focus, .admin-shell .admin-inline-form select:focus { outline: 0; border-color: var(--a-primary); box-shadow: 0 0 0 3px var(--a-primary-soft); }
+.admin-shell input[type="file"] { color: var(--a-text-2); font-size: 13px; }
+.admin-shell input[type="file"]::file-selector-button {
+  height: 32px; margin-right: 10px; padding: 0 12px; color: var(--a-text); background: var(--a-surface); border: 1px solid var(--a-border-strong); border-radius: 6px; font: inherit; font-weight: 500; cursor: pointer;
+}
+.admin-shell input[type="file"]::file-selector-button:hover { background: var(--a-surface-2); }
+.admin-shell input[type="checkbox"], .admin-shell input[type="radio"] { accent-color: var(--a-primary); }
+
+/* 6. 本地支付流程模拟：统一成卡片风格（原先是渐变大横幅 + 英文小标题） */
+.admin-shell .payment-lab-page { gap: 20px; }
+.admin-shell .payment-lab-hero { min-height: 0; padding: 14px 20px; color: var(--a-text); background: var(--a-surface); border: 1px solid var(--a-border); border-radius: var(--a-radius); box-shadow: var(--a-shadow); }
+.admin-shell .payment-lab-hero::after { display: none; }
+.admin-shell .payment-lab-hero h2 { display: flex; align-items: center; gap: 8px; color: var(--a-text); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.admin-shell .payment-lab-hero h2 svg { color: var(--a-primary); }
+.admin-shell .payment-lab-hero p { margin-top: 4px; color: var(--a-text-2); font-size: 13px; }
+.admin-shell .payment-lab-hero-note { padding: 4px 10px; color: var(--a-text-2); background: var(--a-surface-2); border: 1px solid var(--a-border); border-radius: 999px; font-size: 12px; }
+.admin-shell .payment-lab-checkout, .admin-shell .payment-lab-trace, .admin-shell .payment-lab-activity { background: var(--a-surface); border: 1px solid var(--a-border); border-radius: var(--a-radius); box-shadow: var(--a-shadow); }
+.admin-shell .payment-lab-section-heading h2, .admin-shell .payment-lab-activity h2 { color: var(--a-text); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.admin-shell .payment-lab-grid { gap: 20px; }
+
+/* 8. 告警状态卡片：文字类的值用小一号字，不再撑成三行大字 */
+.admin-shell .log-alert-card strong.text { font-size: 15px; line-height: 1.5; }
+
+/* 手机宽度的修正（基于 375px 截图） */
+.admin-shell .admin-list-toolbar .admin-action-button { flex: none; white-space: nowrap; }
+@media (max-width: 760px) {
+  .admin-breadcrumb > span.current svg { display: none; }
+  .admin-shell .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .admin-shell .stat-grid article { padding: 12px 14px; }
+  .admin-shell .stat-grid article svg { width: 28px; height: 28px; margin-bottom: 6px; padding: 6px; }
+  .admin-shell .stat-grid strong { font-size: 20px; }
+  .admin-page-title h1 { font-size: 18px; }
+}

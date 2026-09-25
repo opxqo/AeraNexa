@@ -200,8 +200,7 @@ export function PaymentTestLab() {
     <div className="admin-page-stack payment-lab-page">
       <header className="payment-lab-hero">
         <div>
-          <p className="payment-lab-kicker"><FlaskConical size={14} /> PAYMENT SANDBOX</p>
-          <h2>支付测试台</h2>
+          <h2><FlaskConical size={17} /> 本地支付流程模拟</h2>
           <p>用一笔隔离的模拟订单，演练支付状态、重复通知、金额校验与关单边界。</p>
         </div>
         <span className="payment-lab-hero-note"><ShieldCheck size={15} /> 纯前端沙箱 · 不发起真实交易</span>
@@ -211,10 +210,8 @@ export function PaymentTestLab() {
         <section className="payment-lab-checkout" aria-labelledby="payment-test-order-title">
           <div className="payment-lab-section-heading">
             <div>
-              <p className="payment-lab-overline">ORDER SETUP</p>
               <h2 id="payment-test-order-title">创建测试订单</h2>
             </div>
-            <span className="payment-lab-status-dot"><i /> LOCAL ONLY</span>
           </div>
 
           <div className="payment-lab-product">
@@ -284,7 +281,6 @@ export function PaymentTestLab() {
         <section className="payment-lab-trace" aria-labelledby="payment-test-flow-title">
           <div className="payment-lab-section-heading">
             <div>
-              <p className="payment-lab-overline">ORDER LIFECYCLE</p>
               <h2 id="payment-test-flow-title">支付流程</h2>
             </div>
             <Terminal size={18} aria-hidden="true" />

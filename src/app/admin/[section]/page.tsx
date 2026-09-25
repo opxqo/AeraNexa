@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { adminSectionKeys, type AdminSectionKey } from "@/lib/admin-navigation";
-import { AdminEditor } from "@/components/admin-editor";
+import { AdminEditor, SandboxCallbackCard } from "@/components/admin-editor";
 import { AdminListPager } from "@/components/admin-pagination";
 import { AdminPage, AdminTabs } from "@/components/admin-page";
 import { getAdminEditorData } from "@/lib/server/admin-editor";
@@ -33,7 +33,7 @@ const TITLES: Record<string, string> = {
   users: "用户管理",
   plans: "套餐管理",
   orders: "订单管理",
-  coupons: "惠券管理",
+  coupons: "优惠券管理",
   payments: "支付管理",
   refunds: "退款管理",
   reconciliation: "对账管理",
@@ -84,6 +84,7 @@ export default async function AdminSectionPage({
     return (
       <AdminPage title="支付管理" description="检查支付渠道连通性与回调流程，或在本地模拟支付场景。" tabs={<PaymentTabs active="test" />}>
         <EpayLiveTest overview={overview} initialStatus={initialStatus} />
+        <SandboxCallbackCard />
         <PaymentTestLab />
       </AdminPage>
     );
