@@ -57,6 +57,7 @@ const AUDIT_DESCRIPTIONS = {
   "admin.payment_sandbox_callback": "管理员模拟支付回调",
   "admin.payment_epay_test_created": "管理员创建易支付测试单",
   "payment.epay_test_notified": "易支付测试单收到通知",
+  "payment.epay_keepalive_created": "易支付保活账单已创建",
   "admin.reconciliation_imported": "管理员导入对账数据",
   "admin.reconciliation_resolved": "管理员处理对账差异",
   "telegram.bind_code_created": "创建 Telegram 绑定码",

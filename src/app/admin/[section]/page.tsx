@@ -5,7 +5,9 @@ import { AdminEditor } from "@/components/admin-editor";
 import { AdminListPager } from "@/components/admin-pagination";
 import { getAdminEditorData } from "@/lib/server/admin-editor";
 import { getEpayTestOverview, getEpayTestStatus, type EpayTestStatus } from "@/lib/server/payments/epay-test";
+import { getEpayKeepaliveOverview } from "@/lib/server/payments/epay-keepalive";
 import { EpayLiveTest } from "@/app/admin/payment-test/epay-live-test";
+import { EpayKeepalivePanel } from "@/app/admin/payment-test/epay-keepalive-panel";
 import { PaymentTestLab } from "@/app/admin/payment-test/payment-test-lab";
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -65,6 +67,23 @@ export default async function AdminSectionPage({
   const q = readParam("q") ?? "";
   const page = Number(readParam("page") ?? "1");
   const isPaymentTest = section === "payments" && readParam("tab") === "test";
+  const isKeepalive = section === "payments" && readParam("tab") === "keepalive";
+
+  if (isKeepalive) {
+    return (
+      <div className="admin-page-stack">
+        <section className="admin-page-heading">
+          <div>
+            <p className="admin-kicker">AeraNexa 管理控制台</p>
+            <h1>支付管理</h1>
+            <p>定期向易支付网关下白账单，防止商户号因连续 5 天无账单被封禁。</p>
+          </div>
+        </section>
+        <PaymentTabs active="keepalive" />
+        <EpayKeepalivePanel initial={await getEpayKeepaliveOverview()} />
+      </div>
+    );
+  }
 
   if (isPaymentTest) {
     const overview = await getEpayTestOverview();
@@ -118,11 +137,12 @@ export default async function AdminSectionPage({
   );
 }
 
-function PaymentTabs({ active }: { active: "channels" | "test" }) {
+function PaymentTabs({ active }: { active: "channels" | "test" | "keepalive" }) {
   return (
     <nav className="admin-payment-tabs" aria-label="支付管理功能">
       <Link href="/admin/payments" aria-current={active === "channels" ? "page" : undefined} className={active === "channels" ? "active" : ""}>支付渠道</Link>
       <Link href="/admin/payments?tab=test" aria-current={active === "test" ? "page" : undefined} className={active === "test" ? "active" : ""}>支付测试台</Link>
+      <Link href="/admin/payments?tab=keepalive" aria-current={active === "keepalive" ? "page" : undefined} className={active === "keepalive" ? "active" : ""}>商户保活</Link>
     </nav>
   );
 }

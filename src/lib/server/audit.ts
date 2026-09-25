@@ -60,6 +60,7 @@ export type AuditAction =
   | "admin.payment_sandbox_callback"
   | "admin.payment_epay_test_created"
   | "payment.epay_test_notified"
+  | "payment.epay_keepalive_created"
   | "admin.reconciliation_imported"
   | "admin.reconciliation_resolved"
   | "telegram.bind_code_created"

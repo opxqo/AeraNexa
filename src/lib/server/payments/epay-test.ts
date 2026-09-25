@@ -72,7 +72,7 @@ export async function getEpayTestOverview(): Promise<EpayTestOverview> {
   return { gatewayUrl, pid, configError, channels };
 }
 
-async function resolveChannel(methodId: number) {
+export async function resolveChannel(methodId: number) {
   const [rows] = await getDbPool().execute<RowDataPacket[]>(
     "SELECT id, name, provider, notify_domain FROM payment_methods WHERE id = ? LIMIT 1",
     [methodId],

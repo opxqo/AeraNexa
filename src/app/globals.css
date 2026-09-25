@@ -2257,6 +2257,38 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .epay-live-checks li > b { min-width: 60px; color: var(--v2-heading); font-weight: 600; }
 .epay-live-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
+/* 支付管理 · 易支付商户保活 */
+.epay-keepalive .v2-block-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.epay-keepalive .v2-block-header h2 { display: flex; align-items: center; gap: 8px; }
+.epay-keepalive .v2-block-header .admin-audit-note { margin-top: 6px; padding: 0; background: none; border: 0; }
+.epay-keepalive .admin-error-text { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 12px 20px; }
+.epay-keepalive-settings { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; padding: 16px 20px; border-bottom: 1px solid var(--v2-border); }
+.epay-keepalive-hours { width: 140px; }
+.epay-keepalive-switch { display: inline-flex; align-items: center; gap: 10px; min-height: 38px; margin-right: 8px; cursor: pointer; }
+.epay-keepalive-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.epay-keepalive-switch span { position: relative; width: 40px; height: 22px; border-radius: 11px; background: var(--v2-border); transition: background .15s; }
+.epay-keepalive-switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s; }
+.epay-keepalive-switch input:checked + span { background: var(--v2-primary); }
+.epay-keepalive-switch input:checked + span::after { transform: translateX(18px); }
+.epay-keepalive-switch input:focus-visible + span { outline: 2px solid var(--v2-primary); outline-offset: 2px; }
+.epay-keepalive-switch b { color: var(--v2-heading); font-weight: 600; }
+.epay-keepalive-progress { display: grid; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--v2-border); }
+.epay-keepalive-progress-head { display: flex; justify-content: space-between; gap: 12px; color: var(--v2-muted); font-size: 12px; }
+.epay-keepalive-bar { position: relative; height: 8px; border-radius: 4px; background: var(--v2-border); }
+.epay-keepalive-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--v2-success); }
+.epay-keepalive-bar.tone-warning i { background: #d9a520; }
+.epay-keepalive-bar.tone-danger i { background: #c9414d; }
+.epay-keepalive-bar em { position: absolute; top: -4px; width: 2px; height: 16px; margin-left: -1px; background: var(--v2-heading); opacity: .5; }
+.epay-keepalive .epay-live-config { border-bottom: 0; }
+.epay-keepalive .epay-live-config dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.epay-keepalive-message { padding: 0 20px 16px; }
+.epay-keepalive .table-wrap { border-top: 1px solid var(--v2-border); }
+.epay-keepalive-empty { margin: 0; padding: 16px 20px; border-top: 1px solid var(--v2-border); }
+@media (max-width: 640px) {
+  .epay-keepalive .v2-block-header { flex-direction: column; }
+  .epay-keepalive-hours { width: 100%; }
+}
+
 /* 仪表盘 · 排队中的套餐 */
 .dashboard-queued-plans { margin-top: 14px; padding: 10px 12px; color: var(--v2-muted); background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 3px; font-size: 13px; }
 .dashboard-queued-plans ol { margin: 6px 0 0; padding-left: 20px; }
