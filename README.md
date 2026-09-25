@@ -52,7 +52,7 @@ pnpm test:user
 pnpm worker
 ```
 
-> **生产部署必须把它当成第二个常驻进程，跟 `pnpm start` 一起跑，否则节点功能会静默失效**：只启动 Web 进程时页面一切正常、用户能正常购买套餐，但 3x-ui 里永远不会创建对应客户端——因为「把用户权限写回 3x-ui」这一步只有 worker 会做，Web 进程完全不碰、也不会报错。用 systemd 常驻的模板见 [`deploy/`](deploy/README.md)；「节点管理」页每个节点的「账号数」列长期为 0，就是 worker 没在跑的信号。
+> **生产部署必须把它当成第二个常驻进程，跟 `pnpm start` 一起跑，否则节点功能会静默失效**：只启动 Web 进程时页面一切正常、用户能正常购买套餐，但 3x-ui 里永远不会创建对应客户端——因为「把用户权限写回 3x-ui」这一步只有 worker 会做，Web 进程完全不碰、也不会报错。服务器上可以直接用一键安装脚本部署（见 [`deploy/README.md`](deploy/README.md)），它会用 systemd 同时常驻 web 与 worker；「节点管理」页每个节点的「账号数」列长期为 0，就是 worker 没在跑的信号。
 
 3x-ui 面板地址与 API Token 在后台「系统设置 → 节点」中填写（可点「测试 3x-ui 连接」验证），设计与进度见 [`docs/node-domain-design.md`](docs/node-domain-design.md)。
 
