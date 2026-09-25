@@ -30,6 +30,8 @@ export const ALWAYS_SKIPPED_TABLES: ReadonlySet<string> = new Set([
   "telegram_updates",
   "worker_runs",
   "log_ingestion_status",
+  // 迁移码只对签发它的面板有效，不能随数据带走
+  "migration_tokens",
 ]);
 
 /** 勾选「包含日志」才导出。 */
@@ -211,10 +213,12 @@ const WORKER_LOCK = "aeranexa:node-worker";
  * 用备份覆盖当前数据库：清空除 schema_migrations 外的所有表，再写入备份里的记录。
  * 先校验文件头再动数据；worker 在运行时拒绝执行，避免恢复中途被它写入。
  */
-export async function restoreBackup(input: Readable): Promise<RestoreResult> {
+export async function restoreBackup(input: Readable, options: { onMeta?: (meta: BackupMeta) => void } = {}): Promise<RestoreResult> {
   const lines = createInterface({ input: input.pipe(createGunzip()), crlfDelay: Infinity })[Symbol.asyncIterator]();
   const first = await lines.next();
   const meta = parseMeta(first.done ? undefined : first.value);
+  // 命令行要拿备份里的完整 env 写 .env.local；网页端只返回 envDiff，不把整份密钥带给浏览器
+  options.onMeta?.(meta);
 
   const connection = await getDbPool().getConnection();
   let locked = false;

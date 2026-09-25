@@ -12,7 +12,7 @@
 #
 # 无人值守（测试 / 自动化）：预先设置环境变量即可跳过对应提问，AERANEXA_YES=1 时其余提问取默认值。
 #   AERANEXA_MODE=install|restore|update  AERANEXA_DOMAIN  AERANEXA_DIR  AERANEXA_DB=local|external
-#   AERANEXA_DB_HOST/PORT/NAME/USER/PASSWORD（外部数据库）  AERANEXA_BOT=y|n  AERANEXA_BACKUP（备份文件）
+#   AERANEXA_DB_HOST/PORT/NAME/USER/PASSWORD（外部数据库）  AERANEXA_BOT=y|n  AERANEXA_BACKUP（迁移码或备份文件）
 #   AERANEXA_HTTPS=auto|force|skip  AERANEXA_REPO  AERANEXA_BRANCH
 # =============================================================================
 set -Eeuo pipefail
@@ -150,6 +150,14 @@ env_set() {
 }
 env_fill() { [[ -n "$(env_get "$1")" ]] || env_set "$1" "$2"; }
 
+# 迁移码 anx1.<base64url(JSON)>：取出其中的旧面板地址，仅用于确认提示
+migration_code_origin() {
+  local payload=${1#anx1.}
+  payload=$(printf '%s' "$payload" | tr '_-' '/+')
+  while (( ${#payload} % 4 )); do payload+="="; done
+  printf '%s' "$payload" | base64 -d 2>/dev/null | grep -oP '"u":"\K[^"]+' || true
+}
+
 public_ip() { curl -4 -fsS --max-time 6 https://ifconfig.me 2>/dev/null || curl -4 -fsS --max-time 6 https://api.ipify.org 2>/dev/null || true; }
 resolve_ip() { getent ahostsv4 "$1" 2>/dev/null | awk 'NR == 1 { print $1 }'; }
 
@@ -227,7 +235,7 @@ collect() {
   [[ -n $EXISTING_DIR ]] && default_mode=3
   choose MODE "要做什么" "$default_mode" \
     "install|全新安装" \
-    "restore|从备份恢复安装（旧站后台「数据迁移」导出的 .ndjson.gz）" \
+    "restore|从旧面板迁移（旧面板「数据迁移」页生成的迁移码，或导出的备份文件）" \
     "update|更新已有部署（拉代码 → 装依赖 → 编译 → 重启）"
 
   if [[ $MODE == update ]]; then
@@ -265,14 +273,23 @@ collect() {
   [[ -n ${AERANEXA_BOT:-} ]] && BOT=${AERANEXA_BOT:0:1}
 
   if [[ $MODE == restore ]]; then
-    ask BACKUP "备份文件路径" ""
-    [[ -f $BACKUP ]] || die "找不到备份文件：$BACKUP"
-    gzip -t "$BACKUP" 2>/dev/null || die "备份文件损坏或不是 gzip 文件：$BACKUP"
-    BACKUP=$(readlink -f "$BACKUP")
+    info "推荐在线迁移：在旧面板后台「数据迁移」页点「生成迁移码」，复制后粘贴到这里（旧面板需先更新到最新版）。"
+    ask BACKUP "迁移码（anx1. 开头），或本机上的备份文件路径" ""
+    BACKUP=$(printf '%s' "$BACKUP" | tr -d '[:space:]')
+    if [[ $BACKUP == anx1.* ]]; then
+      SOURCE_ORIGIN=$(migration_code_origin "$BACKUP")
+      [[ -n $SOURCE_ORIGIN ]] || die "迁移码不完整，请从旧面板重新复制"
+    else
+      [[ -f $BACKUP ]] || die "找不到备份文件：$BACKUP"
+      gzip -t "$BACKUP" 2>/dev/null || die "备份文件损坏或不是 gzip 文件：$BACKUP"
+      BACKUP=$(readlink -f "$BACKUP")
+    fi
   fi
 
   step "确认"
-  info "方式：$([[ $MODE == restore ]] && echo "从备份恢复（$BACKUP）" || echo 全新安装)"
+  if [[ $MODE == restore && $BACKUP == anx1.* ]]; then info "方式：从旧面板在线迁移（$SOURCE_ORIGIN）"
+  elif [[ $MODE == restore ]]; then info "方式：从备份文件恢复（$BACKUP）"
+  else info "方式：全新安装"; fi
   info "域名：https://$DOMAIN"
   info "目录：$INSTALL_DIR"
   info "数据库：$([[ $DB == local ]] && echo "本机 MySQL（库名 / 账号 aeranexa，密码自动生成）" || echo "$DB_USER@$DB_HOST:$DB_PORT/$DB_NAME")"
@@ -440,18 +457,24 @@ fill_secrets() {
 # ============================================================================= 8. 数据与编译
 prepare_data() {
   if [[ $MODE == restore ]]; then
-    step "从备份恢复数据"
     # 恢复要求 worker 没在运行（否则会拒绝执行）
     systemctl stop aeranexa-worker aeranexa-bot 2>/dev/null || true
-    local copy
-    copy="$INSTALL_DIR/.restore-$(date +%s).ndjson.gz"
-    install -o "$APP_USER" -g "$APP_USER" -m 600 "$BACKUP" "$copy"
-    in_app pnpm -s backup:restore "$copy" --yes
-    rm -f "$copy"
+    if [[ $BACKUP == anx1.* ]]; then
+      step "从旧面板在线迁移数据"
+      # 迁移码走环境变量，不出现在进程列表和日志里
+      in_app env AERANEXA_MIGRATION_CODE="$BACKUP" pnpm -s backup:restore --from-env --yes
+    else
+      step "从备份文件恢复数据"
+      local copy
+      copy="$INSTALL_DIR/.restore-$(date +%s).ndjson.gz"
+      install -o "$APP_USER" -g "$APP_USER" -m 600 "$BACKUP" "$copy"
+      in_app pnpm -s backup:restore "$copy" --yes
+      rm -f "$copy"
+    fi
     # 备份里缺的密钥（例如旧站没配过）补齐，已有的不动
     fill_secrets
     chown "$APP_USER:$APP_USER" "$(env_file)" && chmod 600 "$(env_file)"
-    ok "数据已恢复，备份里的密钥已合并进 .env.local"
+    ok "数据已恢复，旧面板的密钥已合并进 .env.local"
   else
     step "初始化数据库表"
     logged "建表" in_app pnpm -s db:migrate
@@ -629,6 +652,7 @@ main() {
   [[ $EUID -eq 0 ]] || die "请用 root 运行（先执行 sudo -i）"
   mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null && touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/aeranexa-install.log"
   # 进程替换里的 tee 不继承 ERR 陷阱，否则它退出时会误报「第 0 步失败」
+  chmod 600 "$LOG_FILE" 2>/dev/null || true
   exec > >(trap - ERR; tee -a "$LOG_FILE") 2>&1
   printf '%s AeraNexa 安装脚本  %s%s\n' "$C_BOLD" "$(date '+%F %T')" "$C_RESET"
   preflight

@@ -2245,7 +2245,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .backup-check input { margin-top: 3px; }
 .backup-action { justify-self: start; text-decoration: none; }
 .backup-error { display: flex; align-items: center; gap: 6px; margin: 0; }
-.backup-result { display: grid; gap: 14px; padding: 16px 20px 20px; border-top: 1px solid var(--v2-border); }
+.backup-result { display: grid; gap: 14px; padding: 16px 20px 20px; }
+.backup-section-title { display: flex; align-items: center; gap: 8px; margin: 4px 0 -4px; color: var(--v2-heading); font-size: 15px; font-weight: 600; }
+.backup-code { display: grid; gap: 10px; }
+.backup-code textarea { width: 100%; padding: 9px 11px; font-size: 12px; line-height: 1.6; word-break: break-all; resize: none; color: var(--v2-text); background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 3px; }
+.backup-code-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.backup-code-actions .admin-audit-note { margin: 0; padding: 0; background: none; border: 0; }
+.backup-inline-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 12px; font-size: 13px; background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 3px; }
 .backup-env { display: grid; gap: 10px; }
 .backup-env-lines { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; line-height: 1.7; white-space: pre; background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 3px; }
 .backup-env .button { justify-self: start; }

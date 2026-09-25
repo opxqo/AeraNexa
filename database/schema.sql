@@ -1117,3 +1117,21 @@ DEALLOCATE PREPARE orders_cancel_reason_statement;
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260924_003', 'Order cancel_reason to distinguish user cancel, timeout close and admin cancel');
+
+-- 20260925_001：面板对面板在线迁移的一次性迁移码。只存令牌的 SHA-256，导出开始即作废；不随备份导出。
+CREATE TABLE IF NOT EXISTS migration_tokens (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  token_hash CHAR(64) NOT NULL,
+  include_logs TINYINT(1) NOT NULL DEFAULT 0,
+  created_by BIGINT UNSIGNED NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  used_by_ip VARCHAR(45) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY migration_tokens_hash_unique (token_hash),
+  KEY migration_tokens_expires_index (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260925_001', 'One-time migration tokens for panel-to-panel online migration');
