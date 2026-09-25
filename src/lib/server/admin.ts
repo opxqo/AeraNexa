@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
 import { getCurrentUser } from "./users";
+import { isDefaultAdminPassword } from "./default-admin";
 
 type CountRow = RowDataPacket & Record<string, number | string | null>;
 
@@ -102,7 +103,13 @@ export const requireAdminUser = cache(async () => {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/dashboard");
-  return { id: user.id, email: user.email, nickname: user.nickname };
+  return {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    /** 还在用公开的默认密码：后台每页顶部提醒尽快修改 */
+    usesDefaultPassword: await isDefaultAdminPassword(user.password_hash),
+  };
 });
 
 /** 后台首页指标。审计表可能尚未写入任何记录，因此单独容错。 */

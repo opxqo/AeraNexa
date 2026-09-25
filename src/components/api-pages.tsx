@@ -2479,7 +2479,7 @@ export function ApiProfilePage() {
         </div>
       </section>
 
-      <section className="v2-block" style={{ padding: 20 }}>
+      <section id="change-password" className="v2-block" style={{ padding: 20, scrollMarginTop: 72 }}>
         <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>修改登入密码</h3>
         <form onSubmit={handleChangePassword} style={{ display: "grid", gap: 12, maxWidth: 420 }}>
           <div>

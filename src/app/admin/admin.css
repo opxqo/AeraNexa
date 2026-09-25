@@ -131,3 +131,13 @@
 /* ---------- 暗色 ---------- */
 [data-theme="dark"] .admin-shell .table-wrap .v2-table th:last-child { background: var(--v2-header); }
 [data-theme="dark"] .admin-shell .table-wrap .v2-table tbody tr:hover td:last-child { background: var(--v2-header); }
+
+/* ---------- 默认密码提醒（每个后台页面顶部，改密码后自动消失） ---------- */
+.admin-password-alert { display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap; margin-bottom: 18px; padding: 14px 16px; color: #8a2c22; background: #fff1ef; border: 1px solid #f3c7c1; border-radius: 3px; }
+.admin-password-alert > svg { flex: none; color: #c0392f; }
+.admin-password-alert > div { flex: 1 1 280px; display: grid; gap: 3px; min-width: 0; }
+.admin-password-alert strong { color: #a8353f; font-size: 14px; }
+.admin-password-alert span { font-size: 13px; line-height: 1.6; }
+.admin-password-alert .button { flex: none; text-decoration: none; }
+[data-theme="dark"] .admin-password-alert { color: #f0b4ad; background: rgba(224, 112, 108, .1); border-color: rgba(224, 112, 108, .3); }
+[data-theme="dark"] .admin-password-alert strong { color: #f3a39b; }

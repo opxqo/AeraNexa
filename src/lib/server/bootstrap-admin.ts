@@ -5,9 +5,7 @@ import type { RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
 import { hashPassword } from "./users";
 import { safeError } from "./runtime-logs";
-
-const DEFAULT_ADMIN_EMAIL = "admin@admin.com";
-const DEFAULT_ADMIN_PASSWORD = "admin123456";
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from "./default-admin";
 
 /**
  * 首次部署时 users 表为空，注册流程又依赖尚未配置的 SMTP 发验证码，会出现无法登录的死锁。

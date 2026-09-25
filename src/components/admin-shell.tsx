@@ -28,6 +28,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  ShieldAlert,
   ShieldCheck,
   Sun,
   UserCircle,
@@ -61,7 +62,7 @@ const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number;
   backup: DatabaseArrowRight20Regular,
 };
 
-function AdminShellInner({ children, userEmail }: { children: React.ReactNode; userEmail: string }) {
+function AdminShellInner({ children, userEmail, usesDefaultPassword }: { children: React.ReactNode; userEmail: string; usesDefaultPassword: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { showToast } = useToast();
@@ -207,16 +208,28 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
             </div>
           </div>
         </header>
-        <main className="content" ref={contentRef}>{children}</main>
+        <main className="content" ref={contentRef}>
+          {usesDefaultPassword ? (
+            <div className="admin-password-alert" role="alert">
+              <ShieldAlert size={18} aria-hidden="true" />
+              <div>
+                <strong>你还在使用默认密码 admin123456</strong>
+                <span>这个密码是公开的，任何人都能用它登录后台。请立即修改，改完这条提醒会自动消失。</span>
+              </div>
+              <Link href="/profile#change-password" className="button button-primary">去修改密码</Link>
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );
 }
 
-export function AdminShell({ children, userEmail }: { children: React.ReactNode; userEmail: string }) {
+export function AdminShell({ children, userEmail, usesDefaultPassword = false }: { children: React.ReactNode; userEmail: string; usesDefaultPassword?: boolean }) {
   return (
     <ToastProvider>
-      <AdminShellInner userEmail={userEmail}>{children}</AdminShellInner>
+      <AdminShellInner userEmail={userEmail} usesDefaultPassword={usesDefaultPassword}>{children}</AdminShellInner>
     </ToastProvider>
   );
 }
