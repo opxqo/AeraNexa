@@ -1,6 +1,7 @@
 import { getDbPool } from "../lib/server/db";
 import type { RowDataPacket } from "mysql2";
 import { deliverTelegramNotifications, getTelegramSettings, handleTelegramUpdate } from "../lib/server/telegram";
+import { scanAdminEvents } from "../lib/server/telegram-admin";
 import { drainRuntimeLogs, emitRuntimeLog, safeError } from "../lib/server/runtime-logs";
 
 const LOCK = "aeranexa:telegram-bot";
@@ -19,6 +20,10 @@ async function poll() {
       try {
         while (!stopping) {
           const settings = await getTelegramSettings();
+          // 管理员通知（新订单、新工单、系统告警）：自带 30 秒节流；Bot 停用时不扫描，避免积压后刷屏
+          if (settings.enabled) {
+            await scanAdminEvents().catch((error: unknown) => emitRuntimeLog({ service: "bot", category: "bot", level: "error", eventCode: "bot.admin_scan_failed", message: safeError(error) }));
+          }
           await deliverTelegramNotifications();
           if (!settings.enabled || settings.mode !== "polling" || !settings.token) { await sleep(5000); continue; }
           const response = await fetch(`https://api.telegram.org/bot${settings.token}/getUpdates?timeout=25&offset=${offset}`, { signal: AbortSignal.timeout(30000) });

@@ -1135,3 +1135,20 @@ CREATE TABLE IF NOT EXISTS migration_tokens (
 
 INSERT IGNORE INTO schema_migrations (version, description)
 VALUES ('20260925_001', 'One-time migration tokens for panel-to-panel online migration');
+
+-- 20260925_002：Telegram 通知可携带正文（管理员通知：新订单、新工单、系统告警），为空时按 kind 用固定文案。
+SET @telegram_delivery_message_exists = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'telegram_notification_deliveries' AND COLUMN_NAME = 'message'
+);
+SET @telegram_delivery_message_sql = IF(
+  @telegram_delivery_message_exists = 0,
+  'ALTER TABLE telegram_notification_deliveries ADD COLUMN message TEXT NULL COMMENT ''通知正文；为空时按 kind 使用固定文案'' AFTER kind',
+  'SELECT 1'
+);
+PREPARE telegram_delivery_message_statement FROM @telegram_delivery_message_sql;
+EXECUTE telegram_delivery_message_statement;
+DEALLOCATE PREPARE telegram_delivery_message_statement;
+
+INSERT IGNORE INTO schema_migrations (version, description)
+VALUES ('20260925_002', 'Telegram notification deliveries carry an optional message body');

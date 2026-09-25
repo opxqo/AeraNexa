@@ -33,7 +33,7 @@ import { markAllPanelClientsDirty, markPanelClientDirty } from "@/lib/server/nod
 import { removeUserDevices } from "@/lib/server/devices";
 import { saveSettings } from "@/lib/server/settings";
 import { findSettingDef, SETTING_DEFS } from "@/lib/server/settings-schema";
-import { enqueueTelegramNotification } from "@/lib/server/telegram";
+import { replyTicketAsStaff } from "@/lib/server/tickets-admin";
 
 type ActionResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -1022,48 +1022,8 @@ export async function replyTicketAction(formData: FormData): Promise<ActionResul
     const message = text(formData.get("message"), 10000);
     if (!id) return fail("工单编号不正确");
     if (!message) return fail("回复内容不能为空");
-
-    const pool = getDbPool();
-    const connection = await pool.getConnection();
-    let ticketUserId = 0;
-    try {
-      await connection.beginTransaction();
-
-      const [tickets] = await connection.execute<RowDataPacket[]>(
-        "SELECT id, user_id, status FROM tickets WHERE id = ? LIMIT 1 FOR UPDATE",
-        [id],
-      );
-      const ticket = tickets[0];
-      if (!ticket) {
-        await connection.rollback();
-        return fail("工单不存在");
-      }
-      if (Number(ticket.status) !== 0) {
-        await connection.rollback();
-        return fail("工单已关闭，请先恢复为「处理中」再回复");
-      }
-      ticketUserId = Number(ticket.user_id);
-
-      await connection.execute(
-        `INSERT INTO ticket_messages (ticket_id, user_id, sender_role, message) VALUES (?, ?, 'staff', ?)`,
-        [id, admin.id, message],
-      );
-      // 客服回复后标记为「已回复」，并把工单置为处理中。
-      await connection.execute(
-        `UPDATE tickets SET reply_status = 1, status = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [id],
-      );
-
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-
-    await audit("admin.ticket_replied", "ticket", id, { length: message.length }, admin.id);
-    if (ticketUserId) await enqueueTelegramNotification(ticketUserId, `ticket-reply:${id}:${Date.now()}`, "ticket_reply");
+    // 与 Telegram 机器人共用：写消息、改状态、审计、推送用户（src/lib/server/tickets-admin.ts）
+    await replyTicketAsStaff(id, admin.id, message, "admin");
     refreshAdmin();
     return ok("回复已发送");
   } catch (error) {

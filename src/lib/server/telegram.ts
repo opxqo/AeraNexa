@@ -5,8 +5,12 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getDbPool } from "./db";
 import { getSetting } from "./settings";
 import { recordAudit } from "./audit";
+import { ADMIN_HELP, ADMIN_MENU_ROWS, findAdminByChat, handleAdminMessage } from "./telegram-admin";
 
-const API = "https://api.telegram.org";
+// TELEGRAM_API_BASE 仅供测试替换成本地假服务
+const API = () => process.env.TELEGRAM_API_BASE?.trim() || "https://api.telegram.org";
+/** Telegram 单条消息上限 4096 字 */
+const MAX_MESSAGE = 4000;
 const CODE_TTL_SECONDS = 600;
 const pepper = () => process.env.TELEGRAM_BINDING_PEPPER?.trim() || process.env.AUTH_SESSION_SECRET?.trim() || "aeranexa-local-telegram-pepper";
 const hash = (value: string) => createHmac("sha256", pepper()).update(value).digest("hex");
@@ -21,16 +25,17 @@ export async function getTelegramSettings(): Promise<TelegramSettings> {
 async function telegram(method: string, body: Record<string, unknown>) {
   const { token } = await getTelegramSettings();
   if (!token) throw new Error("AeraNexaBot Token 尚未配置");
-  const response = await fetch(`${API}/bot${token}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(`${API()}/bot${token}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
   const payload = await response.json().catch(() => null) as { ok?: boolean; description?: string } | null;
   if (!response.ok || !payload?.ok) throw new Error(payload?.description || "Telegram API 请求失败");
 }
-const mainMenu = {
-  keyboard: [["📦 我的订阅", "📊 流量使用"], ["💰 我的余额", "🧾 最近订单"], ["🎫 我的工单"]],
-  resize_keyboard: true,
-};
+const USER_MENU_ROWS = [["📦 我的订阅", "📊 流量使用"], ["💰 我的余额", "🧾 最近订单"], ["🎫 我的工单"]];
+const mainMenu = { keyboard: USER_MENU_ROWS, resize_keyboard: true };
+/** 管理员：上面两行管理功能，下面保留自己的用户功能 */
+const adminMenu = { keyboard: [...ADMIN_MENU_ROWS, ...USER_MENU_ROWS], resize_keyboard: true };
 export async function sendTelegramMessage(chatId: number, text: string, replyMarkup?: Record<string, unknown>) {
-  await telegram("sendMessage", { chat_id: chatId, text, disable_web_page_preview: true, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
+  const body = text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE)}\n…（内容过长已截断）` : text;
+  await telegram("sendMessage", { chat_id: chatId, text: body, disable_web_page_preview: true, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
 }
 
 export async function createBindingCode(userId: number) {
@@ -46,13 +51,14 @@ export async function unbindTelegram(userId: number) {
   await recordAudit({ action: "telegram.unbound", userId, resourceType: "telegram_binding" });
 }
 
-export async function enqueueTelegramNotification(userId: number, key: string, kind: string) {
-  await getDbPool().execute("INSERT IGNORE INTO telegram_notification_deliveries (user_id, notification_key, kind) VALUES (?, ?, ?)", [userId, key, kind]);
-}
+// 排队通知放在独立文件里以避免循环依赖；这里转出，保持原有调用方式不变
+export { enqueueTelegramNotification } from "./telegram-notify";
 export async function deliverTelegramNotifications() {
   const settings = await getTelegramSettings(); if (!settings.enabled) return 0;
-  const [rows] = await getDbPool().query<RowDataPacket[]>(`SELECT d.id,d.user_id,d.kind,u.telegram_id FROM telegram_notification_deliveries d JOIN users u ON u.id=d.user_id WHERE d.status='pending' AND d.next_attempt_at<=CURRENT_TIMESTAMP ORDER BY d.id LIMIT 30`);
-  for (const row of rows) { try { if (!row.telegram_id) throw new Error("user not bound"); await sendTelegramMessage(Number(row.telegram_id), row.kind === "ticket_reply" ? "🎫 您的工单收到管理员回复，请登录 AeraNexa 查看详情。" : "🔔 AeraNexa 订阅状态提醒，请在 Bot 中查询详情。"); await getDbPool().execute("UPDATE telegram_notification_deliveries SET status='sent',attempts=attempts+1,sent_at=CURRENT_TIMESTAMP WHERE id=?", [row.id]); } catch (e) { await getDbPool().execute("UPDATE telegram_notification_deliveries SET attempts=attempts+1,status=IF(attempts+1>=3,'failed','pending'),next_attempt_at=DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 5 MINUTE),last_error=? WHERE id=?", [e instanceof Error ? e.message.slice(0,255) : "send failed",row.id]); } }
+  const [rows] = await getDbPool().query<RowDataPacket[]>(`SELECT d.id,d.user_id,d.kind,d.message,u.telegram_id FROM telegram_notification_deliveries d JOIN users u ON u.id=d.user_id WHERE d.status='pending' AND d.next_attempt_at<=CURRENT_TIMESTAMP ORDER BY d.id LIMIT 30`);
+  // 有正文（管理员通知）就发正文，否则按 kind 用固定文案
+  const fallback = (kind: string) => kind === "ticket_reply" ? "🎫 您的工单收到管理员回复，请登录 AeraNexa 查看详情。" : "🔔 AeraNexa 订阅状态提醒，请在 Bot 中查询详情。";
+  for (const row of rows) { try { if (!row.telegram_id) throw new Error("user not bound"); await sendTelegramMessage(Number(row.telegram_id), row.message ? String(row.message) : fallback(String(row.kind))); await getDbPool().execute("UPDATE telegram_notification_deliveries SET status='sent',attempts=attempts+1,sent_at=CURRENT_TIMESTAMP WHERE id=?", [row.id]); } catch (e) { await getDbPool().execute("UPDATE telegram_notification_deliveries SET attempts=attempts+1,status=IF(attempts+1>=3,'failed','pending'),next_attempt_at=DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 5 MINUTE),last_error=? WHERE id=?", [e instanceof Error ? e.message.slice(0,255) : "send failed",row.id]); } }
   return rows.length;
 }
 
@@ -90,19 +96,32 @@ async function isTelegramBound(chatId: number) {
   return Boolean(rows[0]);
 }
 
-export async function handleTelegramUpdate(update: { update_id?: number; message?: { text?: string; chat?: { id?: number } } }) {
+export type TelegramUpdate = {
+  update_id?: number;
+  message?: { text?: string; chat?: { id?: number; type?: string }; reply_to_message?: { text?: string } };
+};
+
+export async function handleTelegramUpdate(update: TelegramUpdate) {
   const updateId = Number(update.update_id); if (!Number.isSafeInteger(updateId)) return;
   const [dedupe] = await getDbPool().execute<ResultSetHeader>("INSERT IGNORE INTO telegram_updates (update_id) VALUES (?)", [updateId]); if (!dedupe.affectedRows) return;
   const chatId = Number(update.message?.chat?.id), text = update.message?.text?.trim() || ""; if (!Number.isSafeInteger(chatId)) return;
+  // 管理员功能只在私聊生效：群里即使有管理员，也不能在群内查询或回复工单
+  const admin = update.message?.chat?.type === "private" && text && !text.startsWith("/bind ") ? await findAdminByChat(chatId) : null;
   if (text.startsWith("/bind ")) { try { await bindTelegram(chatId, text.slice(6).trim()); await sendTelegramMessage(chatId, "✅ AeraNexa 账户绑定成功。发送 /start 查看服务菜单。"); } catch { await sendTelegramMessage(chatId, "❌ 绑定码无效、已过期，或该 Telegram 账号已被绑定。"); } return; }
   const map: Record<string,string> = { "📦 我的订阅":"订阅", "📊 流量使用":"流量", "💰 我的余额":"余额", "🧾 最近订单":"订单", "🎫 我的工单":"工单" };
   if (text === "/start" || text === "/help") {
-    if (await isTelegramBound(chatId)) {
+    if (admin) {
+      await sendTelegramMessage(chatId, `✅ 已绑定 AeraNexa 管理员账户（${admin.email}）。\n\n${ADMIN_HELP}`, adminMenu);
+    } else if (await isTelegramBound(chatId)) {
       await sendTelegramMessage(chatId, "✅ 已绑定 AeraNexa 账户。请选择要查询的服务：", mainMenu);
     } else {
       await sendTelegramMessage(chatId, "AeraNexaBot\n请在 AeraNexa 仪表盘生成绑定码后，发送 /bind <绑定码> 完成绑定。");
     }
     return;
+  }
+  if (admin) {
+    const reply = await handleAdminMessage(admin, text, update.message?.reply_to_message?.text);
+    if (reply !== null) { await sendTelegramMessage(chatId, reply); return; }
   }
   await sendTelegramMessage(chatId, await accountText(chatId, map[text] || "订阅"));
 }
