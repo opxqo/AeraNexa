@@ -600,10 +600,18 @@ setup_services() {
   prune_dists
   sleep 2
   for svc in "${services[@]}"; do
-    if systemctl is-active -q "aeranexa-$svc"; then ok "aeranexa-$svc 运行中"; else
-      journalctl -u "aeranexa-$svc" -n 40 --no-pager || true
-      die "aeranexa-$svc 没有正常运行，日志见上方"
+    if systemctl is-active -q "aeranexa-$svc"; then ok "aeranexa-$svc 运行中"; continue; fi
+    # 服务刚启动时可能正好在 systemd 自动重启的间隙（例如 Bot 连 Telegram 网络抖了一下），多等一会儿再判断
+    local _
+    for _ in 1 2 3 4 5 6; do sleep 3; systemctl is-active -q "aeranexa-$svc" && break; done
+    if systemctl is-active -q "aeranexa-$svc"; then ok "aeranexa-$svc 运行中"; continue; fi
+    journalctl -u "aeranexa-$svc" -n 40 --no-pager || true
+    # Bot 是可选服务：没起来只提示，不把整次安装 / 更新判为失败（网站和 worker 已正常）
+    if [[ $svc == bot ]]; then
+      warn "aeranexa-bot 没有正常运行（日志见上方），网站和 worker 不受影响。检查 Telegram 设置和服务器能否访问 api.telegram.org"
+      continue
     fi
+    die "aeranexa-$svc 没有正常运行，日志见上方"
   done
   ok "本地访问返回 $code"
 }

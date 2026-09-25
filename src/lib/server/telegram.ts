@@ -8,7 +8,7 @@ import { recordAudit } from "./audit";
 import { ADMIN_HELP, ADMIN_MENU_ROWS, findAdminByChat, handleAdminMessage } from "./telegram-admin";
 
 // TELEGRAM_API_BASE 仅供测试替换成本地假服务
-const API = () => process.env.TELEGRAM_API_BASE?.trim() || "https://api.telegram.org";
+export const telegramApiBase = () => process.env.TELEGRAM_API_BASE?.trim() || "https://api.telegram.org";
 /** Telegram 单条消息上限 4096 字 */
 const MAX_MESSAGE = 4000;
 const CODE_TTL_SECONDS = 600;
@@ -25,7 +25,7 @@ export async function getTelegramSettings(): Promise<TelegramSettings> {
 async function telegram(method: string, body: Record<string, unknown>) {
   const { token } = await getTelegramSettings();
   if (!token) throw new Error("AeraNexaBot Token 尚未配置");
-  const response = await fetch(`${API()}/bot${token}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(`${telegramApiBase()}/bot${token}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
   const payload = await response.json().catch(() => null) as { ok?: boolean; description?: string } | null;
   if (!response.ok || !payload?.ok) throw new Error(payload?.description || "Telegram API 请求失败");
 }
