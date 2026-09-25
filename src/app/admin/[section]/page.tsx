@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { adminSectionKeys, type AdminSectionKey } from "@/lib/admin-navigation";
 import { AdminEditor } from "@/components/admin-editor";
 import { AdminListPager } from "@/components/admin-pagination";
+import { AdminPage, AdminTabs } from "@/components/admin-page";
 import { getAdminEditorData } from "@/lib/server/admin-editor";
 import { getEpayTestOverview, getEpayTestStatus, type EpayTestStatus } from "@/lib/server/payments/epay-test";
 import { getEpayKeepaliveOverview } from "@/lib/server/payments/epay-keepalive";
@@ -23,13 +23,11 @@ const DESCRIPTIONS: Record<string, string> = {
   tickets: "调整工单优先级、处理状态，并直接回复用户。",
   notices: "撰写门户公告，设置标签、封面与定时发布；未到时间的公告不会出现在前台。",
   knowledge: "维护文档中心的分类与正文，正文按 HTML 白名单过滤后入库。",
-  traffic: "查看节点上报的流量。数据由节点通过上报接口写入，后台只读、不提供手工录入。",
+  traffic: "查看节点上报的流量。数据由节点通过上报接口写入，只读，不提供手工录入。",
   mail: "配置 SMTP 邮件验证码服务；敏感密码以密文保存，服务可由管理员随时启停。",
   settings: "运行时可调整的配置，保存后数秒内生效（worker 无需重启）。数据库连接、会话密钥与加密主密钥仍只在服务器环境变量中配置。",
 };
 
-/** 只读板块：数据来自外部系统，后台不提供写操作。 */
-const READ_ONLY_SECTIONS = new Set(["traffic"]);
 
 const TITLES: Record<string, string> = {
   users: "用户管理",
@@ -71,17 +69,9 @@ export default async function AdminSectionPage({
 
   if (isKeepalive) {
     return (
-      <div className="admin-page-stack">
-        <section className="admin-page-heading">
-          <div>
-            <p className="admin-kicker">AeraNexa 管理控制台</p>
-            <h1>支付管理</h1>
-            <p>定期向易支付网关下白账单，防止商户号因连续 5 天无账单被封禁。</p>
-          </div>
-        </section>
-        <PaymentTabs active="keepalive" />
+      <AdminPage title="支付管理" description="定期向易支付网关下白账单，防止商户号因连续 5 天无账单被封禁。" tabs={<PaymentTabs active="keepalive" />}>
         <EpayKeepalivePanel initial={await getEpayKeepaliveOverview()} />
-      </div>
+      </AdminPage>
     );
   }
 
@@ -92,57 +82,40 @@ export default async function AdminSectionPage({
     if (epay && /^ET[0-9A-F]{20}$/.test(epay)) initialStatus = await getEpayTestStatus(epay).catch(() => null);
 
     return (
-      <div className="admin-page-stack">
-        <section className="admin-page-heading">
-          <div>
-            <p className="admin-kicker">AeraNexa 管理控制台</p>
-            <h1>支付管理</h1>
-            <p>检查支付渠道连通性与回调流程，或在本地模拟支付场景。</p>
-          </div>
-        </section>
-        <PaymentTabs active="test" />
+      <AdminPage title="支付管理" description="检查支付渠道连通性与回调流程，或在本地模拟支付场景。" tabs={<PaymentTabs active="test" />}>
         <EpayLiveTest overview={overview} initialStatus={initialStatus} />
         <PaymentTestLab />
-      </div>
+      </AdminPage>
     );
   }
 
   const data = await getAdminEditorData(section as AdminSectionKey, { q, page: Number.isFinite(page) ? page : 1 });
+  const paginated = data.section !== "recharge-cards" && data.section !== "mail" && data.section !== "settings";
 
   return (
-    <div className="admin-page-stack">
-      <section className="admin-page-heading">
-        <div>
-          <p className="admin-kicker">AeraNexa 管理控制台</p>
-          <h1>{TITLES[data.section]}</h1>
-          <p>{DESCRIPTIONS[data.section]}</p>
-        </div>
-        {READ_ONLY_SECTIONS.has(data.section)
-          ? <span className="v2-badge">只读</span>
-          : <span className="v2-badge badge-success">可编辑</span>}
-      </section>
-      {data.section === "payments" ? <PaymentTabs active="channels" /> : null}
+    <AdminPage
+      title={TITLES[data.section]}
+      description={DESCRIPTIONS[data.section]}
+      tabs={data.section === "payments" ? <PaymentTabs active="channels" /> : undefined}
+    >
       <AdminEditor data={data} q={q} />
-      {data.section !== "recharge-cards" && data.section !== "mail" && data.section !== "settings" ? <AdminListPager
+      {paginated ? <AdminListPager
         section={data.section}
         q={q}
         page={data.page.page}
         pageSize={data.page.pageSize}
         total={data.page.total}
       /> : null}
-      <p className="admin-source-note">
-        数据源：本地 <span className="mono">aeranexa</span> 数据库。所有写操作都会写入 <span className="mono">audit_logs</span>。
-      </p>
-    </div>
+    </AdminPage>
   );
 }
 
-function PaymentTabs({ active }: { active: "channels" | "test" | "keepalive" }) {
-  return (
-    <nav className="admin-payment-tabs" aria-label="支付管理功能">
-      <Link href="/admin/payments" aria-current={active === "channels" ? "page" : undefined} className={active === "channels" ? "active" : ""}>支付渠道</Link>
-      <Link href="/admin/payments?tab=test" aria-current={active === "test" ? "page" : undefined} className={active === "test" ? "active" : ""}>支付测试台</Link>
-      <Link href="/admin/payments?tab=keepalive" aria-current={active === "keepalive" ? "page" : undefined} className={active === "keepalive" ? "active" : ""}>商户保活</Link>
-    </nav>
-  );
+const PAYMENT_TABS = [
+  { key: "channels", label: "支付渠道", href: "/admin/payments" },
+  { key: "test", label: "支付测试台", href: "/admin/payments?tab=test" },
+  { key: "keepalive", label: "商户保活", href: "/admin/payments?tab=keepalive" },
+] as const;
+
+function PaymentTabs({ active }: { active: (typeof PAYMENT_TABS)[number]["key"] }) {
+  return <AdminTabs tabs={PAYMENT_TABS} active={active} label="支付管理功能" />;
 }

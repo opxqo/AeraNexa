@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CircleDollarSign, Network, ShoppingCart, TicketCheck, Users } from "lucide-react";
 import { getAdminDashboardData } from "@/lib/server/admin";
+import { AdminPage } from "@/components/admin-page";
 
 const orderStatus = ["待支付", "开通中", "已取消", "已完成", "已折抵", "已退款"];
 
@@ -12,15 +13,7 @@ export default async function AdminDashboardPage() {
   const { stats, recentUsers, recentOrders } = await getAdminDashboardData();
 
   return (
-    <div className="admin-page-stack">
-      <section className="admin-page-heading">
-        <div>
-          <p className="admin-kicker">AeraNexa 管理控制台</p>
-          <h1>系统概览</h1>
-          <p>统一查看用户、订单、节点与支持服务的实时数据库状态。</p>
-        </div>
-        <span className="v2-badge badge-success">数据库已连接</span>
-      </section>
+    <AdminPage title="系统概览" description="用户、订单、节点与工单的实时状态。">
 
       <section className="stat-grid" aria-label="核心业务指标">
         <article>
@@ -103,6 +96,6 @@ export default async function AdminDashboardPage() {
           </table>
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

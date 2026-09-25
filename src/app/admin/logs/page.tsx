@@ -5,6 +5,7 @@ import { LOG_CATEGORIES, LOG_CATEGORY_LABELS } from "@/lib/server/runtime-logs";
 import { LOG_CATEGORY_LABELS_ZH, LOG_LEVEL_LABELS } from "@/lib/log-descriptions";
 import { LOG_EXPORT_LIMIT } from "@/lib/log-export";
 import { saveLogCaptureSettingsAction } from "./actions";
+import { AdminPage, AdminTabs } from "@/components/admin-page";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,8 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Pr
     return `/admin/logs?${query.toString()}`;
   };
 
-  return <div className="admin-page-stack">
-    <section className="admin-page-heading"><div><p className="admin-kicker">AeraNexa 管理控制台</p><h1>日志中心</h1><p>查询操作审计、请求和服务运行记录；事件附有中文解释，原始代码可用于精确排查。</p></div><span className="v2-badge">仅管理员</span></section>
-    <nav className="admin-payment-tabs" aria-label="日志类别">{views.map((item) => <Link key={item.id} href={`/admin/logs?view=${item.id}`} className={view === item.id ? "active" : ""} aria-current={view === item.id ? "page" : undefined}>{item.label}</Link>)}</nav>
+  const tabs = views.map((item) => ({ key: item.id, label: item.label, href: `/admin/logs?view=${item.id}` }));
+  return <AdminPage title="日志中心" description="查询操作审计、请求和服务运行记录；事件附有中文解释，原始代码可用于精确排查。" tabs={<AdminTabs tabs={tabs} active={view} label="日志类别" />}>
 
     {listing ? <>
       <form className="v2-block log-filter" method="get" action="/admin/logs">
@@ -83,7 +83,7 @@ export default async function AdminLogsPage({ searchParams }: { searchParams: Pr
     </div> : null}
 
     {settings ? <section className="v2-block log-settings"><h2>监控开关</h2><p>调整后各服务最多约 5 秒生效。关键操作审计始终启用。</p><form action={saveLogCaptureSettingsAction}>{LOG_CATEGORIES.map((category) => <label key={category}><input type="checkbox" name={category} defaultChecked={settings[category]} /><span>{LOG_CATEGORY_LABELS[category]}</span></label>)}<button className="button button-primary" type="submit">保存监控设置</button></form></section> : null}
-  </div>;
+  </AdminPage>;
 }
 
 function StatusCard({ label, count, active }: { label: string; count: number | string; active: boolean }) {

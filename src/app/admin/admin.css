@@ -1,0 +1,133 @@
+/* =========================================================================
+   管理端布局（仅在 src/app/admin/layout.tsx 引入）
+   视觉沿用 globals.css 的 v2 体系（配色、卡片、按钮、徽章），这里只负责骨架、
+   间距、表格排布、表单弹窗与响应式。所有规则都挂在 .admin-shell 下，不影响用户端。
+   ========================================================================= */
+
+/* ---------- 骨架 ---------- */
+.admin-shell .content { max-width: 1440px; padding: 72px 28px 32px; }
+.admin-shell .topbar-inner { max-width: 1384px; }
+
+.admin-page, .admin-page-stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.admin-page > * { min-width: 0; }
+
+.admin-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; }
+.admin-page-title { min-width: 0; }
+.admin-page-title h1 { margin: 0; color: var(--v2-heading); font-size: 22px; font-weight: 400; line-height: 1.3; }
+.admin-page-title p { margin: 4px 0 0; max-width: 80ch; color: var(--v2-muted); font-size: 13px; line-height: 1.6; }
+.admin-page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* 页面内标签页：窄屏横向滚动，不换行错位 */
+.admin-tabs { display: flex; gap: 4px; margin-top: -6px; overflow-x: auto; border-bottom: 1px solid var(--v2-border); scrollbar-width: none; }
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs a { flex: none; padding: 10px 14px; color: var(--v2-muted); white-space: nowrap; text-decoration: none; border-bottom: 2px solid transparent; }
+.admin-tabs a:hover { color: var(--v2-heading); }
+.admin-tabs a.active { color: var(--v2-primary); border-bottom-color: var(--v2-primary); font-weight: 600; }
+
+.admin-footnote { margin: 0; color: var(--v2-muted); font-size: 12px; line-height: 1.7; }
+
+/* ---------- 列表页 ----------
+   第一行：搜索（左，可伸缩）+ 「新建 X」等主操作（右）；其余区块一律整行。
+   用弹性换行而不是两列网格：任何附加区块（沙箱、同步状态、卡密明细）都不会被挤进半列。 */
+.admin-shell .admin-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 12px; }
+.admin-shell .admin-editor > * { flex: 1 1 100%; min-width: 0; }
+.admin-shell .admin-editor > .admin-list-toolbar { flex: 1 1 320px; }
+.admin-shell .admin-editor > .admin-section-actions { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- 表格 ----------
+   表头与徽章、单号、操作不换行；普通文本列在空间不够时换行，而不是把整张表撑出横向滚动。 */
+.admin-shell .v2-table { white-space: normal; }
+.admin-shell .v2-table th { white-space: nowrap; }
+.admin-shell .v2-table td { overflow-wrap: anywhere; }
+.admin-shell .v2-table .v2-badge,
+.admin-shell .v2-table .mono,
+.admin-shell .v2-table td.nowrap,
+.admin-shell .v2-table .admin-action-button,
+.admin-shell .v2-table .admin-danger-button { white-space: nowrap; overflow-wrap: normal; }
+.admin-shell .v2-table td small { overflow-wrap: anywhere; }
+
+/* 行内操作：同一行排开、不换行。
+   有几处把这个类直接加在 <td> 上，flex 会让单元格脱离表格布局、整行错位——单元格保持 table-cell，按钮用间距排开。 */
+.admin-shell .admin-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.admin-shell td.admin-row-actions { display: table-cell; white-space: nowrap; }
+.admin-shell td.admin-row-actions > * + * { margin-left: 6px; }
+
+/* 宽表横向滚动时，最后一列（操作）固定在右侧 */
+@media (min-width: 761px) {
+  .admin-shell .table-wrap .v2-table th:last-child,
+  .admin-shell .table-wrap .v2-table td:last-child { position: sticky; right: 0; white-space: nowrap; }
+  .admin-shell .table-wrap .v2-table th:last-child { background: #f8f9fc; }
+  .admin-shell .table-wrap .v2-table td:last-child { background: var(--v2-surface); }
+  .admin-shell .table-wrap .v2-table tbody tr:hover td:last-child { background: #fafbfc; }
+  .admin-shell .table-wrap .v2-table td[colspan]:last-child { position: static; }
+}
+
+/* ---------- 表单与弹窗 ---------- */
+/* 弹窗不超过视口：标题固定、正文滚动，底部按钮吸底始终可见 */
+.admin-shell .ant-modal { max-width: 100%; }
+.admin-shell .ant-modal-content { max-height: calc(100vh - 48px); }
+.admin-shell .ant-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.admin-shell .admin-form-footer {
+  position: sticky;
+  bottom: -24px;
+  z-index: 2;
+  margin: 4px -24px -24px;
+  padding: 12px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  background: var(--v2-surface);
+  border-top: 1px solid var(--v2-border);
+}
+
+/* 长表单分组：小标题 + 两列 */
+.admin-form-section { display: grid; gap: 14px; }
+.admin-form-section + .admin-form-section { padding-top: 16px; border-top: 1px dashed var(--v2-border); }
+.admin-form-section > h3 { margin: 0; color: var(--v2-heading); font-size: 13px; font-weight: 600; }
+
+/* 字段里「值 + 行内操作」的排布（原先是内联 style） */
+.admin-field-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 38px; }
+.admin-align-end { align-self: end; }
+.admin-uppercase { text-transform: uppercase; }
+.admin-warning-text { color: var(--v2-danger, #d4380d) !important; }
+.admin-settings-grid { padding: 0 16px 16px; }
+
+/* ---------- 中等宽度（761–1100px）：侧栏收成图标栏，把宽度让给表格 ---------- */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .admin-shell .sidebar { width: 64px; }
+  .admin-shell .brand { gap: 0; }
+  .admin-shell .brand-text,
+  .admin-shell .nav-label,
+  .admin-shell .nav-item span,
+  .admin-shell .sidebar-version { display: none; }
+  .admin-shell .primary-nav { padding: 12px 10px 24px; }
+  .admin-shell .nav-group + .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--v2-border); }
+  .admin-shell .nav-item { justify-content: center; padding: 9px 0; gap: 0; }
+  .admin-shell .portal-main { margin-left: 64px; }
+  .admin-shell .topbar { left: 64px; padding: 0 20px; }
+  .admin-shell .content { padding: 72px 20px 28px; }
+}
+
+/* ---------- 手机（≤760px） ---------- */
+@media (max-width: 760px) {
+  .admin-shell .content { padding: 66px 12px 20px; }
+  .admin-page, .admin-page-stack { gap: 14px; }
+  .admin-page-title h1 { font-size: 19px; }
+  .admin-page-actions { width: 100%; }
+
+  /* 列表工具栏：搜索框整行，主操作换到下一行靠右 */
+  .admin-shell .admin-editor > .admin-list-toolbar { flex-basis: 100%; }
+  .admin-shell .admin-editor > .admin-section-actions { flex: 1 1 100%; }
+
+  /* 弹窗变成贴底面板 */
+  .admin-shell .ant-modal-wrap { align-items: flex-end; padding: 0; }
+  .admin-shell .ant-modal { width: 100% !important; }
+  .admin-shell .ant-modal-content { max-height: 92vh; border-radius: 12px 12px 0 0; }
+  .admin-shell .admin-form-footer { bottom: -18px; margin: 4px -18px -18px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); }
+  .admin-shell .admin-form-footer { flex-direction: row; }
+  .admin-shell .admin-form-footer .button { flex: 1; width: auto; }
+}
+
+/* ---------- 暗色 ---------- */
+[data-theme="dark"] .admin-shell .table-wrap .v2-table th:last-child { background: var(--v2-header); }
+[data-theme="dark"] .admin-shell .table-wrap .v2-table tbody tr:hover td:last-child { background: var(--v2-header); }

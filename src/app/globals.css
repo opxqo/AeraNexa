@@ -414,10 +414,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .monitor-card-age { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; flex-shrink: 0; font-style: normal; color: var(--v2-muted); }
 
 .admin-page-stack { display: grid; gap: 22px; }
-.admin-payment-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--v2-border); }
-.admin-payment-tabs a { padding: 10px 16px; color: var(--v2-muted); text-decoration: none; border-bottom: 2px solid transparent; }
-.admin-payment-tabs a:hover { color: var(--v2-heading); }
-.admin-payment-tabs a.active { color: var(--v2-primary); border-bottom-color: var(--v2-primary); font-weight: 600; }
 .log-filter { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 16px; }
 .log-filter label { display: grid; gap: 5px; color: var(--v2-muted); font-size: 12px; }
 .log-filter input, .log-filter select { min-height: 34px; max-width: 190px; padding: 6px 9px; color: var(--v2-text); background: var(--v2-surface); border: 1px solid var(--v2-border); border-radius: 3px; }
@@ -439,21 +435,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .log-settings form { display: grid; gap: 12px; max-width: 380px; }
 .log-settings label { display: flex; align-items: center; gap: 9px; }
 .log-settings button { justify-self: start; }
-.admin-page-heading { min-height: 92px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--v2-surface); border-radius: 3px; box-shadow: 0 1px 3px rgba(219, 226, 239, .6); }
-.admin-page-heading h1 { margin: 0; color: var(--v2-heading); font-size: 22px; font-weight: 400; }
-.admin-page-heading p:not(.admin-kicker) { margin: 4px 0 0; color: var(--v2-muted); }
-.admin-kicker { margin: 0 0 3px; color: var(--v2-primary); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
 .admin-stat-detail { margin-top: 5px; color: var(--v2-muted); font-size: 11px; }
 .admin-notice { min-height: 48px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; color: #75580f; background: #fff8e8; border: 1px solid #f0dfb6; border-radius: 3px; }
 .admin-notice strong { margin-left: auto; color: var(--v2-primary); font-size: 12px; }
 .admin-empty { height: 90px; color: var(--v2-muted) !important; text-align: center; }
-.admin-source-note { margin: -8px 0 0; color: var(--v2-muted); font-size: 12px; }
 .admin-topbar-heading { display: flex; align-items: center; gap: 12px; }
 .admin-topbar-heading .v2-mode-badge { display: inline-flex; align-items: center; gap: 4px; }
 .admin-account-menu { position: relative; }
 .admin-account-dropdown { min-width: 170px; }
 .admin-logout { width: 100%; border: 0; color: #ff4d4f; background: transparent; text-align: left; }
-.admin-section-actions { display: flex; justify-content: flex-end; margin: -6px 0 0; }
 .admin-action-button { min-height: 30px; padding: 5px 9px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dbe3f1; border-radius: 3px; color: var(--v2-primary); background: #f8faff; cursor: pointer; font-size: 12px; }
 .admin-action-button:hover:not(:disabled) { border-color: #9eb0e3; background: var(--v2-primary-soft); }
 .admin-action-button:disabled { opacity: .55; cursor: not-allowed; }
@@ -474,7 +464,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-fieldset { margin: 0; padding: 13px 15px; display: grid; gap: 10px; border: 1px solid var(--v2-border); border-radius: 3px; }
 .admin-fieldset legend { padding: 0 6px; color: var(--v2-text); font-size: 13px; }
 .admin-fieldset small { color: var(--v2-muted); font-size: 12px; }
-.admin-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .admin-form-help, .admin-audit-note { margin: 0; color: var(--v2-muted); font-size: 12px; line-height: 1.7; }
 .admin-audit-note { padding: 12px 17px; background: #f8f9fc; border-top: 1px solid var(--v2-border); }
 .admin-muted { color: var(--v2-muted); font-size: 12px; }
@@ -762,7 +751,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .invite-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .invite-program-note { align-items: flex-start; flex-direction: column; }
   .stat-grid article { min-height: 98px; padding: 15px; }
-  .admin-page-heading { align-items: flex-start; }
   .admin-topbar-heading { gap: 7px; }
   .admin-topbar-heading .v2-mode-badge { display: none; }
   .admin-form-grid { grid-template-columns: 1fr; }
@@ -1412,11 +1400,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme="dark"] .tone-warn { color: #d8a54a; }
 [data-theme="dark"] .tone-bad { color: #e0706c; }
 [data-theme="dark"] .monitor-online-num { color: var(--v2-success); }
-[data-theme="dark"] .admin-page-heading {
-  background: var(--v2-surface);
-  border: 1px solid var(--v2-border);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
-}
 [data-theme="dark"] .admin-notice {
   color: #d8be7b;
   background: #2a251a;
@@ -1952,11 +1935,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* 卡片边界：浅色底 + 淡阴影时卡片边缘几乎看不见，文字会「看起来飘在卡片外面」。
    补一条发丝边框让边界明确。 */
-.v2-block, .admin-page-heading { border: 1px solid var(--v2-border); }
+.v2-block { border: 1px solid var(--v2-border); }
 
-/* 列表页骨架：搜索框与「新建 X」按钮同一排，表格整行铺满 */
-.admin-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 14px; }
-.admin-editor > section.v2-block { grid-column: 1 / -1; }
 
 /* 顶部工具栏：左侧搜索、右侧主操作 */
 .admin-list-toolbar { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -1966,8 +1946,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-search-box input::placeholder { color: var(--v2-muted); }
 .admin-search-box:focus-within { border-color: #9eb0e3; }
 
-/* 原先是 -6px 的负外边距，把按钮从正常流里往上拽，和页头贴得莫名其妙 */
-.admin-section-actions { margin: 0; }
 
 /* 底部页码条：左侧统计、右侧翻页，取代原先全部挤在一行的排布 */
 .admin-list-pager { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -2038,8 +2016,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-ticket-reply { display: grid; gap: 10px; justify-items: end; }
 .admin-ticket-reply .v2-field { width: 100%; }
 
-/* 页脚说明原先靠 -8px 负外边距贴上去，改为正常间距 */
-.admin-source-note { margin: 0; }
 
 /* 表格单元格统一垂直居中。td 的初始对齐是 baseline，含徽章/按钮的单元格
    会与纯文本单元格错开半行，同一行里两种对齐混用是「乱」的主要来源之一。 */
@@ -2054,8 +2030,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .btn-link { color: var(--v2-primary); background: transparent; border-color: transparent; }
 .btn-link:hover:not(:disabled) { text-decoration: underline; }
 
-[data-theme="dark"] .admin-kicker { color: #aebdff; }
-[data-theme="dark"] .v2-block, [data-theme="dark"] .admin-page-heading { border-color: var(--v2-border); }
+[data-theme="dark"] .v2-block { border-color: var(--v2-border); }
 [data-theme="dark"] .admin-search-box { background: #202632; border-color: #37404d; }
 [data-theme="dark"] .admin-search-box input { color: var(--v2-text); }
 [data-theme="dark"] .admin-search-box:focus-within { border-color: #4e6fe8; }
@@ -2083,7 +2058,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme="dark"] .account-button:hover { background: rgba(0, 0, 0, .13); }
 
 [data-theme="dark"] .v2-block,
-[data-theme="dark"] .admin-page-heading,
 [data-theme="dark"] .stat-grid article,
 [data-theme="dark"] .plan-card:not(.api-plan-card) { background: #252525; border-color: #303030; box-shadow: none; }
 [data-theme="dark"] .v2-block-header,

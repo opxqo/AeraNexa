@@ -38,6 +38,7 @@ import { authApi } from "@/lib/api/auth";
 import { clearAuthToken } from "@/lib/api/client";
 import { ToastProvider, useToast } from "@/components/v2-modal";
 import { BrandMark } from "@/components/brand-mark";
+import { useStackedTables } from "@/components/use-stacked-tables";
 
 const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number; "aria-hidden"?: boolean }>> = {
   dashboard: Home20Regular,
@@ -68,6 +69,9 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLElement>(null);
+  // 窄屏把表格折叠成卡片，与用户端一致（样式见 globals.css「移动端表格卡片化」）
+  useStackedTables(contentRef);
   const current = adminSections.find(
     ({ href }) => pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`)),
   );
@@ -114,7 +118,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
   };
 
   return (
-    <div className="portal-shell">
+    <div className="portal-shell admin-shell">
       <button
         className="mobile-menu"
         type="button"
@@ -128,7 +132,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <Link className="brand" href="/admin" onClick={() => setOpen(false)}>
           <BrandMark />
-          AeraNexa
+          <span className="brand-text">AeraNexa</span>
         </Link>
         <nav className="primary-nav" aria-label="管理员面板导航">
           {groups.map((group) => (
@@ -145,6 +149,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
                       href={href}
                       className={`nav-item ${active ? "nav-item-active" : ""}`}
                       aria-current={active ? "page" : undefined}
+                      title={label}
                       onClick={() => setOpen(false)}
                     >
                       <Icon fontSize={18} aria-hidden />
@@ -166,7 +171,8 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
         <header className="topbar">
           <div className="topbar-inner">
             <div className="admin-topbar-heading">
-              <p className="topbar-title">{current?.label ?? "管理员面板"}</p>
+              {/* 页面标题由页头 AdminPage 显示，顶栏只给出所在分组，避免同一标题出现两次 */}
+              <p className="topbar-title">{current?.group ? `管理后台 · ${current.group}` : "管理后台"}</p>
               <span className="v2-mode-badge prod"><ShieldCheck size={12} /> 管理员</span>
             </div>
             <div className="topbar-actions">
@@ -201,7 +207,7 @@ function AdminShellInner({ children, userEmail }: { children: React.ReactNode; u
             </div>
           </div>
         </header>
-        <main className="content">{children}</main>
+        <main className="content" ref={contentRef}>{children}</main>
       </div>
     </div>
   );
