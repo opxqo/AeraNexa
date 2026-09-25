@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildEpayMapiParams,
   buildEpaySubmitUrl,
   isEpayTestTradeNo,
   parseEpayOrderQuery,
   epaySign,
   epayTypeOf,
+  parseEpayMapiResponse,
   parseEpayNotice,
   verifyEpaySign,
   yuanToCents,
@@ -85,4 +87,23 @@ test("订单查询结果解析", () => {
   );
   assert.equal(parseEpayOrderQuery({ code: 1, status: 0, money: "1.00", endtime: "x" }).paidAt, null);
   assert.throws(() => parseEpayOrderQuery({ code: -1, msg: "订单号不存在" }), /订单号不存在/);
+});
+
+test("mapi.php 下单参数：签名覆盖 clientip，sign/sign_type 不参与签名，空 return_url 被剔除", () => {
+  const params = buildEpayMapiParams({
+    gatewayUrl: "https://pay.example.com", pid: "1000", key: KEY, type: "alipay", outTradeNo: "ETKABC",
+    amountCents: 1, name: "保活", notifyUrl: "https://site.example.com/n", clientIp: "1.2.3.4",
+  });
+  assert.equal(params.money, "0.01");
+  assert.equal(params.clientip, "1.2.3.4");
+  assert.equal(params.sign_type, "MD5");
+  assert.ok(!("return_url" in params));
+  assert.equal(verifyEpaySign(params, KEY), true);
+  assert.equal(verifyEpaySign({ ...params, clientip: "5.6.7.8" }, KEY), false);
+});
+
+test("mapi.php 返回：code=1 取 trade_no，失败时抛出渠道原因", () => {
+  assert.deepEqual(parseEpayMapiResponse({ code: 1, trade_no: "2026092512345", qrcode: "https://qr" }), { tradeNo: "2026092512345" });
+  assert.throws(() => parseEpayMapiResponse({ code: -1, msg: "签名校验失败" }), /签名校验失败/);
+  assert.throws(() => parseEpayMapiResponse({ code: 1 }), /未返回订单号/);
 });

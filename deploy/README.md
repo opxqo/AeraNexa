@@ -36,6 +36,7 @@ worker 和 bot 需要和网页服务**完全相同**的这些变量，否则会�
 
 - `DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME`
 - `SETTINGS_ENCRYPTION_KEY`：3x-ui API Token 等后台设置是用它加密存进数据库的。worker 这里填得不一样，就解不开 token，会一直报「未配置 3x-ui」。
+- `PAYMENT_CONFIG_ENCRYPTION_KEY`：支付渠道的商户密钥用它加密。worker 缺了它，易支付查单和商户保活都会报「支付渠道配置加密密钥不可用」。
 - 其余加密主密钥和 pepper（`AUTH_SESSION_SECRET`、`SMTP_CONFIG_ENCRYPTION_KEY`、`EMAIL_VERIFICATION_PEPPER` 等）直接整份复制，最省事。
 
 如果 MySQL 也部署在 Zeabur 的同一个项目里，数据库这几项可以直接引用 MySQL 服务暴露出来的变量，例如 `DB_HOST=${MYSQL_HOST}`。具体变量名以 MySQL 服务「环境变量」页里标为暴露的为准。这样改数据库密码后，各服务会自动同步。
@@ -126,3 +127,16 @@ systemctl is-active aeranexa-web aeranexa-worker
 ```
 
 后台「节点管理」页每个节点的「账号数」列，是判断 worker 是否正常工作的最直接信号：只要有用户持有该节点所在权限组的套餐，这个数字就不应该长期停在 0。
+
+## 迁移到新服务器
+
+后台「系统 → 数据迁移」可以把整站数据连同加密主密钥、哈希 pepper 导出成一个文件（`aeranexa-backup-*.ndjson.gz`），在新服务器一键恢复。**文件只压缩不加密，拿到文件等于拿到整站**，传完即删。
+
+1. 旧站：后台「数据迁移」→「下载备份」（需要历史日志就勾选「包含日志」）；或在服务器上执行 `pnpm backup:export [--logs]`。
+2. 新服务器：部署代码、`pnpm install`，在 `.env.local` 里只配好 `DB_*`（其余密钥由备份补齐）。
+3. 执行 `pnpm backup:restore aeranexa-backup-xxx.ndjson.gz`：自动建库建表 → 确认后清空并写入数据 → 把备份里的密钥合并进 `.env.local`（有值被覆盖时原文件另存为 `.env.local.bak`）。
+4. 启动 web / worker / bot，用**旧站的管理员账号**登录。
+
+也可以在新站先正常启动、用默认管理员登录后，到「数据迁移」上传备份恢复。这种方式无法修改服务器环境变量：页面会列出与备份不一致的变量，把它们设到服务环境变量（Zeabur 在服务设置里）后重启三个进程。
+
+恢复前请先停掉 worker（恢复会检测 worker 主锁，worker 在跑时直接拒绝）。登录会话、验证码、Telegram 更新缓存等临时数据不导出，恢复后所有用户需要重新登录。

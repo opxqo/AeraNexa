@@ -1,7 +1,7 @@
 export type AdminIcon =
   | "dashboard" | "users" | "plans" | "orders" | "coupons" | "payments" | "refunds"
   | "reconciliation" | "rechargeCards" | "nodes" | "tickets" | "notices" | "knowledge"
-  | "traffic" | "mail" | "settings" | "logs";
+  | "traffic" | "mail" | "settings" | "logs" | "backup";
 
 export type AdminSectionKey =
   | "users"
@@ -47,6 +47,7 @@ export const adminSections: AdminSection[] = [
   { href: "/admin/mail", key: "mail", label: "邮件服务", description: "SMTP 配置与验证码状态", icon: "mail", group: "系统" },
   { href: "/admin/logs", label: "日志中心", description: "审计、访问与运行监控", icon: "logs", group: "系统" },
   { href: "/admin/settings", key: "settings", label: "系统设置", description: "节点、订阅、佣金与 Worker", icon: "settings", group: "系统" },
+  { href: "/admin/backup", label: "数据迁移", description: "一键导出与恢复整站数据", icon: "backup", group: "系统" },
 ];
 
 export const adminSectionKeys = new Set<AdminSectionKey>([

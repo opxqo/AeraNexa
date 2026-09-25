@@ -36,6 +36,8 @@ const AUDIT_DESCRIPTIONS = {
   "admin.sync_failures_retried": "管理员重试同步失败任务",
   "admin.settings_saved": "管理员保存系统或日志设置",
   "admin.logs_exported": "管理员导出日志",
+  "admin.backup_exported": "管理员导出迁移备份",
+  "admin.backup_restored": "管理员从备份恢复数据",
   "admin.ticket_updated": "管理员更新工单",
   "admin.ticket_replied": "管理员回复工单",
   "admin.order_status_changed": "管理员修改订单状态",

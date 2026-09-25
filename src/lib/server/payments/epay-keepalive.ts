@@ -1,19 +1,21 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import type { RowDataPacket } from "mysql2";
 import { recordAudit } from "../audit";
 import { getDbPool } from "../db";
 import { getNumberSetting, getSetting } from "../settings";
-import { callEpayApi } from "./epay-api";
+import { callEpayApi, postEpayMapi } from "./epay-api";
 import { getEpayConfig } from "./epay-config";
-import { buildEpaySubmitUrl, EPAY_TEST_PREFIX, epayTypeOf, parseEpayOrderQuery } from "./epay-protocol";
+import { buildEpayMapiParams, EPAY_TEST_PREFIX, epayTypeOf, parseEpayMapiResponse, parseEpayOrderQuery } from "./epay-protocol";
 import { resolveChannel } from "./epay-test";
 
 /**
  * 易支付商户保活：渠道条款规定商户号连续 5 天没有账单会被封禁，未支付的「白账单」也算。
- * worker 定期检查，距上一张保活账单超过间隔就向网关下一笔 0.01 元的单（不打开收银台、不付款），
+ * worker 定期检查，距上一张保活账单超过间隔就通过 API 接口 mapi.php 下一笔 0.01 元的单（不付款），
  * 再用 act=order 确认网关确实记录了这笔单，确认后才写审计，否则下一轮重试。
+ * 不能用 submit.php：那是给浏览器跳转收银台的，服务器单独请求它渠道不会建单（实测 act=order 查不到）。
  * 开关与间隔在后台「支付管理 → 商户保活」调整（同时出现在系统设置的支付分组）。
  *
  * 单号用测试单前缀：万一有人付款，通知会落到测试单处理逻辑，查不到测试记录直接拒绝，不影响真实订单。
@@ -62,6 +64,15 @@ async function pickChannel(): Promise<{ id: number; name: string; provider: stri
   return row ? { id: Number(row.id), name: String(row.name), provider: String(row.provider), enabled: Boolean(row.is_enabled) } : null;
 }
 
+/** mapi.php 要求传发起方 IP；保活单由本站服务器发起，取回调域名解析出的地址，解析失败时退回本机地址。 */
+async function siteIp(notifyBase: string): Promise<string> {
+  try {
+    return (await lookup(new URL(notifyBase).hostname, { family: 4 })).address;
+  } catch {
+    return "127.0.0.1";
+  }
+}
+
 async function createKeepaliveBill(adminId: number | null): Promise<string> {
   const picked = await pickChannel();
   if (!picked) throw new Error("没有配置齐全（商户密钥 + 回调域名）的易支付渠道");
@@ -72,7 +83,7 @@ async function createKeepaliveBill(adminId: number | null): Promise<string> {
   if (Number(merchant.active) !== 1) throw new Error(`商户状态异常（active=${String(merchant.active)}），可能已被封禁，请联系渠道客服`);
 
   const outTradeNo = `${KEEPALIVE_PREFIX}${randomBytes(10).toString("hex").toUpperCase()}`;
-  const payUrl = buildEpaySubmitUrl({
+  const params = buildEpayMapiParams({
     gatewayUrl: channel.gatewayUrl,
     pid: channel.pid,
     key: channel.key,
@@ -82,15 +93,16 @@ async function createKeepaliveBill(adminId: number | null): Promise<string> {
     name: "AeraNexa 账户保活",
     notifyUrl: `${channel.notifyBase}/api/payments/epay/notify`,
     returnUrl: `${channel.notifyBase}/api/payments/epay/return`,
+    clientIp: await siteIp(channel.notifyBase),
   });
-  // submit.php 建单后跳转收银台；不跟随跳转，避免在上游支付通道也生成预下单。
+  let created: { tradeNo: string };
   try {
-    await fetch(payUrl, { redirect: "manual", signal: AbortSignal.timeout(10_000), cache: "no-store" });
+    created = parseEpayMapiResponse(await postEpayMapi(channel.gatewayUrl, params));
   } catch (error) {
-    throw new Error(`无法连接易支付网关：${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`网关下单失败：${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const order = await callEpayApi(channel.gatewayUrl, { act: "order", pid: channel.pid, key: channel.key, out_trade_no: outTradeNo });
+  const order = await callEpayApi(channel.gatewayUrl, { act: "order", pid: channel.pid, key: channel.key, trade_no: created.tradeNo });
   let tradeNo: string;
   try {
     tradeNo = parseEpayOrderQuery(order).tradeNo;

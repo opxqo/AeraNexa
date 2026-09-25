@@ -2257,6 +2257,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .epay-live-checks li > b { min-width: 60px; color: var(--v2-heading); font-weight: 600; }
 .epay-live-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
+/* 系统 · 数据迁移 */
+.backup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 22px; align-items: start; }
+.backup-card .v2-block-header h2 { display: flex; align-items: center; gap: 8px; }
+.backup-card .v2-block-header .admin-audit-note { margin-top: 6px; padding: 0; background: none; border: 0; }
+.backup-body { display: grid; gap: 16px; padding: 16px 20px 20px; }
+.backup-warning { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; color: #946b11; background: #fff8e1; border: 1px solid #f3dfa2; border-radius: 3px; font-size: 13px; line-height: 1.6; }
+.backup-warning svg { flex: none; margin-top: 3px; }
+.backup-label { margin: 0 0 8px; color: var(--v2-muted); font-size: 12px; }
+.backup-keys { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.backup-keys span { padding: 2px 8px; font-size: 12px; background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 3px; }
+.backup-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.backup-check input { margin-top: 3px; }
+.backup-action { justify-self: start; text-decoration: none; }
+.backup-error { display: flex; align-items: center; gap: 6px; margin: 0; }
+.backup-result { display: grid; gap: 14px; padding: 16px 20px 20px; border-top: 1px solid var(--v2-border); }
+.backup-env { display: grid; gap: 10px; }
+.backup-env-lines { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; line-height: 1.7; white-space: pre; background: var(--v2-header); border: 1px solid var(--v2-border); border-radius: 3px; }
+.backup-env .button { justify-self: start; }
+.backup-note { margin: 0; }
+.backup-tables summary { color: var(--v2-primary); font-size: 13px; cursor: pointer; }
+.backup-tables ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 20px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.backup-tables li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--v2-border); }
+[data-theme="dark"] .backup-warning { color: #e2c36b; background: rgba(226, 195, 107, .08); border-color: rgba(226, 195, 107, .25); }
+@media (max-width: 640px) { .backup-grid { grid-template-columns: 1fr; } }
+
 /* 支付管理 · 易支付商户保活 */
 .epay-keepalive .v2-block-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .epay-keepalive .v2-block-header h2 { display: flex; align-items: center; gap: 8px; }

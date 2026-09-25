@@ -4,7 +4,7 @@
  *
  * 协议要点（对照渠道开发文档 doc.html）：
  * - 签名：参数按键名升序，剔除 sign / sign_type / 空值，拼成 k=v&k=v 后直接追加商户密钥，取 md5 小写。
- * - 下单走页面跳转 submit.php；渠道明确不建议用 mapi.php。
+ * - 用户下单走页面跳转 submit.php；服务器后端自己下单（如商户保活）走 API 接口 mapi.php，直接返回渠道单号。
  * - 异步通知：GET 请求，字段 pid/trade_no/out_trade_no/type/name/money/trade_status/param/sign/sign_type，
  *   响应体必须是纯文本 success。
  * - return_url 跳转时携带同一套已签名参数，可作为通知丢失时的补偿入口。
@@ -85,6 +85,32 @@ export function buildEpaySubmitUrl(input: SubmitInput): string {
   url.searchParams.set("sign", epaySign(params, input.key));
   url.searchParams.set("sign_type", "MD5");
   return url.toString();
+}
+
+type MapiInput = Omit<SubmitInput, "returnUrl" | "clientIp"> & { clientIp: string; returnUrl?: string };
+
+/** API 接口支付（POST mapi.php）的已签名表单参数；用于服务器后端直接下单。 */
+export function buildEpayMapiParams(input: MapiInput): Record<string, string> {
+  const params: Record<string, string> = {
+    pid: input.pid,
+    type: input.type,
+    out_trade_no: input.outTradeNo,
+    notify_url: input.notifyUrl,
+    return_url: input.returnUrl ?? "",
+    name: input.name,
+    money: centsToYuan(input.amountCents),
+    clientip: input.clientIp,
+  };
+  if (!params.return_url) delete params.return_url;
+  return { ...params, sign: epaySign(params, input.key), sign_type: "MD5" };
+}
+
+/** 解析 mapi.php 的返回：code 为 1 时返回渠道单号，否则抛出渠道给的原因。 */
+export function parseEpayMapiResponse(body: Record<string, unknown>): { tradeNo: string } {
+  if (Number(body.code) !== 1) throw new Error(String(body.msg ?? "渠道下单失败"));
+  const tradeNo = String(body.trade_no ?? "").trim();
+  if (!tradeNo) throw new Error("渠道下单成功但未返回订单号");
+  return { tradeNo };
 }
 
 export type EpayNotice = {

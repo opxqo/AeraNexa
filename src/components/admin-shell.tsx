@@ -9,6 +9,7 @@ import {
   Box20Regular,
   ClipboardTask20Regular,
   DataUsage20Regular,
+  DatabaseArrowRight20Regular,
   DocumentCheckmark20Regular,
   Home20Regular,
   Key20Regular,
@@ -56,6 +57,7 @@ const adminIconByKey: Record<AdminIcon, React.ComponentType<{ fontSize?: number;
   mail: Mail20Regular,
   settings: Settings20Regular,
   logs: DocumentCheckmark20Regular,
+  backup: DatabaseArrowRight20Regular,
 };
 
 function AdminShellInner({ children, userEmail }: { children: React.ReactNode; userEmail: string }) {

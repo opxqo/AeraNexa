@@ -39,6 +39,8 @@ export type AuditAction =
   | "admin.sync_failures_retried"
   | "admin.settings_saved"
   | "admin.logs_exported"
+  | "admin.backup_exported"
+  | "admin.backup_restored"
   | "admin.ticket_updated"
   | "admin.ticket_replied"
   | "admin.order_status_changed"
