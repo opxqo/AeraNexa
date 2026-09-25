@@ -48,6 +48,7 @@ die()  { printf '\n%s✗ %s%s\n' "$C_RED" "$*" "$C_RESET" >&2; exit 1; }
 
 on_error() {
   local code=$? line=$1
+  (( BASH_SUBSHELL == 0 )) || return 0
   printf '\n%s✗ 第 %d 步「%s」失败（退出码 %d，脚本第 %d 行）。%s\n' "$C_RED" "$STEP_NO" "$CURRENT_STEP" "$code" "$line" "$C_RESET" >&2
   printf '  完整日志：%s。修好问题后重新运行脚本即可，已完成的步骤会自动跳过。\n' "$LOG_FILE" >&2
 }
@@ -118,6 +119,8 @@ choose() {
 app_home() { getent passwd "$APP_USER" | cut -d: -f6; }
 run_as_app() { runuser -u "$APP_USER" -- env HOME="$(app_home)" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 PATH="$PATH" "$@"; }
 in_app() { (cd "$INSTALL_DIR" && run_as_app "$@"); }
+# 仓库属于应用用户；root 直接跑 git 会被 safe.directory 检查拒绝（dubious ownership），所以一律以应用用户执行
+git_app() { run_as_app git -C "$INSTALL_DIR" "$@"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 apt_install() { logged "安装 $*" apt-get install -y -qq --no-install-recommends "$@"; }
 rand_hex() { openssl rand -hex "$1"; }
@@ -381,18 +384,18 @@ setup_code() {
     ok "已创建系统用户 $APP_USER"
   fi
   if [[ -d $INSTALL_DIR/.git ]]; then
-    local origin; origin=$(git -C "$INSTALL_DIR" config --get remote.origin.url || true)
+    local origin; origin=$(git_app config --get remote.origin.url || true)
     [[ ${origin%.git} == "${REPO_URL%.git}" ]] || die "$INSTALL_DIR 已是其他仓库（$origin），请换一个安装目录"
     chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
-    in_app git pull --ff-only origin "$BRANCH" >/dev/null
-    ok "代码已更新到最新（$(git -C "$INSTALL_DIR" log -1 --format='%h %s')）"
+    git_app pull --ff-only origin "$BRANCH" >/dev/null
+    ok "代码已更新到最新（$(git_app log -1 --format='%h %s')）"
   else
     if [[ -d $INSTALL_DIR && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
       die "$INSTALL_DIR 已存在且不是空目录，请换一个安装目录"
     fi
     mkdir -p "$INSTALL_DIR" && chown "$APP_USER:$APP_USER" "$INSTALL_DIR"
     run_as_app git clone -q --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
-    ok "代码已下载到 $INSTALL_DIR（$(git -C "$INSTALL_DIR" log -1 --format='%h %s')）"
+    ok "代码已下载到 $INSTALL_DIR（$(git_app log -1 --format='%h %s')）"
   fi
 
   local pm; pm=$(grep -oP '"packageManager":\s*"pnpm@\K[^"]+' "$INSTALL_DIR/package.json")
@@ -607,9 +610,9 @@ EOF
 run_update() {
   step "更新代码"
   chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
-  local before; before=$(git -C "$INSTALL_DIR" rev-parse --short HEAD)
-  in_app git pull --ff-only origin "$BRANCH" >/dev/null
-  ok "代码：$before → $(git -C "$INSTALL_DIR" log -1 --format='%h %s')"
+  local before; before=$(git_app rev-parse --short HEAD)
+  git_app pull --ff-only origin "$BRANCH" >/dev/null
+  ok "代码：$before → $(git_app log -1 --format='%h %s')"
   local pm; pm=$(grep -oP '"packageManager":\s*"pnpm@\K[^"]+' "$INSTALL_DIR/package.json")
   in_app corepack prepare "pnpm@$pm" --activate >/dev/null
   logged "安装依赖" in_app pnpm install --frozen-lockfile
@@ -622,8 +625,11 @@ run_update() {
 
 # ============================================================================= main
 main() {
-  mkdir -p "$(dirname "$LOG_FILE")"
-  exec > >(tee -a "$LOG_FILE") 2>&1
+  [[ "$(uname -s)" == Linux ]] || die "这个脚本要在 Linux 服务器上运行（当前是 $(uname -s)），请先 SSH 登录服务器"
+  [[ $EUID -eq 0 ]] || die "请用 root 运行（先执行 sudo -i）"
+  mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null && touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/aeranexa-install.log"
+  # 进程替换里的 tee 不继承 ERR 陷阱，否则它退出时会误报「第 0 步失败」
+  exec > >(trap - ERR; tee -a "$LOG_FILE") 2>&1
   printf '%s AeraNexa 安装脚本  %s%s\n' "$C_BOLD" "$(date '+%F %T')" "$C_RESET"
   preflight
   collect
