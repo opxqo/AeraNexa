@@ -525,10 +525,55 @@ restore_data() {
   ok "数据已恢复，旧面板的密钥已合并进 .env.local"
 }
 
+# 编译产物轮换：.next-a / .next-b 两个目录交替使用，线上用哪个记在 .env.local 的 NEXT_DIST_DIR。
+# 编译总是写进「没在用」的那个，成功后才切换，所以编译期间线上网站完全不受影响；编译失败什么都不切。
+# 不能编译完再改名：Next.js 会把编译目录名写死进路由模块（distDir），运行时的目录名必须和编译时一致。
+DIST_SLOTS=(.next-a .next-b)
+active_dist() { local d; d=$(env_get NEXT_DIST_DIR); echo "${d:-.next}"; }
+
 build_app() {
   step "编译网站（约 1–3 分钟）"
-  logged "编译" in_app pnpm build
-  ok "编译完成"
+  PREV_DIST=$(active_dist)
+  local target=${DIST_SLOTS[0]}
+  [[ $PREV_DIST == "$target" ]] && target=${DIST_SLOTS[1]}
+  rm -rf "${INSTALL_DIR:?}/$target"
+  logged "编译" in_app env NEXT_DIST_DIR="$target" pnpm build
+  restore_generated_files
+  env_set NEXT_DIST_DIR "$target"
+  chown "$APP_USER:$APP_USER" "$(env_file)" && chmod 600 "$(env_file)"
+  if [[ -d $INSTALL_DIR/$PREV_DIST ]]; then
+    ok "编译完成（$target），重启时切换；上一版保留在 $PREV_DIST，可回滚"
+  else
+    ok "编译完成（$target）"
+  fi
+}
+
+# 用非默认编译目录时，next build 会把目录名写进受 git 管理的 next-env.d.ts 和 tsconfig.json。
+# 它们只影响类型检查、不影响运行，还原掉，否则下次 git pull 会因为本地有改动而失败
+restore_generated_files() {
+  git_app checkout -- next-env.d.ts tsconfig.json 2>/dev/null || true
+}
+
+# 网站用新编译结果起不来时，切回上一版并重启
+rollback_dist() {
+  [[ -n ${PREV_DIST:-} && $PREV_DIST != "$(active_dist)" && -d $INSTALL_DIR/$PREV_DIST ]] || return 1
+  warn "新版本没有正常启动，自动回滚到上一版（$PREV_DIST）…"
+  env_set NEXT_DIST_DIR "$PREV_DIST"
+  systemctl restart aeranexa-web
+  local code
+  if code=$(wait_http http://127.0.0.1:3000 90); then return 0; fi
+  warn "回滚后网站仍未恢复（返回 $code）"
+  return 1
+}
+
+# 切换成功后只保留「当前版」和「上一版」，删掉更早的编译目录
+prune_dists() {
+  local active dir; active=$(active_dist)
+  for dir in .next "${DIST_SLOTS[@]}"; do
+    [[ $dir == "$active" || $dir == "${PREV_DIST:-}" ]] && continue
+    [[ -d $INSTALL_DIR/$dir ]] && rm -rf "${INSTALL_DIR:?}/$dir"
+  done
+  return 0
 }
 
 # ============================================================================= 9. systemd
@@ -547,8 +592,12 @@ setup_services() {
   local code
   if ! code=$(wait_http http://127.0.0.1:3000 90); then
     journalctl -u aeranexa-web -n 40 --no-pager || true
+    if rollback_dist; then
+      die "新版本没有正常启动，已自动回滚到上一版（$PREV_DIST），网站正常运行。新版本的报错见上方日志"
+    fi
     die "网站没有正常启动（本地访问返回 $code），日志见上方"
   fi
+  prune_dists
   sleep 2
   for svc in "${services[@]}"; do
     if systemctl is-active -q "aeranexa-$svc"; then ok "aeranexa-$svc 运行中"; else
@@ -677,6 +726,7 @@ run_update() {
   step "更新代码"
   chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
   local before; before=$(git_app rev-parse --short HEAD)
+  restore_generated_files
   git_app pull --ff-only origin "$BRANCH" >/dev/null
   ok "代码：$before → $(git_app log -1 --format='%h %s')"
   local pm; pm=$(grep -oP '"packageManager":\s*"pnpm@\K[^"]+' "$INSTALL_DIR/package.json")
@@ -687,6 +737,9 @@ run_update() {
   BOT=n
   setup_services
   printf '\n%s  更新完成%s（数据库表结构会在网站启动时自动迁移）\n' "$C_BOLD$C_GREEN" "$C_RESET"
+  if [[ -n ${PREV_DIST:-} && -d $INSTALL_DIR/$PREV_DIST ]]; then
+    printf '  发现问题需要回滚：把 %s 里的 NEXT_DIST_DIR 改成 %s，再执行 systemctl restart aeranexa-web\n' "$(env_file)" "$PREV_DIST"
+  fi
 }
 
 run_import() {
@@ -752,4 +805,5 @@ main() {
   summary
 }
 
-main "$@"
+# 被 source 时只加载函数（便于测试），直接运行时才执行
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
