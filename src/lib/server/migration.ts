@@ -18,6 +18,8 @@ import { getDbPool } from "./db";
 const CODE_PREFIX = "anx1.";
 export const MIGRATION_TOKEN_TTL_MINUTES = 30;
 export const MIGRATION_EXPORT_PATH = "/api/migration/export";
+/** 新面板把自己数据库的指纹放在这个请求头里；旧面板发现和自己相同就拒绝（见 databaseFingerprint）。 */
+export const DATABASE_FINGERPRINT_HEADER = "x-aeranexa-database";
 /** 连上旧面板并收到响应头的最长等待；之后的数据传输不限时。 */
 const CONNECT_TIMEOUT_MS = 30_000;
 
@@ -40,6 +42,24 @@ export function normalizePanelOrigin(raw: string): string {
   return url.origin;
 }
 
+/**
+ * 当前连接的数据库指纹：MySQL 实例（server_uuid，MariaDB 没有时退回主机名 + 端口）+ 库名。
+ * 用来识别「把迁移码粘贴回同一个面板」：恢复会先清空库，而导出还在边读边发，读到的就是空表，会丢数据。
+ */
+export async function databaseFingerprint(): Promise<string> {
+  const pool = getDbPool();
+  let instance: string;
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>("SELECT @@server_uuid AS id");
+    instance = String(rows[0]?.id ?? "");
+  } catch {
+    const [rows] = await pool.query<RowDataPacket[]>("SELECT CONCAT(@@hostname, ':', @@port) AS id");
+    instance = String(rows[0]?.id ?? "");
+  }
+  const [dbRows] = await pool.query<RowDataPacket[]>("SELECT DATABASE() AS db");
+  return createHash("sha256").update(`${instance}/${String(dbRows[0]?.db ?? "")}`).digest("hex").slice(0, 32);
+}
+
 export function encodeMigrationCode(origin: string, token: string): string {
   return CODE_PREFIX + Buffer.from(JSON.stringify({ u: origin, t: token }), "utf8").toString("base64url");
 }
@@ -59,7 +79,8 @@ export function parseMigrationCode(code: string): { origin: string; token: strin
   return { origin: normalizePanelOrigin(payload.u), token: payload.t };
 }
 
-export async function createMigrationCode(adminId: number, options: { includeLogs: boolean; origin: string }) {
+/** adminId 为 null 表示在服务器命令行生成（安装脚本的「生成迁移码」）。 */
+export async function createMigrationCode(adminId: number | null, options: { includeLogs: boolean; origin: string }) {
   const origin = normalizePanelOrigin(options.origin);
   const token = randomBytes(32).toString("base64url");
   await getDbPool().execute(
@@ -111,7 +132,7 @@ export async function openRemoteBackup(code: string): Promise<Readable> {
   let response: Response;
   try {
     response = await fetch(new URL(MIGRATION_EXPORT_PATH, origin), {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, [DATABASE_FINGERPRINT_HEADER]: await databaseFingerprint() },
       redirect: "error",
       cache: "no-store",
       signal: controller.signal,
@@ -127,6 +148,7 @@ export async function openRemoteBackup(code: string): Promise<Readable> {
     let message = text.slice(0, 200);
     try { message = (JSON.parse(text) as { error?: string }).error ?? message; } catch { /* 非 JSON 时用原文 */ }
     if (response.status === 404) message = "旧面板没有在线迁移接口，请先把旧面板更新到最新版本";
+    if (response.status === 409) throw new Error(message);
     throw new Error(`旧面板拒绝迁移（HTTP ${response.status}）：${message || "未知原因"}`);
   }
   return Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>);

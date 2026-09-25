@@ -213,19 +213,27 @@ const WORKER_LOCK = "aeranexa:node-worker";
  * 用备份覆盖当前数据库：清空除 schema_migrations 外的所有表，再写入备份里的记录。
  * 先校验文件头再动数据；worker 在运行时拒绝执行，避免恢复中途被它写入。
  */
-export async function restoreBackup(input: Readable, options: { onMeta?: (meta: BackupMeta) => void } = {}): Promise<RestoreResult> {
-  const lines = createInterface({ input: input.pipe(createGunzip()), crlfDelay: Infinity })[Symbol.asyncIterator]();
-  const first = await lines.next();
-  const meta = parseMeta(first.done ? undefined : first.value);
-  // 命令行要拿备份里的完整 env 写 .env.local；网页端只返回 envDiff，不把整份密钥带给浏览器
-  options.onMeta?.(meta);
-
+export async function restoreBackup(
+  input: Readable | (() => Promise<Readable>),
+  options: { onMeta?: (meta: BackupMeta) => void } = {},
+): Promise<RestoreResult> {
   const connection = await getDbPool().getConnection();
   let locked = false;
   try {
+    // 先拿 worker 主锁，再打开数据源：在线迁移的迁移码一连接就作废，
+    // 若先连接再发现 worker 在跑，迁移码就白白浪费了。所以数据源可以传一个「用时再打开」的函数。
     const [lockRows] = await connection.query<RowDataPacket[]>("SELECT GET_LOCK(?, 0) AS acquired", [WORKER_LOCK]);
     locked = Number(lockRows[0]?.acquired) === 1;
-    if (!locked) throw new Error("worker 正在运行，请先停止 worker（以及其他实例）再恢复");
+    if (!locked) {
+      throw new Error("worker 正在运行，请先在服务器上执行 systemctl stop aeranexa-worker aeranexa-bot（其他部署方式停掉 worker 服务）后再试；数据未改动，迁移码也还没有使用");
+    }
+
+    const source = typeof input === "function" ? await input() : input;
+    const lines = createInterface({ input: source.pipe(createGunzip()), crlfDelay: Infinity })[Symbol.asyncIterator]();
+    const first = await lines.next();
+    const meta = parseMeta(first.done ? undefined : first.value);
+    // 命令行要拿备份里的完整 env 写 .env.local；网页端只返回 envDiff，不把整份密钥带给浏览器
+    options.onMeta?.(meta);
 
     const existing = await listTables(connection);
     const columns = new Map<string, Set<string>>();

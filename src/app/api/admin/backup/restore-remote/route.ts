@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   const code = typeof body?.code === "string" ? body.code : "";
   try {
     const { origin } = parseMigrationCode(code);
-    const result = await restoreBackup(await openRemoteBackup(code));
+    const result = await restoreBackup(() => openRemoteBackup(code));
     // 写在恢复后的库里；执行者属于新库旧数据，恢复后可能不存在，只记在 context 里。
     await recordAudit({
       action: "admin.backup_restored", resourceType: "backup", request,

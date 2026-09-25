@@ -11,9 +11,9 @@
 # 支持系统：Ubuntu 22.04 / 24.04、Debian 12（x86_64 / arm64），需要 root。
 #
 # 无人值守（测试 / 自动化）：预先设置环境变量即可跳过对应提问，AERANEXA_YES=1 时其余提问取默认值。
-#   AERANEXA_MODE=install|restore|update  AERANEXA_DOMAIN  AERANEXA_DIR  AERANEXA_DB=local|external
+#   AERANEXA_MODE=install|restore|update|import|code  AERANEXA_DOMAIN  AERANEXA_DIR  AERANEXA_DB=local|external
 #   AERANEXA_DB_HOST/PORT/NAME/USER/PASSWORD（外部数据库）  AERANEXA_BOT=y|n  AERANEXA_BACKUP（迁移码或备份文件）
-#   AERANEXA_HTTPS=auto|force|skip  AERANEXA_REPO  AERANEXA_BRANCH
+#   AERANEXA_HTTPS=auto|force|skip  AERANEXA_ORIGIN（生成迁移码时本站地址）  AERANEXA_REPO  AERANEXA_BRANCH
 # =============================================================================
 set -Eeuo pipefail
 
@@ -235,15 +235,35 @@ collect() {
   [[ -n $EXISTING_DIR ]] && default_mode=3
   choose MODE "要做什么" "$default_mode" \
     "install|全新安装" \
-    "restore|从旧面板迁移（旧面板「数据迁移」页生成的迁移码，或导出的备份文件）" \
-    "update|更新已有部署（拉代码 → 装依赖 → 编译 → 重启）"
+    "restore|新服务器：安装并从旧面板迁移（迁移码或备份文件）" \
+    "update|更新已有部署（拉代码 → 装依赖 → 编译 → 重启）" \
+    "import|本机已部署：导入旧面板的数据（覆盖本机数据）" \
+    "code|本机作为旧面板：生成迁移码，给新服务器用"
 
-  if [[ $MODE == update ]]; then
-    ask DIR "安装目录" "${EXISTING_DIR:-$DEFAULT_DIR}"
-    INSTALL_DIR=$DIR
-    [[ -d $INSTALL_DIR/.git && -f $INSTALL_DIR/.env.local ]] || die "$INSTALL_DIR 不是已有部署（缺少 .git 或 .env.local）"
-    return
-  fi
+  case $MODE in
+    update|import|code)
+      ask DIR "安装目录" "${EXISTING_DIR:-$DEFAULT_DIR}"
+      INSTALL_DIR=${DIR%/}
+      [[ -d $INSTALL_DIR/.git && -f $INSTALL_DIR/.env.local ]] || die "$INSTALL_DIR 不是已有部署（缺少 .git 或 .env.local）。新服务器请选「全新安装」或「安装并从旧面板迁移」"
+      ;;
+  esac
+  case $MODE in
+    update) return ;;
+    import)
+      ask_restore_source
+      step "确认"
+      if [[ $BACKUP == anx1.* ]]; then info "来源：旧面板 $SOURCE_ORIGIN（在线迁移）"; else info "来源：备份文件 $BACKUP"; fi
+      info "目标：本机 $INSTALL_DIR"
+      warn "本机数据库会被清空后写入旧面板的数据；本机的 worker / bot 会先停止，完成后自动重启。"
+      confirm "确认导入" y || die "已取消"
+      return ;;
+    code)
+      local detected; detected=$(caddy_site_domain)
+      ask ORIGIN "本站对外地址（新服务器会连接这个地址，必须是 https）" "${detected:+https://$detected}"
+      [[ $ORIGIN =~ ^https:// ]] || die "本站对外地址必须以 https:// 开头（迁移数据含全部密钥，不能明文传输）"
+      if confirm "迁移码是否包含日志（审计日志、运行日志，传输量会大很多）" n; then CODE_LOGS=1; else CODE_LOGS=0; fi
+      return ;;
+  esac
 
   [[ -n $EXISTING_DIR ]] && warn "这台机器已部署过。继续会在原有基础上重新配置：已有密钥保留，数据库数据不会删除（恢复模式除外）。"
 
@@ -273,17 +293,7 @@ collect() {
   [[ -n ${AERANEXA_BOT:-} ]] && BOT=${AERANEXA_BOT:0:1}
 
   if [[ $MODE == restore ]]; then
-    info "推荐在线迁移：在旧面板后台「数据迁移」页点「生成迁移码」，复制后粘贴到这里（旧面板需先更新到最新版）。"
-    ask BACKUP "迁移码（anx1. 开头），或本机上的备份文件路径" ""
-    BACKUP=$(printf '%s' "$BACKUP" | tr -d '[:space:]')
-    if [[ $BACKUP == anx1.* ]]; then
-      SOURCE_ORIGIN=$(migration_code_origin "$BACKUP")
-      [[ -n $SOURCE_ORIGIN ]] || die "迁移码不完整，请从旧面板重新复制"
-    else
-      [[ -f $BACKUP ]] || die "找不到备份文件：$BACKUP"
-      gzip -t "$BACKUP" 2>/dev/null || die "备份文件损坏或不是 gzip 文件：$BACKUP"
-      BACKUP=$(readlink -f "$BACKUP")
-    fi
+    ask_restore_source
   fi
 
   step "确认"
@@ -296,6 +306,27 @@ collect() {
   info "Telegram Bot：$([[ $BOT == y ]] && echo 启用 || echo 不启用)"
   [[ $MODE == restore ]] && warn "恢复会清空目标数据库后写入备份数据。"
   confirm "确认开始" y || die "已取消"
+}
+
+# 迁移来源：迁移码（在线）或备份文件
+ask_restore_source() {
+  info "迁移码的获取：在旧服务器上运行本脚本选「生成迁移码」，或在旧面板后台「数据迁移」页点「生成迁移码」（旧面板需先更新到最新版）。"
+  ask BACKUP "迁移码（anx1. 开头），或本机上的备份文件路径" ""
+  BACKUP=$(printf '%s' "$BACKUP" | tr -d '[:space:]')
+  if [[ $BACKUP == anx1.* ]]; then
+    SOURCE_ORIGIN=$(migration_code_origin "$BACKUP")
+    [[ -n $SOURCE_ORIGIN ]] || die "迁移码不完整，请从旧面板重新复制"
+  else
+    [[ -f $BACKUP ]] || die "找不到备份文件：$BACKUP"
+    gzip -t "$BACKUP" 2>/dev/null || die "备份文件损坏或不是 gzip 文件：$BACKUP"
+    BACKUP=$(readlink -f "$BACKUP")
+  fi
+}
+
+# Caddyfile 里本脚本管理的站点域名（生成迁移码时作为本站地址的默认值）
+caddy_site_domain() {
+  [[ -f /etc/caddy/Caddyfile ]] || return 0
+  awk -v b="$CADDY_BEGIN" -v e="$CADDY_END" '$0 == b { on = 1; next } $0 == e { on = 0 } on && $2 == "{" { print $1; exit }' /etc/caddy/Caddyfile
 }
 
 # ============================================================================= 3. swap
@@ -457,29 +488,41 @@ fill_secrets() {
 # ============================================================================= 8. 数据与编译
 prepare_data() {
   if [[ $MODE == restore ]]; then
-    # 恢复要求 worker 没在运行（否则会拒绝执行）
-    systemctl stop aeranexa-worker aeranexa-bot 2>/dev/null || true
-    if [[ $BACKUP == anx1.* ]]; then
-      step "从旧面板在线迁移数据"
-      # 迁移码走环境变量，不出现在进程列表和日志里
-      in_app env AERANEXA_MIGRATION_CODE="$BACKUP" pnpm -s backup:restore --from-env --yes
-    else
-      step "从备份文件恢复数据"
-      local copy
-      copy="$INSTALL_DIR/.restore-$(date +%s).ndjson.gz"
-      install -o "$APP_USER" -g "$APP_USER" -m 600 "$BACKUP" "$copy"
-      in_app pnpm -s backup:restore "$copy" --yes
-      rm -f "$copy"
-    fi
-    # 备份里缺的密钥（例如旧站没配过）补齐，已有的不动
-    fill_secrets
-    chown "$APP_USER:$APP_USER" "$(env_file)" && chmod 600 "$(env_file)"
-    ok "数据已恢复，旧面板的密钥已合并进 .env.local"
+    restore_data
   else
     step "初始化数据库表"
     logged "建表" in_app pnpm -s db:migrate
     ok "数据表已就绪"
   fi
+}
+
+restore_data() {
+  # 恢复要求 worker 没在运行（否则会拒绝执行）；记下原本在跑的服务，失败时拉起来，不让它们一直停着
+  local svc stopped=()
+  for svc in aeranexa-worker aeranexa-bot; do
+    if systemctl is-active -q "$svc" 2>/dev/null; then systemctl stop "$svc"; stopped+=("$svc"); fi
+  done
+  local ok_restore=1
+  if [[ $BACKUP == anx1.* ]]; then
+    step "从旧面板在线迁移数据"
+    # 迁移码走环境变量，不出现在进程列表和日志里
+    in_app env AERANEXA_MIGRATION_CODE="$BACKUP" pnpm -s backup:restore --from-env --yes || ok_restore=0
+  else
+    step "从备份文件恢复数据"
+    local copy
+    copy="$INSTALL_DIR/.restore-$(date +%s).ndjson.gz"
+    install -o "$APP_USER" -g "$APP_USER" -m 600 "$BACKUP" "$copy"
+    in_app pnpm -s backup:restore "$copy" --yes || ok_restore=0
+    rm -f "$copy"
+  fi
+  if (( ! ok_restore )); then
+    (( ${#stopped[@]} )) && systemctl start "${stopped[@]}" && info "已重新启动：${stopped[*]}"
+    die "数据没有导入完成（原因见上方）。迁移码无效、连不上旧面板这类问题发生在写入之前，本机数据未改动；传输中途断开的话请重新生成迁移码再导入一次"
+  fi
+  # 备份里缺的密钥（例如旧站没配过）补齐，已有的不动
+  fill_secrets
+  chown "$APP_USER:$APP_USER" "$(env_file)" && chmod 600 "$(env_file)"
+  ok "数据已恢复，旧面板的密钥已合并进 .env.local"
 }
 
 build_app() {
@@ -646,6 +689,41 @@ run_update() {
   printf '\n%s  更新完成%s（数据库表结构会在网站启动时自动迁移）\n' "$C_BOLD$C_GREEN" "$C_RESET"
 }
 
+run_import() {
+  restore_data
+  BOT=n
+  setup_services
+  printf '\n%s  导入完成%s\n\n' "$C_BOLD$C_GREEN" "$C_RESET"
+  printf '  · 用%s旧面板的管理员账号%s重新登录（本机原来的账号和登录状态已被覆盖）。\n' "$C_BOLD" "$C_RESET"
+  printf '  · 确认数据无误后，停掉旧服务器的 worker，避免两边同时改 3x-ui：systemctl stop aeranexa-worker\n'
+  printf '  · 如果域名要切到这台机器，记得同时改易支付「回调域名」和系统设置里的订阅域名。\n'
+}
+
+run_code() {
+  if ! grep -q '"backup:code"' "$INSTALL_DIR/package.json"; then
+    warn "本机面板版本太旧，还不支持在线迁移。"
+    confirm "先更新到最新版本再生成迁移码" y || die "已取消"
+    run_update
+  fi
+  step "生成迁移码"
+  # 确保迁移码表已建好（旧版本升级后网站若还没重启过，表可能还不存在）
+  logged "检查数据表" in_app pnpm -s db:migrate
+  local args=(--origin "$ORIGIN") out code
+  [[ ${CODE_LOGS:-0} == 1 ]] && args+=(--logs)
+  out=$(in_app pnpm -s backup:code "${args[@]}" 2>&1) || { printf '%s\n' "$out" >&2; die "生成迁移码失败"; }
+  code=$(printf '%s\n' "$out" | grep -o 'anx1\.[A-Za-z0-9_-]*' | head -1)
+  [[ -n $code ]] || { printf '%s\n' "$out" >&2; die "没有拿到迁移码"; }
+  ok "已生成（30 分钟内有效，只能使用一次；新服务器会连接 $ORIGIN）"
+  # 迁移码只打到终端，不写进安装日志
+  local target=/dev/stdout
+  [[ $HAS_TTY == 1 ]] && target=/dev/tty
+  {
+    printf '\n  %s迁移码（完整复制这一整行）：%s\n\n%s\n\n' "$C_BOLD" "$C_RESET" "$code"
+    printf '  到新服务器上运行本脚本，选「安装并从旧面板迁移」（新机器）或「导入旧面板的数据」（已部署），粘贴即可。\n'
+    printf '  迁移码等同于整站数据的一次性下载权限，只发给自己；传输中断的话重新生成一个。\n'
+  } >"$target"
+}
+
 # ============================================================================= main
 main() {
   [[ "$(uname -s)" == Linux ]] || die "这个脚本要在 Linux 服务器上运行（当前是 $(uname -s)），请先 SSH 登录服务器"
@@ -657,7 +735,11 @@ main() {
   printf '%s AeraNexa 安装脚本  %s%s\n' "$C_BOLD" "$(date '+%F %T')" "$C_RESET"
   preflight
   collect
-  if [[ $MODE == update ]]; then run_update; return; fi
+  case $MODE in
+    update) run_update; return ;;
+    import) run_import; return ;;
+    code) run_code; return ;;
+  esac
   ensure_swap
   install_packages
   setup_database

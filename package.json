@@ -13,6 +13,7 @@
     "db:create-admin": "node --env-file-if-exists=.env.local scripts/create-admin.mjs",
     "backup:export": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup.mjs export",
     "backup:restore": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup.mjs restore",
+    "backup:code": "node --env-file-if-exists=.env.local --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup.mjs code",
     "start": "node --env-file-if-exists=.env.local scripts/migrate-database.mjs && NODE_ENV=production node --env-file-if-exists=.env.local --import ./scripts/ts-register.mjs scripts/web-server.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

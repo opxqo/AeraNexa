@@ -5,6 +5,7 @@
  *   pnpm backup:restore <文件> [--yes] [--env-file 路径]
  *   pnpm backup:restore --from <迁移码> [--yes] [--env-file 路径]   # 直接从旧面板在线拉取
  *   AERANEXA_MIGRATION_CODE=<迁移码> pnpm backup:restore --from-env …   # 同上，迁移码不出现在命令行里
+ *   pnpm backup:code --origin https://旧面板域名 [--logs]              # 本机作为旧面板，生成一次性迁移码
  *
  * restore 会先建库建表，再清空当前库写入备份，最后把备份里的密钥合并进 .env.local（默认）。
  * 文件不加密：拿到备份等于拿到整站，用完请删除。
@@ -96,7 +97,8 @@ async function runRestore() {
 
   await import("./migrate-database.mjs");
   if (code) console.log(`正在从 ${source} 拉取数据…`);
-  const input = code ? await migration.openRemoteBackup(code) : createReadStream(file);
+  // 在线迁移传「用时再打开」的函数：确认 worker 已停之后才连接旧面板，避免迁移码白白作废
+  const input = code ? () => migration.openRemoteBackup(code) : createReadStream(file);
   let env = {};
   const result = await backup.restoreBackup(input, { onMeta: (meta) => { env = meta.env; } });
   const total = result.tables.reduce((sum, item) => sum + item.rows, 0);
@@ -111,10 +113,22 @@ async function runRestore() {
   console.log("完成。请重启 web / worker / bot；托管平台（如 Zeabur）请把备份里的密钥设到服务的环境变量中。");
 }
 
+async function runCode() {
+  const origin = option("--origin");
+  if (!origin) throw new Error("用法：pnpm backup:code --origin https://本站对外地址 [--logs]");
+  const { recordAudit } = await import(new URL("../src/lib/server/audit.ts", import.meta.url).href);
+  const created = await migration.createMigrationCode(null, { origin, includeLogs: flag("--logs") });
+  await recordAudit({ action: "admin.migration_token_created", resourceType: "migration", context: { origin: created.origin, includeLogs: flag("--logs"), source: "cli" } });
+  const expires = new Date(Date.now() + created.expiresInSeconds * 1000).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit" });
+  console.log(`迁移码（${expires} 前有效，只能使用一次；新面板将连接 ${created.origin}）：`);
+  console.log(created.code);
+}
+
 try {
   if (command === "export") await runExport();
+  else if (command === "code") await runCode();
   else if (command === "restore") await runRestore();
-  else throw new Error("用法：backup.mjs export [--logs] [-o 文件] | restore <文件> | restore --from <迁移码>  [--yes] [--env-file 路径]");
+  else throw new Error("用法：backup.mjs export [--logs] [-o 文件] | restore <文件> | restore --from <迁移码>  [--yes] [--env-file 路径] | code --origin <地址> [--logs]");
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
