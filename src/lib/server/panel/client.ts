@@ -150,8 +150,18 @@ export function isAllowedPanelEndpoint(method: string, path: string): boolean {
   return ALLOWED_ENDPOINTS.some((rule) => rule.method === method && rule.pattern.test(bare));
 }
 
+/** 仅限封闭联调：只有显式指定固定指纹的 3x-node 目标才允许，自营 3x-ui 的全局配置路径不可用。 */
+const LAB_ONLY_ENDPOINTS: ReadonlyArray<{ method: "GET" | "POST"; pattern: RegExp }> = [
+  { method: "POST", pattern: /^inbounds\/add$/ },
+];
+
+export function isAllowedLabEndpoint(method: string, path: string): boolean {
+  const bare = path.replace(/^\/+/, "").split("?")[0];
+  return LAB_ONLY_ENDPOINTS.some((rule) => rule.method === method && rule.pattern.test(bare));
+}
+
 async function panelRequest<T>(method: "GET" | "POST", path: string, body?: unknown, target?: PinnedPanelTarget): Promise<T> {
-  if (!isAllowedPanelEndpoint(method, path)) {
+  if (!isAllowedPanelEndpoint(method, path) && !(target && isAllowedLabEndpoint(method, path))) {
     throw new PanelError("forbidden", `节点域不允许调用 3x-ui 接口：${method} ${path}`);
   }
   const config = target ?? await readConfig();
@@ -254,4 +264,9 @@ export async function detachClient(email: string, inboundIds: number[], target?:
 
 export async function deleteClient(email: string, target?: PinnedPanelTarget): Promise<void> {
   await panelRequest("POST", `clients/del/${encodeURIComponent(email)}`, undefined, target);
+}
+
+/** 联调专用：在隔离的 3x-node 上创建一个无加密 VLESS/TCP 入站，仅用于客户端与流量测试。 */
+export async function addLabVlessInbound(inbound: Record<string, unknown>, target: PinnedPanelTarget): Promise<void> {
+  await panelRequest("POST", "inbounds/add", inbound, target);
 }

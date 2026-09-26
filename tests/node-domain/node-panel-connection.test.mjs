@@ -7,7 +7,7 @@ import { join } from "node:path";
 import https from "node:https";
 import { after, before, test } from "node:test";
 import { X509Certificate } from "node:crypto";
-import { addClient, deleteClient, detachClient, getServerStatus, isAllowedPanelEndpoint, listRawInbounds, normalizeCertificateSha256, updateClient } from "../../src/lib/server/panel/client.ts";
+import { addClient, deleteClient, detachClient, getServerStatus, addLabVlessInbound, isAllowedLabEndpoint, isAllowedPanelEndpoint, listRawInbounds, normalizeCertificateSha256, updateClient } from "../../src/lib/server/panel/client.ts";
 import { normalizeNodeBaseUrl } from "../../src/lib/server/panel/node-connections.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "an-node-panel-"));
@@ -74,4 +74,13 @@ test("wrong certificate and wrong token fail closed", async () => {
 
 test("slow endpoints stop at the configured timeout", async () => {
   await assert.rejects(getServerStatus({ ...target, token: "slow-test-token-12345678901234567890", timeoutMs: 30 }), /超时/);
+});
+
+test("inbound creation is lab-only and never opens on the global path", async () => {
+  assert.equal(isAllowedPanelEndpoint("POST", "inbounds/add"), false);
+  assert.equal(isAllowedLabEndpoint("POST", "inbounds/add"), true);
+  assert.equal(isAllowedLabEndpoint("POST", "inbounds/del/1"), false);
+  calls.length = 0;
+  await addLabVlessInbound({ port: 8443, protocol: "vless" }, target);
+  assert.deepEqual(calls, ["POST /panel/api/inbounds/add"]);
 });

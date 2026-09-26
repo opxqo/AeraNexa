@@ -474,6 +474,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-check-list { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .admin-check-row { display: inline-flex; align-items: center; gap: 8px; color: var(--v2-text); cursor: pointer; }
 .admin-check-row input { width: 15px; height: 15px; accent-color: var(--v2-primary); }
+.node-lab-save { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.node-lab-group { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--v2-border); }
+.node-lab-group h3 { flex-basis: 100%; margin: 0; color: var(--v2-heading); font-size: 15px; font-weight: 500; }
+.node-lab-group .v2-field { flex: 0 1 220px; }
+.node-lab-group .button { white-space: nowrap; }
+.node-lab-traffic { margin-top: 12px; padding: 12px 14px; border-radius: 3px; background: #f5f7fa; overflow-wrap: anywhere; }
+.node-lab-traffic ul { margin: 6px 0 12px; padding-left: 18px; }
+[data-theme="dark"] .node-lab-traffic { background: rgba(255, 255, 255, 0.05); }
 .admin-form-footer { padding-top: 4px; display: flex; justify-content: flex-end; gap: 9px; }
 .admin-fieldset { margin: 0; padding: 13px 15px; display: grid; gap: 10px; border: 1px solid var(--v2-border); border-radius: 3px; }
 .admin-fieldset legend { padding: 0 6px; color: var(--v2-text); font-size: 13px; }
