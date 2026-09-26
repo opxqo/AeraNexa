@@ -49,6 +49,7 @@ export const adminSections: AdminSection[] = [
   { href: "/admin/reconciliation", key: "reconciliation", label: "对账管理", description: "渠道账单与差异", icon: "reconciliation", group: "业务管理" },
   { href: "/admin/recharge-cards", key: "recharge-cards", label: "卡密管理", description: "余额充值卡与核销状态", icon: "rechargeCards", group: "业务管理" },
   { href: "/admin/nodes", key: "nodes", label: "节点管理", description: "3x-ui 节点状态", icon: "nodes", group: "资源与支持", count: "syncFailed" },
+  { href: "/admin/node-connections", label: "3x-node 联调", description: "独立测试节点连接", icon: "nodes", group: "资源与支持" },
   { href: "/admin/tickets", key: "tickets", label: "工单管理", description: "用户支持工单", icon: "tickets", group: "资源与支持", count: "tickets" },
   { href: "/admin/notices", key: "notices", label: "公告管理", description: "门户公告与发布排期", icon: "notices", group: "资源与支持" },
   { href: "/admin/knowledge", key: "knowledge", label: "文档管理", description: "使用文档与分类", icon: "knowledge", group: "资源与支持" },

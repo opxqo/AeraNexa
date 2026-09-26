@@ -28,6 +28,8 @@ const AUDIT_DESCRIPTIONS = {
   "admin.coupon_deleted": "管理员删除优惠券",
   "admin.payment_saved": "管理员修改支付配置",
   "admin.node_saved": "管理员保存节点",
+  "admin.node_connection_saved": "管理员保存 3x-node 测试连接",
+  "admin.node_connection_tested": "管理员测试 3x-node 连接",
   "admin.nodes_imported": "管理员导入节点",
   "admin.access_group_saved": "管理员保存权限组",
   "admin.access_group_deleted": "管理员删除权限组",

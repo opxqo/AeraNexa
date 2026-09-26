@@ -545,6 +545,23 @@ CREATE TABLE IF NOT EXISTS ticket_messages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 节点、3x-ui 客户端映射与流量统计
+-- 封闭联调用的独立 3x-node 管理连接；不参与用户节点分配或 worker 采集。
+CREATE TABLE IF NOT EXISTS node_panel_connections (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(100) NOT NULL,
+  base_url VARCHAR(500) NOT NULL,
+  certificate_sha256 CHAR(64) NOT NULL,
+  token_ciphertext TEXT NOT NULL,
+  token_iv VARCHAR(32) NOT NULL,
+  token_auth_tag VARCHAR(32) NOT NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  last_tested_at DATETIME NULL,
+  last_test_error VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS nodes (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   external_panel VARCHAR(50) NOT NULL DEFAULT '3x-ui',

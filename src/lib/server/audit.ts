@@ -31,6 +31,8 @@ export type AuditAction =
   | "admin.coupon_deleted"
   | "admin.payment_saved"
   | "admin.node_saved"
+  | "admin.node_connection_saved"
+  | "admin.node_connection_tested"
   | "admin.nodes_imported"
   | "admin.access_group_saved"
   | "admin.access_group_deleted"

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash, timingSafeEqual } from "node:crypto";
+import tls from "node:tls";
 import { getNumberSetting, getSetting } from "../settings";
 
 /**
@@ -45,6 +47,73 @@ export class PanelError extends Error {
 }
 
 type PanelConfig = { baseUrl: string; token: string; timeoutMs: number };
+export type PinnedPanelTarget = PanelConfig & { certificateSha256: string };
+
+/** Accept the hexadecimal or Base64 SHA-256 printed by 3x-node credentials. */
+export function normalizeCertificateSha256(value: string): string {
+  const compact = value.trim().replace(/:/g, "");
+  if (/^[a-f\d]{64}$/i.test(compact)) return compact.toLowerCase();
+  const decoded = Buffer.from(compact, "base64");
+  if (decoded.length === 32 && decoded.toString("base64").replace(/=+$/, "") === compact.replace(/=+$/, "")) {
+    return decoded.toString("hex");
+  }
+  throw new PanelError("config", "TLS 证书指纹须为 SHA-256 十六进制或 Base64 值");
+}
+
+/** TLS is accepted only after comparing the exact leaf certificate bytes. */
+async function pinnedRequest(url: URL, method: "GET" | "POST", token: string, pin: string, timeoutMs: number, body?: unknown): Promise<{ status: number; json: () => unknown }> {
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    throw new PanelError("config", "3x-node 管理地址必须是无凭据、无查询参数的 HTTPS 地址");
+  }
+  const expected = Buffer.from(normalizeCertificateSha256(pin), "hex");
+  const port = Number(url.port || 443);
+  let timedOut = false;
+  const socket = await new Promise<tls.TLSSocket>((resolve, reject) => {
+    const connection = tls.connect({ host: url.hostname, port, servername: url.hostname.includes(":") || /^\d+\.\d+\.\d+\.\d+$/.test(url.hostname) ? undefined : url.hostname, rejectUnauthorized: false, ALPNProtocols: ["http/1.1"] });
+    connection.setTimeout(timeoutMs, () => { timedOut = true; connection.destroy(new Error("请求超时")); });
+    connection.once("error", reject);
+    connection.once("secureConnect", () => {
+      const raw = connection.getPeerCertificate(true).raw;
+      const actual = raw ? createHash("sha256").update(raw).digest() : null;
+      if (!actual || !timingSafeEqual(actual, expected)) {
+        connection.destroy();
+        reject(new Error("TLS 证书指纹不匹配"));
+        return;
+      }
+      connection.removeListener("error", reject);
+      resolve(connection);
+    });
+  });
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  const response = await new Promise<{ status: number; data: Buffer }>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    socket.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 2_000_000) socket.destroy(new Error("响应过大"));
+      else chunks.push(chunk);
+    });
+    socket.once("error", reject);
+    socket.once("end", () => {
+      if (timedOut) { reject(new Error("请求超时")); return; }
+      const raw = Buffer.concat(chunks);
+      const split = raw.indexOf("\r\n\r\n");
+      if (split < 0) { reject(new Error("HTTP 响应不完整")); return; }
+      const header = raw.subarray(0, split).toString("latin1");
+      const status = Number(/^HTTP\/1\.[01] (\d{3})/m.exec(header)?.[1]);
+      if (!Number.isInteger(status)) { reject(new Error("HTTP 状态行异常")); return; }
+      resolve({ status, data: raw.subarray(split + 4) });
+    });
+    const lines = [
+      `${method} ${url.pathname} HTTP/1.0`, `Host: ${url.host}`, "Accept: application/json",
+      `Authorization: Bearer ${token}`, "Connection: close",
+      ...(payload === undefined ? [] : ["Content-Type: application/json", `Content-Length: ${Buffer.byteLength(payload)}`]),
+      "", "",
+    ];
+    socket.write(lines.join("\r\n") + (payload ?? ""));
+  });
+  return { status: response.status, json: () => JSON.parse(response.data.toString("utf8")) as unknown };
+}
 
 async function readConfig(): Promise<PanelConfig> {
   const [baseUrl, token, timeoutMs] = await Promise.all([
@@ -81,30 +150,36 @@ export function isAllowedPanelEndpoint(method: string, path: string): boolean {
   return ALLOWED_ENDPOINTS.some((rule) => rule.method === method && rule.pattern.test(bare));
 }
 
-async function panelRequest<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+async function panelRequest<T>(method: "GET" | "POST", path: string, body?: unknown, target?: PinnedPanelTarget): Promise<T> {
   if (!isAllowedPanelEndpoint(method, path)) {
     throw new PanelError("forbidden", `节点域不允许调用 3x-ui 接口：${method} ${path}`);
   }
-  const config = await readConfig();
+  const config = target ?? await readConfig();
   const url = `${config.baseUrl}/panel/api/${path.replace(/^\/+/, "")}`;
 
-  let response: Response;
+  let response: { status: number; ok: boolean; json: () => Promise<unknown> };
   try {
-    response = await fetch(url, {
-      method,
-      cache: "no-store",
-      redirect: "manual",
-      signal: AbortSignal.timeout(config.timeoutMs),
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${config.token}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    if (target) {
+      const pinned = await pinnedRequest(new URL(url), method, config.token, target.certificateSha256, config.timeoutMs, body);
+      response = { status: pinned.status, ok: pinned.status >= 200 && pinned.status < 300, json: async () => pinned.json() };
+    } else {
+      response = await fetch(url, {
+        method,
+        cache: "no-store",
+        redirect: "manual",
+        signal: AbortSignal.timeout(config.timeoutMs),
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${config.token}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    }
   } catch (error) {
-    const reason = error instanceof Error && error.name === "TimeoutError" ? "请求超时" : "无法连接";
-    throw new PanelError("unreachable", `3x-ui 面板${reason}（${method} ${path}）`);
+    if (error instanceof PanelError) throw error;
+    const reason = error instanceof Error ? error.message : "无法连接";
+    throw new PanelError("unreachable", `面板请求失败（${method} ${path}）：${reason}`);
   }
 
   if (response.status === 401) throw new PanelError("auth", "3x-ui 拒绝了 API Token（401），请检查 token 是否有效", 401);
@@ -136,8 +211,8 @@ export type PanelServerStatus = {
   publicIpv4: string;
 };
 
-export async function getServerStatus(): Promise<PanelServerStatus> {
-  const obj = await panelRequest<Record<string, unknown> | null>("GET", "server/status");
+export async function getServerStatus(target?: PinnedPanelTarget): Promise<PanelServerStatus> {
+  const obj = await panelRequest<Record<string, unknown> | null>("GET", "server/status", undefined, target);
   const xray = (obj?.xray ?? {}) as Record<string, unknown>;
   const publicIp = (obj?.publicIP ?? {}) as Record<string, unknown>;
   const ipv4 = String(publicIp.ipv4 ?? "");
@@ -151,8 +226,8 @@ export async function getServerStatus(): Promise<PanelServerStatus> {
 }
 
 /** 原始入站列表（含 clients 与 clientStats）。解析交给 ./inbounds.ts。 */
-export async function listRawInbounds(): Promise<unknown[]> {
-  const obj = await panelRequest<unknown>("GET", "inbounds/list");
+export async function listRawInbounds(target?: PinnedPanelTarget): Promise<unknown[]> {
+  const obj = await panelRequest<unknown>("GET", "inbounds/list", undefined, target);
   if (!Array.isArray(obj)) throw new PanelError("protocol", "3x-ui inbounds/list 未返回数组");
   return obj;
 }
@@ -164,19 +239,19 @@ export async function listRawInbounds(): Promise<unknown[]> {
 export type PanelClientBody = Record<string, unknown> & { email: string };
 
 /** 创建客户端，或把已存在的客户端挂到更多入站（3x-ui 对已存在 email 复用原凭据）。 */
-export async function addClient(client: PanelClientBody, inboundIds: number[]): Promise<void> {
-  await panelRequest("POST", "clients/add", { client, inboundIds });
+export async function addClient(client: PanelClientBody, inboundIds: number[], target?: PinnedPanelTarget): Promise<void> {
+  await panelRequest("POST", "clients/add", { client, inboundIds }, target);
 }
 
 /** 改写客户端字段，作用于其已挂的全部入站；不改变挂载关系。 */
-export async function updateClient(email: string, client: PanelClientBody): Promise<void> {
-  await panelRequest("POST", `clients/update/${encodeURIComponent(email)}`, client);
+export async function updateClient(email: string, client: PanelClientBody, target?: PinnedPanelTarget): Promise<void> {
+  await panelRequest("POST", `clients/update/${encodeURIComponent(email)}`, client, target);
 }
 
-export async function detachClient(email: string, inboundIds: number[]): Promise<void> {
-  await panelRequest("POST", `clients/${encodeURIComponent(email)}/detach`, { inboundIds });
+export async function detachClient(email: string, inboundIds: number[], target?: PinnedPanelTarget): Promise<void> {
+  await panelRequest("POST", `clients/${encodeURIComponent(email)}/detach`, { inboundIds }, target);
 }
 
-export async function deleteClient(email: string): Promise<void> {
-  await panelRequest("POST", `clients/del/${encodeURIComponent(email)}`);
+export async function deleteClient(email: string, target?: PinnedPanelTarget): Promise<void> {
+  await panelRequest("POST", `clients/del/${encodeURIComponent(email)}`, undefined, target);
 }
