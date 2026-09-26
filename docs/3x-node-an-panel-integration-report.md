@@ -1,6 +1,6 @@
 # 3x-node × AeraNexa 封闭对接联调记录
 
-日期：2026-09-26。代码分支：`codex/3x-node-an-panel`，从 AN `main` 的 `a7c8776` 建立独立工作树。3x-node 使用独立仓库当前 `7f29a657` 源码构建的 Linux/arm64 测试程序，未修改该仓库。
+日期：2026-09-26。代码分支：`3x-node-an-panel`，从 AN `main` 的 `a7c8776` 建立独立工作树。3x-node 使用独立仓库当前 `7f29a657` 源码构建的 Linux/arm64 测试程序，未修改该仓库。
 
 ## 实现范围
 
