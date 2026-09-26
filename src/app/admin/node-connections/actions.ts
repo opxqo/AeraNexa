@@ -9,6 +9,7 @@ import { requireAdminUser } from "@/lib/server/admin";
 import { addClient, addLabVlessInbound, deleteClient, detachClient, getServerStatus, listRawInbounds, updateClient } from "@/lib/server/panel/client";
 import { getEnabledNodeTarget, recordNodeConnectionTest, saveNodeConnection } from "@/lib/server/panel/node-connections";
 import { buildInstallCommand, createEnrollmentCode } from "@/lib/server/panel/node-enrollment";
+import { generateRealityKeys, parseRealityTarget, realityClientInfo } from "@/lib/server/panel/reality";
 
 function idOf(data: FormData): number {
   const id = Number(data.get("id"));
@@ -118,20 +119,29 @@ export async function createLabInboundAction(data: FormData): Promise<void> {
     if (inbounds.some((item) => item.tag === tag || Number(item.port) === port)) {
       throw new Error("该端口已被其他入站占用");
     }
+    const reality = data.get("security") === "reality";
+    let streamSettings: Record<string, unknown> = { network: "tcp", security: "none", tcpSettings: { header: { type: "none" } } };
+    if (reality) {
+      const { target: dest, serverName } = parseRealityTarget(String(data.get("realityTarget") ?? ""));
+      const keys = generateRealityKeys();
+      streamSettings = { network: "tcp", security: "reality", tcpSettings: { header: { type: "none" } }, realitySettings: { target: dest, serverNames: [serverName], privateKey: keys.privateKey, shortIds: [keys.shortId] } };
+    }
     await addLabVlessInbound({
       remark: tag, enable: true, listen: "", port, protocol: "vless", tag,
-      settings: { decryption: "none", clients: [{ id: randomUUID(), email: `an-lab-seed-${randomUUID().slice(0, 8)}`, enable: true, flow: "", subId: randomUUID().replace(/-/g, "").slice(0, 16) }] },
-      streamSettings: { network: "tcp", security: "none", tcpSettings: { header: { type: "none" } } },
+      settings: { decryption: "none", clients: [{ id: randomUUID(), email: `an-lab-seed-${randomUUID().slice(0, 8)}`, enable: true, flow: reality ? "xtls-rprx-vision" : "", subId: randomUUID().replace(/-/g, "").slice(0, 16) }] },
+      streamSettings,
       sniffing: { enabled: false },
     }, target);
-    message = `测试 VLESS 入站已创建（容器内端口 ${port}，无加密，仅供联调）`;
+    message = reality
+      ? `测试 VLESS + REALITY 入站已创建（容器内端口 ${port}）；公钥、SNI 与 shortId 见「入站与客户端流量」`
+      : `测试 VLESS 入站已创建（容器内端口 ${port}，无加密，仅供联调）`;
     await recordNodeConnectionTest(id, null);
   } catch (error) {
     failed = true;
     message = error instanceof Error ? error.message : "创建测试入站失败";
     await recordNodeConnectionTest(id, message).catch(() => {});
   }
-  await recordAudit({ action: "admin.node_connection_tested", userId: admin.id, resourceType: "node_panel_connection", resourceId: id, context: { mode: "create_lab_inbound", ok: !failed, port } });
+  await recordAudit({ action: "admin.node_connection_tested", userId: admin.id, resourceType: "node_panel_connection", resourceId: id, context: { mode: "create_lab_inbound", ok: !failed, port, security: data.get("security") === "reality" ? "reality" : "none" } });
   finish(message, failed);
 }
 
@@ -154,7 +164,7 @@ export async function createLabClientsAction(data: FormData): Promise<void> {
     }
     for (let i = 0; i < count; i += 1) {
       const suffix = randomUUID().slice(0, 8);
-      await addClient({ email: `an-lab-user-${suffix}`, id: randomUUID(), enable: true, flow: "", totalGB: 0, expiryTime: 0, subId: randomUUID().replace(/-/g, "").slice(0, 16), comment: "AN isolated traffic test" }, [inboundId], target);
+      await addClient({ email: `an-lab-user-${suffix}`, id: randomUUID(), enable: true, flow: realityClientInfo(inbound) ? "xtls-rprx-vision" : "", totalGB: 0, expiryTime: 0, subId: randomUUID().replace(/-/g, "").slice(0, 16), comment: "AN isolated traffic test" }, [inboundId], target);
     }
     message = `已向入站 #${inboundId} 添加 ${count} 个测试客户端，请在下方「入站与客户端流量」中查看`;
     await recordNodeConnectionTest(id, null);

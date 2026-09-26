@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/server/admin";
 import { getEnabledNodeTarget, listNodeConnections } from "@/lib/server/panel/node-connections";
 import { listRawInbounds } from "@/lib/server/panel/client";
 import { listEnrollmentCodes } from "@/lib/server/panel/node-enrollment";
+import { realityClientInfo, type RealityClientInfo } from "@/lib/server/panel/reality";
 import { EnrollmentForm } from "./enrollment-form";
 import { createLabClientsAction, createLabInboundAction, saveNodeConnectionAction, testNodeClientLifecycleAction, testNodeConnectionAction } from "./actions";
 
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 type Query = Record<string, string | string[] | undefined>;
 function first(value: string | string[] | undefined): string { return Array.isArray(value) ? value[0] ?? "" : value ?? ""; }
 
-type InboundView = { id: number; tag: string; port: number; up: number; down: number; clients: Array<{ email: string; uuid: string; up: number; down: number }> };
+type InboundView = { id: number; tag: string; port: number; up: number; down: number; reality: RealityClientInfo | null; clients: Array<{ email: string; uuid: string; up: number; down: number }> };
 
 async function inspectInbounds(id: number): Promise<{ rows: InboundView[]; error: string | null }> {
   try {
@@ -19,7 +20,7 @@ async function inspectInbounds(id: number): Promise<{ rows: InboundView[]; error
     return {
       error: null,
       rows: raw.map((item) => ({
-        id: Number(item.id), tag: String(item.tag ?? ""), port: Number(item.port) || 0, up: Number(item.up) || 0, down: Number(item.down) || 0,
+        id: Number(item.id), tag: String(item.tag ?? ""), port: Number(item.port) || 0, up: Number(item.up) || 0, down: Number(item.down) || 0, reality: realityClientInfo(item),
         clients: (Array.isArray(item.clientStats) ? item.clientStats as Array<Record<string, unknown>> : []).map((c) => ({
           email: String(c.email ?? ""), uuid: String(c.uuid ?? ""), up: Number(c.up) || 0, down: Number(c.down) || 0,
         })),
@@ -84,9 +85,11 @@ export default async function NodeConnectionsPage({ searchParams }: { searchPara
         <form action={testNodeClientLifecycleAction}><input name="id" type="hidden" value={item.id} /><button className="button button-secondary" type="submit" disabled={!item.enabled}>测试客户端完整生命周期</button></form>
       </div>
       <form action={createLabInboundAction} className="node-lab-group">
-        <h3>创建测试入站（无加密 VLESS/TCP）</h3>
+        <h3>创建测试入站（VLESS/TCP）</h3>
         <input name="id" type="hidden" value={item.id} />
         <label className="v2-field"><span>入站端口（容器内）</span><input name="port" type="number" min={1024} max={65535} defaultValue={8443} required /></label>
+        <label className="v2-field"><span>安全层</span><select name="security" defaultValue="none"><option value="none">无加密</option><option value="reality">REALITY</option></select></label>
+        <label className="v2-field"><span>REALITY 伪装目标（仅 REALITY）</span><input name="realityTarget" defaultValue="dl.google.com:443" /></label>
         <button className="button button-secondary" type="submit" disabled={!item.enabled}>创建测试 VLESS 入站</button>
       </form>
       <form action={createLabClientsAction} className="node-lab-group">
@@ -104,6 +107,7 @@ export default async function NodeConnectionsPage({ searchParams }: { searchPara
         {inspected.error ? <p role="alert">{inspected.error}</p> : null}
         {inspected.rows.map((row) => <div key={row.id}>
           <p><strong>入站 #{row.id}</strong> · {row.tag} · 端口 {row.port} · 上行 {row.up} / 下行 {row.down} 字节</p>
+          {row.reality ? <p>REALITY · 公钥 <code>{row.reality.publicKey}</code> · SNI {row.reality.serverName} · shortId <code>{row.reality.shortId}</code> · 流控 xtls-rprx-vision</p> : null}
           <ul>{row.clients.map((c) => <li key={c.email}>{c.email} · {c.uuid} · 上行 {c.up} / 下行 {c.down}</li>)}</ul>
         </div>)}
       </div> : null}
