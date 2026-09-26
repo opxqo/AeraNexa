@@ -191,3 +191,32 @@ test("没有生效中的套餐不能购买流量重置；永久套餐不能再�
   const resetQuote = await (await get("/api/client/orders/reset-quote", cookie)).json();
   assert.equal(resetQuote.data.price, 750, "永久套餐按一次性价 × 75%");
 });
+
+test("待生效订单「立即生效」：马上替换当前套餐，从现在起算、流量清零、不折算；不能重复生效，别人的订单无权操作", async () => {
+  const [planA, planB] = [await createPlan({ monthPrice: 200, transferGb: 1 }), await createPlan({ monthPrice: 300, transferGb: 200 })];
+  const { cookie, userId } = await createUser();
+  await buy(cookie, planA);
+  await query("UPDATE users SET upload_bytes = ? WHERE id = ?", [GB / 2, userId]);
+  const beforeA = await userRow(userId);
+  const tradeB = await buy(cookie, planB);
+  assert.equal(await orderStatus(tradeB), 1, "A 生效中买 B 先排队");
+
+  const other = await createUser();
+  const denied = await post("/api/client/orders/activate", { trade_no: tradeB }, other.cookie);
+  assert.equal(denied.status, 404, "别人的订单查不到");
+
+  const response = await post("/api/client/orders/activate", { trade_no: tradeB }, cookie);
+  assert.equal(response.status, 200, await response.clone().text());
+  const after = await userRow(userId);
+  assert.equal(Number(after.plan_id), planB, "B 立即替换 A");
+  assert.equal(Number(after.upload_bytes) + Number(after.download_bytes), 0, "已用流量清零");
+  assert.equal(Number(after.transfer_enable), 200 * GB);
+  const now = Math.floor(Date.now() / 1000);
+  assert.ok(Number(after.expired_at) < Number(beforeA.expired_at) + 5 * 86400, "从现在起算，而不是接在 A 的到期时间后面");
+  assert.ok(Number(after.expired_at) > now + 27 * 86400 && Number(after.expired_at) < now + 32 * 86400, "按月付计算一个月");
+  const [order] = await query("SELECT status, order_type FROM orders WHERE trade_no = ?", [tradeB]);
+  assert.deepEqual([Number(order.status), Number(order.order_type)], [3, 5]);
+
+  const again = await post("/api/client/orders/activate", { trade_no: tradeB }, cookie);
+  assert.equal(again.status, 400, "已生效的订单不能再次生效");
+});

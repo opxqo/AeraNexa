@@ -1044,11 +1044,12 @@ async function fulfillOrder(connection: PoolConnection, order: OrderRow, userId:
   const currentExpiresAt = user.expired_at === null ? null : asNumber(user.expired_at);
   const wasPermanent = currentExpiresAt === null;
 
-  const base = orderType === ORDER_TYPE.UPGRADE
+  // 立即生效（SWITCH）：从现在开始、清零已用流量、直接替换当前套餐，当前套餐剩余时间与流量不折算
+  const base = orderType === ORDER_TYPE.UPGRADE || orderType === ORDER_TYPE.SWITCH
     ? now
     : Math.max(currentExpiresAt ?? now, now);
   const expiresAt = addMonths(base, months);
-  const resetUsage = orderType === ORDER_TYPE.NEW || wasPermanent;
+  const resetUsage = orderType === ORDER_TYPE.NEW || orderType === ORDER_TYPE.SWITCH || wasPermanent;
 
   await connection.execute(
     `UPDATE users SET plan_id = ?, transfer_enable = ?, upload_bytes = ?, download_bytes = ?,
@@ -1197,6 +1198,40 @@ async function activateNextQueuedOrder(connection: PoolConnection, userId: numbe
   await fulfillOrder(connection, { ...next, order_type: ORDER_TYPE.NEW } as OrderRow, userId);
   await markPanelClientDirty(connection, userId);
   return true;
+}
+
+/**
+ * 用户在待生效订单上点「立即生效」：马上开通这个套餐，当前套餐立即失效，
+ * 剩余时间与流量不折算、不退还（前端确认弹窗已写明）。其余待生效订单继续排队。
+ */
+export async function activateQueuedOrderNow(userId: number, tradeNo: string): Promise<{ planName: string; replacedPlanId: number | null }> {
+  const connection = await getDbPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const user = await getUserForUpdate(connection, userId);
+    const [rows] = await connection.execute<OrderRow[]>(
+      `${orderSelect} WHERE o.user_id = ? AND o.trade_no = ? LIMIT 1 FOR UPDATE`,
+      [userId, tradeNo],
+    );
+    const order = rows[0];
+    if (!order) throw notFound("订单不存在");
+    if (asNumber(order.status) !== ORDER_STATUS.PROVISIONING) throw badRequest("只有「待生效」的订单可以立即生效");
+
+    const [updated] = await connection.execute<ResultSetHeader>(
+      `UPDATE orders SET status = ?, order_type = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?`,
+      [ORDER_STATUS.COMPLETED, ORDER_TYPE.SWITCH, order.id, ORDER_STATUS.PROVISIONING],
+    );
+    if (updated.affectedRows !== 1) throw conflict("订单已被处理，请刷新后查看");
+    await fulfillOrder(connection, { ...order, order_type: ORDER_TYPE.SWITCH } as OrderRow, userId);
+    await markPanelClientDirty(connection, userId);
+    await connection.commit();
+    return { planName: String(order.plan_name ?? ""), replacedPlanId: user.plan_id === null ? null : asNumber(user.plan_id) };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 /**

@@ -779,7 +779,41 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
   const payGuard = useSubmitGuard();
   const cancelGuard = useSubmitGuard();
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const activateGuard = useSubmitGuard();
+  /** 立即生效确认：打开时带上当前套餐的快照，用于在警告里写明会失去什么 */
+  const [activateConfirm, setActivateConfirm] = useState<{ planName: string; daysLeft: number | null; trafficLeft: string } | null>(null);
   const pollAttemptsRef = useRef(0);
+
+  // 待生效订单「立即生效」：先读当前套餐，警告里写清楚剩余时间和流量会作废
+  const openActivateConfirm = () => {
+    void activateGuard.run(async () => {
+      try {
+        const sub = await userApi.fetchSubscribe();
+        const now = Math.floor(Date.now() / 1000);
+        const hasPlan = sub.plan_id !== null;
+        setActivateConfirm({
+          planName: hasPlan ? sub.plan?.name ?? "当前套餐" : "",
+          daysLeft: hasPlan && sub.expired_at ? Math.max(0, Math.ceil((sub.expired_at - now) / 86400)) : null,
+          trafficLeft: hasPlan ? formatBytes(Math.max(0, sub.transfer_enable - sub.u - sub.d)) : "",
+        });
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "读取当前套餐失败"), "error");
+      }
+    });
+  };
+
+  const handleActivate = () => {
+    setActivateConfirm(null);
+    void activateGuard.run(async () => {
+      try {
+        await orderApi.activateOrder(tradeNo);
+        showToast("套餐已立即生效", "success");
+        await Promise.all([orderState.reload(), refreshUser?.()]);
+      } catch (error: unknown) {
+        showToast(toErrorMessage(error, "立即生效失败"), "error");
+      }
+    });
+  };
 
   const order = orderState.data;
   const methods = methodsState.data ?? [];
@@ -894,6 +928,30 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
       </div>
 
       <ConfirmModal
+        open={activateConfirm !== null}
+        title="确定立即生效？"
+        content={activateConfirm ? (
+          <div>
+            <p style={{ margin: "0 0 8px" }}>「{order?.plan?.name ?? "该套餐"}」将从现在开始计算，已用流量清零。</p>
+            {activateConfirm.planName ? (
+              <p style={{ margin: 0, color: "#cf222e" }}>
+                当前的「{activateConfirm.planName}」会<strong>立即失效</strong>
+                {activateConfirm.daysLeft !== null ? `，剩余 ${activateConfirm.daysLeft} 天` : "（永久套餐）"}
+                、剩余 {activateConfirm.trafficLeft} 流量<strong>不折算、不退还</strong>。此操作无法撤销。
+              </p>
+            ) : (
+              <p style={{ margin: 0 }}>当前没有生效中的套餐。</p>
+            )}
+          </div>
+        ) : ""}
+        okText="确定立即生效"
+        okType="danger"
+        cancelText="再想想"
+        onOk={handleActivate}
+        onCancel={() => setActivateConfirm(null)}
+      />
+
+      <ConfirmModal
         open={cancelConfirmOpen}
         title="确定取消该订单？"
         content="取消后如需购买需要重新下单；订单使用的优惠券会被释放。"
@@ -945,6 +1003,8 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
                 </div>
               </section>
 
+              {/* 已付款（待生效 / 已完成）的订单不再显示支付方式，避免误以为还要再付一次 */}
+              {order.status === 0 ? (
               <section className="v2-block checkout-card">
                 <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>选择支付方式</h3>
                 <AsyncBoundary
@@ -974,6 +1034,7 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
                   </div>
                 </AsyncBoundary>
               </section>
+              ) : null}
             </div>
 
             <section className="v2-block checkout-card checkout-pay-card">
@@ -1007,21 +1068,39 @@ export function ApiOrderDetailPage({ tradeNo, resumePolling = false }: { tradeNo
                 )}
               </div>
 
-              <button
-                type="button"
-                className="btn btn-primary btn-lg"
-                style={{ width: "100%" }}
-                disabled={payGuard.pending || order.status !== 0}
-                onClick={handlePay}
-              >
-                {payGuard.pending ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : order.status === 0 ? (
-                  "立即支付"
-                ) : (
-                  order.status_label ?? "订单已处理"
-                )}
-              </button>
+              {order.status === 1 ? (
+                <>
+                  {/* 已付款、排队中的订单：可以不等当前套餐到期，立即生效 */}
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-lg"
+                    style={{ width: "100%" }}
+                    disabled={activateGuard.pending}
+                    onClick={openActivateConfirm}
+                  >
+                    {activateGuard.pending ? <Loader2 size={16} className="animate-spin" /> : "立即生效"}
+                  </button>
+                  <p className="field-hint" style={{ marginTop: 10 }}>
+                    已付款，正在排队。不想等当前套餐到期，可以点「立即生效」马上开通；当前套餐会立即失效，剩余时间和流量不折算。
+                  </p>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-lg"
+                  style={{ width: "100%" }}
+                  disabled={payGuard.pending || order.status !== 0}
+                  onClick={handlePay}
+                >
+                  {payGuard.pending ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : order.status === 0 ? (
+                    "立即支付"
+                  ) : (
+                    order.status_label ?? "订单已处理"
+                  )}
+                </button>
+              )}
 
               {polling && order.status === 0 && (
                 <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--v2-muted)" }}>

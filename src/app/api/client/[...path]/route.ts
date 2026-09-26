@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  activateQueuedOrderNow,
   cancelOrder,
   checkoutOrder,
   closeTicket,
@@ -164,6 +165,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // 取消前先向渠道确认没付过款：已付的订单会在这里直接开通，随后的取消返回「订单已支付完成」。
       await syncPendingOrderForUser(user.id, tradeNo, 0).catch((error: unknown) => console.error("[orders/cancel] 查单失败", error));
       return NextResponse.json({ data: await cancelOrder(user.id, tradeNo) });
+    }
+
+    if (key === "orders/activate") {
+      const tradeNo = asText(body.trade_no, 64);
+      if (!tradeNo) throw badRequest("缺少订单号");
+      const result = await activateQueuedOrderNow(user.id, tradeNo);
+      await recordAudit({ action: "order.fulfilled", userId: user.id, resourceType: "order", resourceId: tradeNo, request, context: { immediate: true, replacedPlanId: result.replacedPlanId } });
+      return NextResponse.json({ data: true });
     }
 
     if (key === "orders/checkout") {

@@ -82,6 +82,14 @@ export const orderApi = {
     return localApiRequest<OrderStatusResult>("client/orders/status", { params: { trade_no } });
   },
 
+  /** 待生效订单立即生效：当前套餐立即失效，不折算。 */
+  async activateOrder(trade_no: string): Promise<boolean> {
+    return localApiRequest<boolean>("client/orders/activate", {
+      method: "POST",
+      body: { trade_no } as unknown as Record<string, unknown>,
+    });
+  },
+
   async cancelOrder(trade_no: string): Promise<boolean> {
     return localApiRequest<boolean>("client/orders/cancel", {
       method: "POST",

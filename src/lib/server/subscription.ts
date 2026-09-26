@@ -38,6 +38,8 @@ export const ORDER_TYPE = {
   RENEW: 2,
   UPGRADE: 3,
   RESET_TRAFFIC: 4,
+  /** 待生效订单由用户点「立即生效」：从现在开始计算、已用流量清零、直接替换当前套餐，不折算 */
+  SWITCH: 5,
 } as const;
 
 export const ORDER_TYPE_LABELS: Record<number, string> = {
@@ -45,6 +47,7 @@ export const ORDER_TYPE_LABELS: Record<number, string> = {
   2: "续费",
   3: "升级",
   4: "流量重置",
+  5: "立即生效",
 };
 
 /**
