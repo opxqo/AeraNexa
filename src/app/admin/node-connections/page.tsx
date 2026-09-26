@@ -2,6 +2,8 @@ import { AdminPage } from "@/components/admin-page";
 import { requireAdminUser } from "@/lib/server/admin";
 import { getEnabledNodeTarget, listNodeConnections } from "@/lib/server/panel/node-connections";
 import { listRawInbounds } from "@/lib/server/panel/client";
+import { listEnrollmentCodes } from "@/lib/server/panel/node-enrollment";
+import { EnrollmentForm } from "./enrollment-form";
 import { createLabClientsAction, createLabInboundAction, saveNodeConnectionAction, testNodeClientLifecycleAction, testNodeConnectionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +32,7 @@ async function inspectInbounds(id: number): Promise<{ rows: InboundView[]; error
 
 export default async function NodeConnectionsPage({ searchParams }: { searchParams: Promise<Query> }) {
   await requireAdminUser();
-  const [connections, query] = await Promise.all([listNodeConnections(), searchParams]);
+  const [connections, enrollments, query] = await Promise.all([listNodeConnections(), listEnrollmentCodes(), searchParams]);
   const inspectId = Number(first(query.inspect));
   const inspected = Number.isSafeInteger(inspectId) && inspectId > 0 ? await inspectInbounds(inspectId) : null;
   const notice = first(query.notice).slice(0, 300);
@@ -38,8 +40,16 @@ export default async function NodeConnectionsPage({ searchParams }: { searchPara
   return <AdminPage title="3x-node 联调" description="独立连接测试节点；不会加入买家节点列表、用户同步或流量结算。">
     {notice ? <p className="v2-block" role="status">{notice}</p> : null}
     {error ? <p className="v2-block" role="alert">{error}</p> : null}
+    <EnrollmentForm />
+    {enrollments.length ? <section className="v2-block">
+      <h2>最近的注册码</h2>
+      <ul>{enrollments.map((e) => <li key={e.id}>
+        {e.name} · {e.baseUrl} · {e.connectionId ? `已登记为连接 #${e.connectionId}` : e.usedAt ? "已使用，未完成登记" : new Date(e.expiresAt) < new Date() ? "已过期" : `有效至 ${e.expiresAt}`}
+        {e.lastError ? ` · ${e.lastError}` : ""}
+      </li>)}</ul>
+    </section> : null}
     <section className="v2-block">
-      <h2>新增测试节点连接</h2>
+      <h2>手动新增测试节点连接</h2>
       <p>使用 3x-ui-node credentials 显示的 Token 与 TLS SHA-256 指纹。保存后默认停用；勾选启用才允许连接测试。</p>
       <form action={saveNodeConnectionAction}>
         <div className="admin-form-grid">

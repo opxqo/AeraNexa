@@ -2,11 +2,13 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { recordAudit } from "@/lib/server/audit";
 import { requireAdminUser } from "@/lib/server/admin";
 import { addClient, addLabVlessInbound, deleteClient, detachClient, getServerStatus, listRawInbounds, updateClient } from "@/lib/server/panel/client";
 import { getEnabledNodeTarget, recordNodeConnectionTest, saveNodeConnection } from "@/lib/server/panel/node-connections";
+import { buildInstallCommand, createEnrollmentCode } from "@/lib/server/panel/node-enrollment";
 
 function idOf(data: FormData): number {
   const id = Number(data.get("id"));
@@ -163,4 +165,23 @@ export async function createLabClientsAction(data: FormData): Promise<void> {
   }
   await recordAudit({ action: "admin.node_connection_tested", userId: admin.id, resourceType: "node_panel_connection", resourceId: id, context: { mode: "create_lab_clients", ok: !failed, inboundId, count } });
   finish(message, failed);
+}
+
+export type EnrollmentFormState = { command?: string; expiresAt?: string; error?: string };
+
+/** The code is shown only in this response; the database keeps its hash, so it never lands in a URL. */
+export async function createEnrollmentAction(_prev: EnrollmentFormState, data: FormData): Promise<EnrollmentFormState> {
+  const admin = await requireAdminUser();
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+    const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim() || (/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? "http" : "https");
+    if (proto !== "https" || !host) throw new Error("一键安装需要通过 HTTPS 公网域名访问后台，节点才能回调 AN");
+    const { code, expiresAt } = await createEnrollmentCode({ name: String(data.get("name") ?? ""), baseUrl: String(data.get("baseUrl") ?? ""), createdBy: admin.id });
+    await recordAudit({ action: "admin.node_enrollment_created", userId: admin.id, resourceType: "node_enrollment_code", context: { name: String(data.get("name") ?? "").slice(0, 100) } });
+    revalidatePath("/admin/node-connections");
+    return { command: buildInstallCommand(`https://${host}/api/node/enroll`, code), expiresAt: expiresAt.toISOString() };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "生成失败" };
+  }
 }

@@ -562,6 +562,23 @@ CREATE TABLE IF NOT EXISTS node_panel_connections (
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 3x-node 一键安装注册码：只存 SHA-256，单次使用；公网管理地址在生成时由管理员填写（节点不知道 NAT 映射端口）。
+CREATE TABLE IF NOT EXISTS node_enrollment_codes (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  code_hash CHAR(64) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  base_url VARCHAR(500) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  used_ip VARCHAR(45) NULL,
+  connection_id BIGINT UNSIGNED NULL,
+  last_error VARCHAR(255) NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_node_enrollment_code_hash (code_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS nodes (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   external_panel VARCHAR(50) NOT NULL DEFAULT '3x-ui',

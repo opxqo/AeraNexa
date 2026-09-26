@@ -47,3 +47,16 @@
 ## 8. SEO 与中文名「天赐」
 
 品牌定为英文名 AeraNexa（UI 为主）、中文名「天赐」（SEO 用）。目前代码里还没有「天赐」，也没有 robots、sitemap、Open Graph。具体规则和要改的位置见 [`docs/seo.md`](seo.md)。
+
+## 9. 3x-node 一键安装与自动注册（2026-09-27 已实现，待真机验证）
+
+> 已完成：3x-node 0.1.25 发布 `enroll` 与 `credentials -blob`；AN 联调页新增「一键安装并自动注册」，回调接口 `POST /api/node/enroll`。以下为原设计记录。
+
+在 AN 后台生成一次性注册码与安装命令，节点装好后自动回报并建立连接，替代目前手抄 Token 与证书指纹的做法。先优化 3x-node 本身，此项后置。
+
+- 第一步（半自动）：节点 `credentials --blob` 输出 Base64 接入串（地址、端口、Token、指纹），AN 后台粘贴后自动填表。不需要公网 AN
+- 第二步（全自动）：需要 AN 有公网 HTTPS 入口；注册码只存哈希、一次性、带有效期，回调接口限流并记录来源 IP；上报的连接默认停用，管理员确认后启用，AN 用固定指纹回连核对
+- 涉及 3x-node 仓库改动：`enroll` 命令、`install-node.sh` 接收注册码、发新版并同步固定的版本号与两个架构的校验和
+- NAT 的公网映射端口节点无法自知，需在生成命令时由管理员填写
+- 不做节点长期回连；仅当 A6 证明 NAT 场景确实需要时再评估，且不在节点上放 AN 的管理凭据
+- 依据：`docs/node-market-task-plan.md` 阶段 B；真机联调结论见 `docs/3x-node-an-panel-integration-report.md`
