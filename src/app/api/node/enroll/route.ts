@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   try {
     const result = await enrollNode(body, clientIp(request));
     await recordAudit({ action: "node.enrolled", resourceType: "node_panel_connection", resourceId: result.connectionId, request, context: { name: result.name } });
-    return NextResponse.json({ success: true, msg: `已登记为「${result.name}」（#${result.connectionId}），等待管理员在 AN 后台启用`, obj: { connectionId: result.connectionId } });
+    return NextResponse.json({ success: true, msg: `已登记为「${result.name}」（#${result.connectionId}），等待管理员在 AN 后台启用`, obj: { connectionId: result.connectionId, managedMode: "an-v1" } });
   } catch (error) {
     if (error instanceof EnrollmentError) {
       return NextResponse.json({ success: false, msg: error.message, obj: null }, { status: error.status });
