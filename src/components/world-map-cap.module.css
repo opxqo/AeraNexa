@@ -1,0 +1,11 @@
+.frame { position: relative; width: 100%; aspect-ratio: 1600 / 640; container: cap / inline-size; }
+.map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+/* The static SVG steps aside once the rotating canvas has drawn. */
+.map.hidden { visibility: hidden; }
+.mobileDots { display: none; }
+
+@container cap (max-width: 600px) {
+  .desktopDots { display: none; }
+  .mobileDots { display: block; }
+}

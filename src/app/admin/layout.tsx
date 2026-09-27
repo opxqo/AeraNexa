@@ -1,3 +1,4 @@
+import "./shadcn.css";
 import "./admin.css";
 import { AdminShell } from "@/components/admin-shell";
 import { requireAdminUser } from "@/lib/server/admin";

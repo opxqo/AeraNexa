@@ -1,0 +1,29 @@
+/* Globe stage inside the shared map-study card (see ../world-map-demo.module.css). */
+.scene { position: relative; aspect-ratio: 20 / 9; overflow: hidden; border-radius: 12px; background: radial-gradient(ellipse 42% 62% at 50% 50%, #eef3ff 0%, transparent 72%); }
+.viewport { position: absolute; top: 0; left: 50%; height: 100%; aspect-ratio: 1; cursor: grab; touch-action: pan-y; transform: translateX(-50%); }
+.viewport.dragging { cursor: grabbing; }
+.viewport:focus-visible { outline: 2px solid #2662ff; outline-offset: -4px; border-radius: 50%; }
+.viewport canvas { display: block; width: 100%; height: 100%; }
+
+.cityLayer { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; pointer-events: none; }
+.city { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; transition: opacity .2s ease; }
+.cityDot { position: absolute; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #2662ff; box-shadow: 0 0 8px #2662ff; transform: translate(-50%, -50%); }
+.cityGold .cityDot { background: #f5b713; box-shadow: 0 0 8px #f5b713; }
+.cityCard { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; min-width: 72px; padding: 5px 9px; border: 1px solid #e4eaf3; border-radius: 9px; color: #10192d; background: rgba(255, 255, 255, .94); box-shadow: 0 5px 16px rgba(30, 60, 100, .1); line-height: 1.15; white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); }
+.cityBelow .cityCard { transform: translate(-50%, 12px); }
+.cityCard strong { font-size: 11px; font-weight: 650; }
+.cityCard small { margin-top: 2px; color: #64738e; font-size: 9px; }
+
+.message { position: absolute; left: 50%; bottom: 8%; margin: 0; color: #667795; font-size: 13px; transform: translateX(-50%); }
+
+@media (max-width: 600px) {
+  .scene { aspect-ratio: 1; }
+  .cityMobileHidden { display: none; }
+  .cityCard { min-width: 0; padding: 4px 6px; border-radius: 7px; }
+  .cityCard strong { font-size: 9px; }
+  .cityCard small { font-size: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .city { transition: none; }
+}

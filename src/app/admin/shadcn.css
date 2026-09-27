@@ -1,0 +1,40 @@
+/* shadcn utilities are deliberately loaded only by the admin layout.
+ * Preflight is omitted so the established portal and client styles keep their
+ * existing element defaults. */
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+@import "tw-animate-css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--a-bg);
+  --color-foreground: var(--a-text);
+  --color-card: var(--a-surface);
+  --color-card-foreground: var(--a-text);
+  --color-popover: var(--a-surface);
+  --color-popover-foreground: var(--a-text);
+  --color-primary: var(--a-primary);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--a-surface-2);
+  --color-secondary-foreground: var(--a-text);
+  --color-muted: var(--a-surface-2);
+  --color-muted-foreground: var(--a-text-2);
+  --color-accent: var(--a-surface-2);
+  --color-accent-foreground: var(--a-text);
+  --color-destructive: var(--a-danger-fg);
+  --color-border: var(--a-border);
+  --color-input: var(--a-border-strong);
+  --color-ring: var(--a-primary);
+  --color-sidebar: var(--a-surface);
+  --color-sidebar-foreground: var(--a-text-2);
+  --color-sidebar-primary: var(--a-primary);
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: var(--a-surface-2);
+  --color-sidebar-accent-foreground: var(--a-text);
+  --color-sidebar-border: var(--a-border);
+  --color-sidebar-ring: var(--a-primary);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}

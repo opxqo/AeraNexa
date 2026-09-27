@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { HomeHero } from "@/components/home-hero";
 
-export default function Home() {
-  redirect("/dashboard");
+export default function HomePage() {
+  return <HomeHero />;
 }

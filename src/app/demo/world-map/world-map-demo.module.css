@@ -1,0 +1,114 @@
+.page {
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow-x: hidden;
+  background: #f7f9fd;
+  color: #0a1734;
+  font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { width: min(100% - 64px, 1536px); margin: 0 auto; padding: 38px 0 54px; }
+.header { text-align: center; }
+.back { display: inline-flex; align-items: center; gap: 7px; position: absolute; left: max(32px, calc((100vw - 1536px) / 2)); top: 43px; color: #566a91; font-size: 13px; font-weight: 600; }
+.back:hover { color: #2662ff; }
+.kicker { margin: 0 0 10px; color: #8199c7; font-size: 11px; font-weight: 700; letter-spacing: .27em; }
+.header h1 { margin: 0; color: #091735; font-size: clamp(31px, 2.7vw, 42px); line-height: 1.23; letter-spacing: -.05em; }
+.description { margin: 9px 0 0; color: #667795; font-size: 15px; }
+.variants { width: max-content; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 22px auto 0; padding: 4px; border: 1px solid #dfe7f4; border-radius: 11px; background: #eef2fa; }
+.variants a { min-width: 100px; padding: 7px 12px; border-radius: 8px; color: #64728e; font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap; }
+.variants a:hover { color: #2662ff; }
+.variants a[aria-current="page"] { background: #fff; color: #2662ff; box-shadow: 0 1px 6px rgba(31, 65, 125, .09); }
+.stage { margin-top: 32px; padding: 18px; border: 1px solid #dfe7f4; border-radius: 22px; background: #fff; box-shadow: 0 18px 60px rgba(24, 58, 116, .055); }
+.mapFrame { position: relative; }
+.map { width: 100%; height: auto; display: block; aspect-ratio: 2 / 1; }
+.archMap { aspect-ratio: 20 / 7; }
+.mobileDots { display: none; }
+.routeLayer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.route, .routePulse { fill: none; stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: 100; animation-duration: 10s; animation-timing-function: linear; animation-iteration-count: infinite; }
+.route { stroke: #2662ff; stroke-width: 2; opacity: 0; animation-name: routeLife; }
+.routeGold { stroke: #e9ad0e; }
+.routePulse { stroke: #2662ff; stroke-width: 7; stroke-dasharray: 5 100; stroke-dashoffset: 0; opacity: 0; animation-name: routePulseTravel; }
+.routePulseGold { stroke: #e9ad0e; }
+.cityLayer { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; pointer-events: none; }
+.city { position: absolute; width: 0; height: 0; }
+.city:hover, .city:focus-within, .city[data-open="true"] { z-index: 2; }
+.cityPin { position: absolute; left: 0; top: 0; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: #2662ff; background: transparent; cursor: pointer; pointer-events: auto; transform: translate(-50%, -50%); }
+.cityPinGold { color: #f5b713; }
+.cityPin::before, .cityPin::after { content: ""; position: absolute; left: 50%; top: 50%; border-radius: 50%; }
+.cityPin::before { z-index: 1; width: 11px; height: 11px; border: 2px solid #fff; background: currentColor; box-shadow: 0 0 8px currentColor; transform: translate(-50%, -50%); animation: cityCoreBreath 2.4s ease-in-out infinite; }
+.cityPin::after { width: 19px; height: 19px; border: 1.5px solid currentColor; transform: translate(-50%, -50%); animation: cityRingBreath 2.4s ease-out infinite; }
+.cityPin:focus-visible { outline: 2px solid #2662ff; outline-offset: 2px; }
+.cityCard { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 9px; min-width: 97px; min-height: 46px; padding: 7px 11px; border: 1px solid #e4eaf3; border-radius: 11px; color: #10192d; background: rgba(255,255,255,.96); box-shadow: 0 5px 16px rgba(30,60,100,.1); white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transform: translate(-50%, calc(-100% - 14px)); transition: opacity .16s ease, visibility 0s linear .16s; }
+.cityPin:focus-visible + .cityCard, .city[data-open="true"] .cityCard { opacity: 1; visibility: visible; transition: opacity .16s ease, visibility 0s; }
+@media (hover: hover) {
+  .city:hover .cityCard { opacity: 1; visibility: visible; transition: opacity .16s ease, visibility 0s; }
+}
+.cityBelow .cityCard { transform: translate(-50%, 14px); }
+.cityBeijing .cityCard { transform: translate(-80%, calc(-100% - 14px)); }
+.cityBelow.cityGuangzhou .cityCard { transform: translate(-10%, 14px); }
+.cityCardDot { width: 11px; height: 11px; flex: none; border-radius: 50%; background: #2662ff; }
+.cityCardDotGold { background: #f5b713; }
+.cityCopy { display: flex; flex-direction: column; line-height: 1.15; }
+.cityCopy strong { font-size: 12px; font-weight: 650; }
+.cityCopy small { margin-top: 3px; color: #64738e; font-size: 10px; }
+
+@keyframes cityCoreBreath {
+  0%, 100% { transform: translate(-50%, -50%) scale(.88); opacity: .82; }
+  50% { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
+}
+
+@keyframes cityRingBreath {
+  0% { transform: translate(-50%, -50%) scale(.7); opacity: .8; }
+  80%, 100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+}
+
+/* 2.5s to land, 5s connected, then erase from the Chinese origin. */
+@keyframes routeLife {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  2%, 25% { opacity: .72; }
+  25%, 75% { stroke-dashoffset: 0; }
+  95%, 100% { stroke-dashoffset: -100; opacity: .72; }
+}
+
+@keyframes routePulseTravel {
+  0% { stroke-dashoffset: 0; opacity: 0; }
+  2% { opacity: .9; }
+  25% { stroke-dashoffset: -95; opacity: .9; }
+  27%, 100% { stroke-dashoffset: -100; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route { animation: none; stroke-dashoffset: 0; opacity: .72; }
+  .routePulse { animation: none; opacity: 0; }
+  .cityPin::before, .cityPin::after { animation: none; }
+  .cityPin::after { transform: translate(-50%, -50%) scale(1.1); opacity: .45; }
+  .cityCard { transition: none; }
+}
+
+@media (max-width: 600px) {
+  .shell { width: calc(100% - 24px); padding: 20px 0 36px; }
+  .header { padding-top: 36px; }
+  .back { left: 12px; top: 20px; }
+  .header h1 { font-size: 30px; }
+  .description { font-size: 13px; }
+  .variants { margin-top: 18px; width: 100%; max-width: 300px; }
+  .variants a { flex: 1 1 calc(50% - 4px); min-width: 0; padding: 7px 8px; font-size: 12px; }
+  .stage { margin-top: 23px; padding: 10px; border-radius: 14px; }
+  .desktopDots { display: none; }
+  .mobileDots { display: block; }
+  .routeMobileHidden { display: none; }
+  .route { stroke-width: 3; }
+  .routePulse { stroke-width: 9; }
+  .cityMobileHidden { display: none; }
+  .cityCard, .cityBelow .cityCard { min-width: 80px; min-height: 35px; gap: 6px; padding: 5px 7px; border-radius: 8px; transform: translate(-50%, 10px); }
+  .city:first-child .cityCard { transform: translate(-22%, 10px); }
+  .cityBeijing .cityCard { transform: translate(0, 10px); }
+  .cityGuangzhou .cityCard, .cityBelow.cityGuangzhou .cityCard { transform: translate(-50%, 43px); }
+  .cityCardDot { width: 7px; height: 7px; }
+  .cityCopy strong { font-size: 10px; }
+  .cityCopy small { font-size: 9px; margin-top: 2px; }
+  .cityPin { width: 20px; height: 20px; }
+  .cityPin::before { width: 9px; height: 9px; border-width: 1.5px; }
+  .cityPin::after { width: 16px; height: 16px; }
+}

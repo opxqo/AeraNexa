@@ -1,0 +1,29 @@
+/* City/route presentation matching the 3D globe demo's always-visible cards
+   (see ../app/demo/world-map/globe/world-globe-demo.module.css), positioned
+   over the flat arch projection instead of a 3D scene. */
+.routeLayer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.route { fill: none; stroke: #2662ff; stroke-width: 2; stroke-linecap: round; opacity: .68; }
+.routeGold { stroke: #e9ad0e; }
+
+.cityLayer { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; pointer-events: none; }
+.city { position: absolute; width: 0; height: 0; }
+.cityDot { position: absolute; left: 0; top: 0; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #2662ff; box-shadow: 0 0 8px #2662ff; transform: translate(-50%, -50%); }
+.cityGold .cityDot { background: #f5b713; box-shadow: 0 0 8px #f5b713; }
+.cityCard { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; min-width: 72px; padding: 5px 9px; border: 1px solid #e4eaf3; border-radius: 9px; color: #10192d; background: rgba(255, 255, 255, .94); box-shadow: 0 5px 16px rgba(30, 60, 100, .1); line-height: 1.15; white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); }
+.cityBelow .cityCard { transform: translate(-50%, 12px); }
+.cityLeft .cityCard { transform: translate(calc(-100% - 12px), -50%); }
+/* Cities hugging the right edge keep their card inside the frame. */
+.city.cityEdgeRight .cityCard { transform: translate(calc(-100% - 12px), -50%); }
+.cityCard strong { font-size: 11px; font-weight: 650; }
+.cityCard small { margin-top: 2px; color: #64738e; font-size: 9px; }
+
+@media (max-width: 600px) {
+  .routeMobileHidden { display: none; }
+  .cityMobileHidden { display: none; }
+  /* Tokyo is hidden on phones, so 北京's card can go back above its dot. */
+  .cityLeft .cityCard { transform: translate(-50%, calc(-100% - 12px)); }
+  .city.cityEdgeRight .cityCard { transform: translate(calc(-100% - 8px), -50%); }
+  .cityCard { min-width: 0; padding: 4px 6px; border-radius: 7px; }
+  .cityCard strong { font-size: 9px; }
+  .cityCard small { font-size: 8px; }
+}
