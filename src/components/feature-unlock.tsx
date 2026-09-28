@@ -73,7 +73,9 @@ const GROUPS: Group[] = [
 ];
 
 // Flight timing (ms).
-const IN_FLIGHT = 7;         // cards in the air at once
+// Cards fly in horizontal lanes, one card per lane, so they never stack.
+const LANES = 4;
+const IN_FLIGHT = LANES;     // cards in the air at once
 const FLY_MIN = 3000;
 const FLY_SPREAD = 2000;
 const REST_MIN = 500;
@@ -83,6 +85,8 @@ const REST_SPREAD = 1500;
 const BEAM_TRAVEL = 1200;
 const BEAM_CYCLE = BEAM_TRAVEL / 0.4;
 const RING = 700;
+// Cloudflare's ease (its design spec): quick start, long soft settle.
+const EASE = "cubic-bezier(.19, 1, .22, 1)";
 
 function RequestCard({ request, index, copy }: { request: Request; index: number; copy: Copy }) {
   return (
@@ -199,6 +203,7 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
     const cards = [...box.querySelectorAll<HTMLElement>(`.${styles.card}`)];
     const groupOf = (id: string) => box.querySelector<HTMLElement>(`.${styles.group}[data-group="${id}"]`)!;
     const idle = new Set(cards.keys());
+    const freeLanes = new Set(Array.from({ length: LANES }, (_, lane) => lane));
     const timers = new Set<number>();
     const animations = new Set<Animation>();
     const beams: Beam[] = [];
@@ -242,16 +247,16 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
       if (count) count.textContent = counts[request.group].toLocaleString(locale === "zh" ? "zh-CN" : "en");
       group.querySelector(`.${styles.portIn} i`)?.animate(
         [{ transform: "scale(1)", opacity: 0.9 }, { transform: "scale(3.2)", opacity: 0 }],
-        { duration: 650, easing: "cubic-bezier(.22, 1, .36, 1)" },
+        { duration: 650, easing: EASE },
       );
-      group.animate([{ borderColor: "rgba(244, 83, 0, .55)" }, { borderColor: "rgba(38, 38, 38, .1)" }], { duration: 700, easing: "ease-out" });
+      group.animate([{ borderColor: "rgba(255, 94, 31, .55)" }, { borderColor: "rgba(38, 38, 38, .1)" }], { duration: 700, easing: EASE });
       const target = visibleCity(GROUPS.find((item) => item.id === request.group)!.cities) ?? visibleCity([]);
       const from = group.querySelector<HTMLElement>(`.${styles.portOut}`);
       if (target && from) beams.push({ from, to: target, start: performance.now(), service: request.name, city: target.textContent?.trim() ?? "", landed: false });
     };
 
     const fly = () => {
-      if (!idle.size) return;
+      if (!idle.size || !freeLanes.size) return;
       // Cards take turns in a fixed order, skipping ones still in the air.
       let cardIndex = order % cards.length;
       while (!idle.has(cardIndex)) cardIndex = (cardIndex + 1) % cards.length;
@@ -262,28 +267,36 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
       const request = REQUESTS[Number(card.dataset.index)];
       const port = local(groupOf(request.group).querySelector(`.${styles.portIn}`)!);
       const { w, h } = local(card);
-      const boxHeight = box.clientHeight;
+      // Take a free lane at random and start somewhere inside it.
+      const lanes = [...freeLanes];
+      const lane = lanes[Math.floor(Math.random() * lanes.length)];
+      freeLanes.delete(lane);
+      const laneHeight = (box.clientHeight - 40) / LANES;
       const startX = -40 + Math.random() * 200;
-      const startY = 20 + Math.random() * (boxHeight - h - 40);
+      const startY = 20 + lane * laneHeight + Math.max(0, laneHeight - h) * Math.random() - Math.max(0, h - laneHeight) / 2;
       const endX = port.x + port.w / 2 - w / 2;
       const endY = port.y + port.h / 2 - h / 2;
-      const midX = startX + (endX - startX) * 0.55;
-      const midY = startY + (endY - startY) * 0.35;
+      // Cards hold their lane for most of the way and only converge on the
+      // port at the end, shrinking as they do.
+      const midX = startX + (endX - startX) * 0.6;
+      const midY = startY + (endY - startY) * 0.12;
       const duration = FLY_MIN + Math.random() * FLY_SPREAD;
       const at = (x: number, y: number, scale: number) => `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${scale})`;
       const animation = card.animate(
         [
-          { transform: at(startX, startY, 0.7), opacity: 0, easing: "cubic-bezier(.33, 1, .68, 1)" },
-          { transform: at(startX, startY, 1), opacity: 0.95, offset: 0.1, easing: "linear" },
-          { transform: at(midX, midY, 1), opacity: 0.95, offset: 0.55, easing: "ease-in" },
-          { transform: at(endX - w * 0.35, endY, 0.85), opacity: 0.95, offset: 0.9, easing: "ease-in" },
-          { transform: at(endX, endY, 0.12), opacity: 0 },
+          { transform: at(startX, startY, 0.7), opacity: 0, easing: EASE },
+          { transform: at(startX, startY, 1), opacity: 1, offset: 400 / duration, easing: "linear" },
+          { transform: at(midX, midY, 1), opacity: 1, offset: 0.6, easing: "ease-in" },
+          // Gathers in before the node group column, so it doesn't sprawl over it.
+          { transform: at(endX - w * 0.45, endY, 0.55), opacity: 1, offset: 0.82, easing: "ease-in" },
+          { transform: at(endX, endY, 0.1), opacity: 0 },
         ],
         { duration, fill: "forwards" },
       );
       animations.add(animation);
       animation.onfinish = () => {
         animations.delete(animation);
+        freeLanes.add(lane);
         receive(cardIndex);
         later(() => {
           idle.add(cardIndex);
@@ -340,13 +353,13 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
             const chipText = chipRef.current;
             if (chipText) {
               chipText.textContent = chip(beam.service, beam.city);
-              chipText.animate([{ transform: "translateY(100%)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 400, easing: "cubic-bezier(.25, .1, .25, 1)" });
+              chipText.animate([{ transform: "translateY(100%)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 400, easing: EASE });
             }
           }
           const t = (elapsed - BEAM_TRAVEL) / RING;
           context.beginPath();
           context.arc(bx, by, 4 + 18 * (1 - Math.pow(1 - t, 3)), 0, Math.PI * 2);
-          context.strokeStyle = `rgba(244, 83, 0, ${0.8 * (1 - t)})`;
+          context.strokeStyle = `rgba(255, 72, 0, ${0.8 * (1 - t)})`;
           context.lineWidth = 1.5;
           context.stroke();
         }
