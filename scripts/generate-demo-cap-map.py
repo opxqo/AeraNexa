@@ -231,15 +231,20 @@ def render(dots, land_radius, coast_radius):
 
 
 MASK_STEP = 0.5  # degrees per land-mask cell
+# The runtime data covers pole to pole: the demo page can curl the cap into a
+# whole globe (src/lib/demo/cap-projection.ts). The cap itself still crops to
+# SOUTH..NORTH.
+MASK_NORTH = 90
+MASK_SOUTH = -90
 MASK_COLUMNS = round(360 / MASK_STEP)
-MASK_ROWS = round((NORTH - SOUTH) / MASK_STEP)
+MASK_ROWS = round((MASK_NORTH - MASK_SOUTH) / MASK_STEP)
 
 
 def mask(polygons, is_land, extra=None):
     """Mask of cells inside `polygons`, or where `extra(lon, lat)` holds."""
     bits = bytearray((MASK_COLUMNS * MASK_ROWS + 7) // 8)
     for row in range(MASK_ROWS):
-        lat = NORTH - (row + 0.5) * MASK_STEP
+        lat = MASK_NORTH - (row + 0.5) * MASK_STEP
         candidates = [item for item in polygons if item[1][0][1] <= lat <= item[1][0][3]]
         for column in range(MASK_COLUMNS):
             lon = -180 + (column + 0.5) * MASK_STEP
@@ -253,7 +258,7 @@ def mask_lookup(bits, reach=0):
     """Test a lon/lat against a mask; `reach` also accepts cells that many
     steps away (coast dots sit right on the land edge). Mirrors cap-dots.ts."""
     def test(lon, lat):
-        row = math.floor((NORTH - lat) / MASK_STEP)
+        row = math.floor((MASK_NORTH - lat) / MASK_STEP)
         column = math.floor((lon + 180) / MASK_STEP)
         for dr in range(-reach, reach + 1):
             for dc in range(-reach, reach + 1):
@@ -354,13 +359,13 @@ def runtime_data(polygons, is_land, china_bits, borders):
         for ring in ring_set:
             flat = []
             for lon, lat in ring:
-                if SOUTH <= lat <= NORTH:
+                if MASK_SOUTH <= lat <= MASK_NORTH:
                     flat += [round(lon, 3), round(lat, 3)]
             if len(flat) >= 4:
                 rings.append(flat)
     return json.dumps({
-        "north": NORTH,
-        "south": SOUTH,
+        "north": MASK_NORTH,
+        "south": MASK_SOUTH,
         "step": MASK_STEP,
         "columns": columns,
         "rows": rows,

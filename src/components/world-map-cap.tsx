@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { WorldMapCapCityLayer } from "@/components/world-map-cap-city-layer";
 import { CAP_DOTS_DESKTOP, CAP_DOTS_MOBILE, createCapDots, type CapLandData } from "@/lib/demo/cap-dots";
-import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH } from "@/lib/demo/cap-projection";
+import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capSilhouette, getCapCurl, setCapCurl } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap.module.css";
 
 // One full turn every 60 seconds, eastward.
@@ -24,7 +24,10 @@ const CHINA_COLOR = "#f45300";
 // canvas takes over, and stays put when reduced motion is requested.
 const DEFAULT_LABEL = "球冠式半球世界陆地点阵，地图贴合倾斜球面，边缘向后弯曲";
 
-export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { className?: string; label?: string }) {
+// `curlRef` (optional, the /demo/world-map/cap scroll effect) holds how far
+// the cap has curled into a globe, 0–1; it is read every frame, so scrolling
+// never re-renders React. Without it the map stays a cap.
+export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: { className?: string; label?: string; curlRef?: RefObject<number> }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const updateCitiesRef = useRef<((seam: number, width: number, height: number) => void) | null>(null);
@@ -74,6 +77,20 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { classNa
           const scale = canvas.width / CAP_VIEW_WIDTH;
           context.setTransform(scale, 0, 0, scale, 0, 0);
           context.clearRect(0, 0, CAP_VIEW_WIDTH, CAP_VIEW_HEIGHT);
+          // Once the map curls, a faint disc and outline show the sphere's
+          // shape, fading in with the curl.
+          const curl = getCapCurl();
+          if (curl > 0) {
+            const { x, y, radius } = capSilhouette();
+            context.globalAlpha = curl;
+            context.beginPath();
+            context.arc(x, y, radius, 0, Math.PI * 2);
+            context.fillStyle = "rgba(38, 98, 255, 0.035)";
+            context.fill();
+            context.strokeStyle = "rgba(38, 98, 255, 0.28)";
+            context.lineWidth = 1.2;
+            context.stroke();
+          }
           const layers = [
             [COLOR, land, params.landRadius, 0.72],
             [COLOR, coast, params.coastRadius, 0.95],
@@ -105,8 +122,13 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { classNa
           }
           if (last) seam = ((seam + ((now - last) / 1000) * DEGREES_PER_SECOND + 180) % 360) - 180;
           last = now;
+          // While curling, redraw the dots every frame so they keep up with
+          // the markers and routes.
+          const curl = curlRef?.current ?? 0;
+          const curling = curl !== getCapCurl();
+          if (curling) setCapCurl(curl);
           updateCitiesRef.current?.(seam, width, height);
-          if (now - lastMapDraw >= MAP_REDRAW_INTERVAL) {
+          if (curling || now - lastMapDraw >= MAP_REDRAW_INTERVAL) {
             draw(seam);
             lastMapDraw = performance.now();
           }
@@ -133,6 +155,7 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { classNa
 
         cleanup = () => {
           cancelAnimationFrame(frameId);
+          setCapCurl(0);
           resizeObserver.disconnect();
           intersectionObserver.disconnect();
         };
@@ -146,7 +169,7 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { classNa
       controller.abort();
       cleanup();
     };
-  }, []);
+  }, [curlRef]);
 
   return (
     <div ref={frameRef} className={`${styles.frame} ${className}`}>

@@ -6,7 +6,7 @@
 // and the ten-dash line) and small islands, so it can be drawn in the accent
 // colour.
 
-import { CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capLonLat, sphereAngles, toView, unprojectCap } from "@/lib/demo/cap-projection";
+import { CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capLatRange, capLonLat, getCapCurl, sphereAngles, toView, unprojectCap } from "@/lib/demo/cap-projection";
 
 export type CapLandData = {
   north: number;
@@ -89,14 +89,22 @@ export function createCapDots(data: CapLandData, params: CapDotParams) {
   }
 
   // Screen grid points and where they land on the sphere. The sphere angles
-  // are measured from the seam, so this is fixed while the seam moves.
-  const grid: number[] = [];
-  let row = 0;
-  for (let y = params.rowGap / 2; y < CAP_VIEW_HEIGHT; y += params.rowGap, row += 1) {
-    for (let x = params.columnGap / 2 + (row % 2 ? params.columnGap / 2 : 0); x < CAP_VIEW_WIDTH; x += params.columnGap) {
-      const hit = unprojectCap(x, y);
-      if (hit) grid.push(x, y, hit.theta, hit.phi);
+  // are measured from the seam, so this only changes when the map curls.
+  let grid: number[] = [];
+  let gridCurl = -1;
+  function currentGrid() {
+    const curl = getCapCurl();
+    if (curl === gridCurl) return grid;
+    gridCurl = curl;
+    grid = [];
+    let row = 0;
+    for (let y = params.rowGap / 2; y < CAP_VIEW_HEIGHT; y += params.rowGap, row += 1) {
+      for (let x = params.columnGap / 2 + (row % 2 ? params.columnGap / 2 : 0); x < CAP_VIEW_WIDTH; x += params.columnGap) {
+        const hit = unprojectCap(x, y);
+        if (hit) grid.push(x, y, hit.theta, hit.phi);
+      }
     }
+    return grid;
   }
 
   const inside = (x: number, y: number) => x >= -4 && x <= CAP_VIEW_WIDTH + 4 && y >= -4 && y <= CAP_VIEW_HEIGHT + 4;
@@ -104,20 +112,29 @@ export function createCapDots(data: CapLandData, params: CapDotParams) {
   // Evenly spaced dots along lon/lat lines (coast rings or borders).
   function trace(lines: number[][], minPerimeter: number, seam: number) {
     const dots: number[] = [];
+    const curled = getCapCurl() > 0;
+    const { north, south } = capLatRange();
     for (const ring of lines) {
       const thetas: number[] = [];
       const points: number[] = [];
+      const hidden: boolean[] = [];
       for (let index = 0; index < ring.length; index += 2) {
+        // Vertices beyond the latitudes in view are left out (the ring joins
+        // up across them), as the generator does for the cap.
+        if (ring[index + 1] < south || ring[index + 1] > north) continue;
         const angles = sphereAngles(ring[index], ring[index + 1], seam);
         const point = toView(angles);
         thetas.push(angles.theta);
         points.push(point.x, point.y);
+        hidden.push(curled && capFacing(angles) <= 0);
       }
-      // Segments between consecutive vertices, skipping ones that cross the seam.
+      // Segments between consecutive vertices, skipping ones that cross the
+      // seam or (once curled into a globe) touch the far side.
       const segments: number[] = [];
       let perimeter = 0;
       for (let index = 1; index < thetas.length; index += 1) {
         if (Math.abs(thetas[index] - thetas[index - 1]) >= 30) continue;
+        if (hidden[index] || hidden[index - 1]) continue;
         const ax = points[index * 2 - 2], ay = points[index * 2 - 1];
         const bx = points[index * 2], by = points[index * 2 + 1];
         segments.push(ax, ay, bx, by);
@@ -147,7 +164,9 @@ export function createCapDots(data: CapLandData, params: CapDotParams) {
     const nearChinaCoast = trace(chinaRings, params.minPerimeter, seam);
     const border = trace(data.borders, 0, seam);
     for (let index = 0; index < data.islands.length; index += 2) {
-      const point = toView(sphereAngles(data.islands[index], data.islands[index + 1], seam));
+      const angles = sphereAngles(data.islands[index], data.islands[index + 1], seam);
+      if (getCapCurl() > 0 && capFacing(angles) <= 0) continue;
+      const point = toView(angles);
       if (inside(point.x, point.y)) border.push(point.x, point.y);
     }
     // Border dots clear a gap in the land dots the same way the coast does.
@@ -177,6 +196,7 @@ export function createCapDots(data: CapLandData, params: CapDotParams) {
 
     const land: number[] = [];
     const chinaLand: number[] = [];
+    const grid = currentGrid();
     for (let index = 0; index < grid.length; index += 4) {
       const { longitude, latitude } = capLonLat({ theta: grid[index + 2], phi: grid[index + 3] }, seam);
       const x = grid[index];

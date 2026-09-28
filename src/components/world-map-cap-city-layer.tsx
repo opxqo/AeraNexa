@@ -3,7 +3,7 @@
 import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { CAP_HUB, capCities as cities, capLaunchers, type CapCity } from "@/lib/demo/cap-cities";
 import { SHOCKWAVE, TRAVEL, drawComet, drawShockwave } from "@/lib/demo/cap-comet";
-import { CAP_HALF_THETA, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capRoutePoints, capSurfaceFrame, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
+import { type Angles, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capHalfTheta, capRoutePoints, capSurfaceFrame, getCapCurl, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap-city-layer.module.css";
 
 type City = CapCity;
@@ -44,14 +44,19 @@ function tagAnchor(x: number) {
   return "-50%";
 }
 // As the map turns, cities fade out between these fractions of the visible
-// half-sweep, so nothing pops at the seam where the map wraps around.
-const FADE_START = 0.8 * CAP_HALF_THETA;
-const FADE_END = 0.95 * CAP_HALF_THETA;
+// half-sweep, so nothing pops at the seam where the map wraps around. Once
+// the map curls into a globe they also fade out toward its outline, and are
+// hidden round the back.
+const FADE_START = 0.8;
+const FADE_END = 0.95;
+const LIMB_FADE = 0.1;
 
-function fade(theta: number) {
-  const distance = Math.abs(theta);
-  if (distance <= FADE_START) return 1;
-  return Math.max(0, 1 - (distance - FADE_START) / (FADE_END - FADE_START));
+function fade(angles: Angles) {
+  const half = capHalfTheta();
+  const distance = Math.abs(angles.theta);
+  const seamFade = distance <= FADE_START * half ? 1 : Math.max(0, 1 - (distance - FADE_START * half) / ((FADE_END - FADE_START) * half));
+  if (getCapCurl() === 0) return seamFade;
+  return Math.min(seamFade, Math.max(0, Math.min(1, capFacing(angles) / LIMB_FADE)));
 }
 
 // Markers lie flat on the sphere: this maps a screen circle onto the ground
@@ -105,14 +110,14 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
       const launcher = capLaunchers[which];
       turn = (turn + 1) % capLaunchers.length;
       const start = cityByName.get(launcher.from)!;
-      const startVisible = fade(sphereAngles(start.longitude, start.latitude, seam).theta) >= LAUNCH_FADE;
+      const startVisible = fade(sphereAngles(start.longitude, start.latitude, seam)) >= LAUNCH_FADE;
       for (let tries = 0; tries < launcher.to.length; tries += 1) {
         const index = cursors[which];
         cursors[which] = (index + 1) % launcher.to.length;
         const end = cityByName.get(launcher.to[index])!;
         if (!end.mobile && width <= SMALL_MAP_WIDTH) continue;
         if (flights.some((flight) => flight.end === end)) continue;
-        const endVisible = fade(sphereAngles(end.longitude, end.latitude, seam).theta) >= LAUNCH_FADE;
+        const endVisible = fade(sphereAngles(end.longitude, end.latitude, seam)) >= LAUNCH_FADE;
         if (!startVisible && !endVisible) continue;
         flights.push({ start, end, launched: now, seed: cities.indexOf(end) + 1 });
         return;
@@ -141,7 +146,7 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
         element.style.left = "0";
         element.style.top = "0";
         element.style.transform = `translate3d(${(point.x * width / CAP_VIEW_WIDTH).toFixed(3)}px, ${(point.y * height / CAP_VIEW_HEIGHT).toFixed(3)}px, 0)`;
-        element.style.opacity = String(fade(angles.theta));
+        element.style.opacity = String(fade(angles));
         element.style.setProperty("--tag-anchor", tagAnchor(point.x));
         element.style.setProperty("--surface", surfaceMatrix(city, seam));
       });
@@ -163,7 +168,7 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
         const phase = (now - launched) / CYCLE_SECONDS;
         // Near the edges the comet is faded by the edge mask below.
         drawComet(context, capRoutePoints(start, end, seam), phase, unitsPerPixel, 1);
-        const arrival = fade(sphereAngles(end.longitude, end.latitude, seam).theta);
+        const arrival = fade(sphereAngles(end.longitude, end.latitude, seam));
         if (arrival > 0) {
           drawShockwave(context, capSurfaceFrame(end.longitude, end.latitude, seam), phase, seed, shockwaveRadius(width), unitsPerPixel, arrival);
         }

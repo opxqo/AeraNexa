@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { WorldGlobeDemo } from "@/components/world-globe-demo";
 import { WorldMapArchCityLayer } from "@/components/world-map-arch-city-layer";
-import { WorldMapCap } from "@/components/world-map-cap";
+import { WorldMapCapScrollDemo } from "@/components/world-map-cap-scroll-demo";
 import { WorldMapCityLayer } from "@/components/world-map-city-layer";
 import styles from "@/app/demo/world-map/world-map-demo.module.css";
 
@@ -53,11 +53,12 @@ export function WorldMapDemo({ variant = "flat" }: { variant?: Variant }) {
           </nav>
         </header>
 
+        {variant === "cap" ? (
+          <WorldMapCapScrollDemo label={copy[variant].label} />
+        ) : (
         <section className={styles.stage} aria-label={copy[variant].label}>
           {variant === "globe" ? (
             <WorldGlobeDemo />
-          ) : variant === "cap" ? (
-            <WorldMapCap />
           ) : (
             <div className={styles.mapFrame}>
               <svg
@@ -75,6 +76,7 @@ export function WorldMapDemo({ variant = "flat" }: { variant?: Variant }) {
             </div>
           )}
         </section>
+        )}
       </div>
     </main>
   );
