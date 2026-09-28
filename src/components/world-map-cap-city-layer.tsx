@@ -1,31 +1,39 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
-import { cities, routes } from "@/lib/demo/world-map-cities";
-import { drawComet } from "@/lib/demo/cap-comet";
-import { CAP_HALF_THETA, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capRoutePoints, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
+import { CAP_HUB, capCities as cities, capLaunchers, type CapCity } from "@/lib/demo/cap-cities";
+import { SHOCKWAVE, TRAVEL, drawComet, drawShockwave } from "@/lib/demo/cap-comet";
+import { CAP_HALF_THETA, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capRoutePoints, capSurfaceFrame, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap-city-layer.module.css";
 
-type City = (typeof cities)[number];
+type City = CapCity;
 
 const cityByName = new Map(cities.map((city) => [city.name, city]));
 // Matches the @container cap (max-width: 600px) rule that hides secondary cities.
 const SMALL_MAP_WIDTH = 600;
 
-// One cycle per route: a comet flies origin → destination and hits it at 40%,
-// when the destination ripples. Routes start at golden-ratio offsets through
-// the cycle so they never move in step.
+// Launch rhythm: every BEAT seconds one comet leaves the China hub, which
+// works through its destinations in order.
+// The globe keeps launching while China is round the back: the comet then
+// flies in from the edge of the map. A destination is passed over for the
+// next one when neither end is in view, when it is hidden on a small map, or
+// while it is still being hit. A comet's phase runs over a 14s cycle: it hits at TRAVEL (5.6s),
+// then its shockwave plays out and it is dropped.
+const BEAT = 1.6;
 const CYCLE_SECONDS = 14;
-const routeDelay = (index: number) => `${-(((index * 0.6180339887) % 1) * CYCLE_SECONDS).toFixed(2)}s`;
-const delayByDestination = new Map(routes.map((route, index) => [route.to, routeDelay(index)]));
+const LIFE = TRAVEL + SHOCKWAVE.duration;
+// At least one end must be this visible for a launch.
+const LAUNCH_FADE = 0.6;
+// Comets fade out over the outer edges of the map (shares of its width),
+// about where the city tags fade.
+const EDGE_CLEAR = 0.01;
+const EDGE_SOLID = 0.07;
+// Shockwave size: 38px on a full map, smaller on narrow ones.
+const shockwaveRadius = (width: number) => Math.min(38, width * 0.03);
 
 // Tags are centred above their marker. Where two markers are close enough for
 // tags to collide, one tag drops below instead.
-const below = new Set<string>(["广州", "Singapore"]);
-const englishNames: Partial<Record<City["name"], string>> = {
-  北京: "Beijing",
-  广州: "Guangzhou",
-};
+const below = new Set<string>(["Singapore", "Frankfurt"]);
 // Shift tags gradually toward the inside of the map near either edge.
 const EDGE_ZONE = CAP_VIEW_WIDTH * 0.12;
 function tagAnchor(x: number) {
@@ -46,18 +54,32 @@ function fade(theta: number) {
   return Math.max(0, 1 - (distance - FADE_START) / (FADE_END - FADE_START));
 }
 
+// Markers lie flat on the sphere: this maps a screen circle onto the ground
+// under the city (see capSurfaceFrame), so pins and halos land as ellipses
+// that flatten and shrink with perspective. North is flipped so the matrix
+// doesn't mirror, and kept at least MIN_FLATTEN of east so markers near the
+// rim don't collapse into lines. Tags are left upright.
+const MIN_FLATTEN = 0.3;
+function surfaceMatrix(city: City, seam?: number) {
+  const { east, north } = capSurfaceFrame(city.longitude, city.latitude, seam);
+  const eastLength = Math.hypot(east[0], east[1]);
+  const northLength = Math.hypot(north[0], north[1]) || 1;
+  const stretch = Math.max(1, (MIN_FLATTEN * eastLength) / northLength);
+  const values = [east[0], east[1], -north[0] * stretch, -north[1] * stretch];
+  return `matrix(${values.map((value) => value.toFixed(3)).join(", ")}, 0, 0)`;
+}
+
 // Rounded so the server-rendered style matches the browser's normalised
 // value on hydration.
 const percent = (value: number, total: number) => `${((value / total) * 100).toFixed(3)}%`;
 
 function position(city: City): CSSProperties {
   const point = projectCapCity(city.longitude, city.latitude);
-  const delay = delayByDestination.get(city.name);
   return {
     left: percent(point.x, CAP_VIEW_WIDTH),
     top: percent(point.y, CAP_VIEW_HEIGHT),
     "--tag-anchor": tagAnchor(point.x),
-    ...(delay ? { "--cycle-delay": delay } : {}),
+    "--surface": surfaceMatrix(city),
   } as CSSProperties;
 }
 
@@ -72,13 +94,29 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
     if (!updateRef) return;
     const canvas = cometRef.current;
     const context = canvas?.getContext("2d");
-    // Each comet's phase comes from its destination's ripple animation, so the
-    // head always lands exactly as the ripple starts.
-    const ripplePhase = (index: number) => {
-      const destination = cities.findIndex((city) => city.name === routes[index].to);
-      const ripple = cityRefs.current[destination]?.querySelector<HTMLElement>(`.${styles.ripple}`);
-      const progress = ripple?.getAnimations()[0]?.effect?.getComputedTiming().progress;
-      return typeof progress === "number" ? progress : null;
+    type Flight = { start: City; end: City; launched: number; seed: number };
+    let flights: Flight[] = [];
+    const cursors = capLaunchers.map(() => 0);
+    let turn = 0;
+    let lastBeat: number | null = null;
+
+    const launch = (seam: number, width: number, now: number) => {
+      const which = turn;
+      const launcher = capLaunchers[which];
+      turn = (turn + 1) % capLaunchers.length;
+      const start = cityByName.get(launcher.from)!;
+      const startVisible = fade(sphereAngles(start.longitude, start.latitude, seam).theta) >= LAUNCH_FADE;
+      for (let tries = 0; tries < launcher.to.length; tries += 1) {
+        const index = cursors[which];
+        cursors[which] = (index + 1) % launcher.to.length;
+        const end = cityByName.get(launcher.to[index])!;
+        if (!end.mobile && width <= SMALL_MAP_WIDTH) continue;
+        if (flights.some((flight) => flight.end === end)) continue;
+        const endVisible = fade(sphereAngles(end.longitude, end.latitude, seam).theta) >= LAUNCH_FADE;
+        if (!startVisible && !endVisible) continue;
+        flights.push({ start, end, launched: now, seed: cities.indexOf(end) + 1 });
+        return;
+      }
     };
 
     updateRef.current = (seam: number, width: number, height: number) => {
@@ -105,24 +143,47 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
         element.style.transform = `translate3d(${(point.x * width / CAP_VIEW_WIDTH).toFixed(3)}px, ${(point.y * height / CAP_VIEW_HEIGHT).toFixed(3)}px, 0)`;
         element.style.opacity = String(fade(angles.theta));
         element.style.setProperty("--tag-anchor", tagAnchor(point.x));
+        element.style.setProperty("--surface", surfaceMatrix(city, seam));
       });
       if (!context) return;
+      const now = performance.now() / 1000;
+      flights = flights.filter((flight) => (now - flight.launched) / CYCLE_SECONDS < LIFE);
+      // After a pause (tab hidden, map off screen) start the rhythm afresh
+      // instead of firing every missed beat at once.
+      if (lastBeat === null || now - lastBeat > BEAT * 2) lastBeat = now - BEAT;
+      while (now - lastBeat >= BEAT) {
+        lastBeat += BEAT;
+        launch(seam, width, now);
+      }
+      const unitsPerPixel = CAP_VIEW_WIDTH / width;
       // Routes are only visible as comets; there is no drawn track.
-      routes.forEach(({ from, to }, index) => {
-        const start = cityByName.get(from)!;
-        const end = cityByName.get(to)!;
+      flights.forEach(({ start, end, launched, seed }) => {
         // Same rule as the city tags: secondary destinations drop out on small maps.
         if (!end.mobile && width <= SMALL_MAP_WIDTH) return;
-        const a = sphereAngles(start.longitude, start.latitude, seam).theta;
-        const b = sphereAngles(end.longitude, end.latitude, seam).theta;
-        // Endpoints on opposite sides of the seam: the route would cut across
-        // the whole map, so skip it until both ends are back on one side.
-        if (Math.abs(a - b) > CAP_HALF_THETA) return;
-        const alpha = Math.min(fade(a), fade(b));
-        const phase = ripplePhase(index);
-        if (phase === null || alpha <= 0) return;
-        drawComet(context, capRoutePoints(start, end, seam), phase, CAP_VIEW_WIDTH / width, alpha);
+        const phase = (now - launched) / CYCLE_SECONDS;
+        // Near the edges the comet is faded by the edge mask below.
+        drawComet(context, capRoutePoints(start, end, seam), phase, unitsPerPixel, 1);
+        const arrival = fade(sphereAngles(end.longitude, end.latitude, seam).theta);
+        if (arrival > 0) {
+          drawShockwave(context, capSurfaceFrame(end.longitude, end.latitude, seam), phase, seed, shockwaveRadius(width), unitsPerPixel, arrival);
+        }
       });
+      // Fade everything out toward the left and right edges, so comets
+      // crossing the seam slip in and out instead of being cut off.
+      if (flights.length) {
+        const edge = context.createLinearGradient(0, 0, CAP_VIEW_WIDTH, 0);
+        edge.addColorStop(0, "rgba(0, 0, 0, 0)");
+        edge.addColorStop(EDGE_CLEAR, "rgba(0, 0, 0, 0)");
+        edge.addColorStop(EDGE_SOLID, "rgba(0, 0, 0, 1)");
+        edge.addColorStop(1 - EDGE_SOLID, "rgba(0, 0, 0, 1)");
+        edge.addColorStop(1 - EDGE_CLEAR, "rgba(0, 0, 0, 0)");
+        edge.addColorStop(1, "rgba(0, 0, 0, 0)");
+        context.save();
+        context.globalCompositeOperation = "destination-in";
+        context.fillStyle = edge;
+        context.fillRect(0, 0, CAP_VIEW_WIDTH, CAP_VIEW_HEIGHT);
+        context.restore();
+      }
     };
     return () => {
       updateRef.current = null;
@@ -140,16 +201,17 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
             ref={(element) => { cityRefs.current[index] = element; }}
             className={[
               styles.city,
-              delayByDestination.has(city.name) ? styles.destination : "",
+              city.name === CAP_HUB ? styles.hub : "",
               below.has(city.name) ? styles.below : "",
               city.mobile ? "" : styles.mobileHidden,
             ].filter(Boolean).join(" ")}
             style={position(city)}
           >
             <span className={styles.halo} aria-hidden="true" />
-            <span className={styles.ripple} aria-hidden="true" />
             <span className={styles.pin} aria-hidden="true" />
-            <span className={styles.tag}>{englishNames[city.name] ?? city.name}</span>
+            {city.name === CAP_HUB
+              ? <span className={styles.srOnly}>{city.name}</span>
+              : <span className={styles.tag}>{city.name}</span>}
           </li>
         ))}
       </ul>

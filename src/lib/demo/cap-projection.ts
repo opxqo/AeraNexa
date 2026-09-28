@@ -93,26 +93,64 @@ export function unprojectCap(px: number, py: number): Angles | null {
   return { theta, phi };
 }
 
+// View units per sphere degree along θ at the centre of the map, so a surface
+// frame is 1:1 with the view there and shrinks with foreshortening elsewhere.
+const FRAME_STEP = 0.5;
+const CENTRE_UNITS = toView({ theta: FRAME_STEP, phi: 0 }).x - toView({ theta: 0, phi: 0 }).x;
+
+/** The ground plane under a place: its view position plus the view-box vectors
+ *  one unit east and one unit north along the surface. Drawing through
+ *  `context.transform(east[0], east[1], north[0], north[1], x, y)` lays shapes
+ *  flat on the tilted sphere, so a circle lands as a foreshortened ellipse. */
+export function capSurfaceFrame(longitude: number, latitude: number, seam = SEAM_LONGITUDE) {
+  const { theta, phi } = sphereAngles(longitude, latitude, seam);
+  const centre = toView({ theta, phi });
+  // θ steps shrink toward the poles; divide by cos φ to keep the frame square.
+  const east = toView({ theta: theta + FRAME_STEP / Math.cos((phi * Math.PI) / 180), phi });
+  const north = toView({ theta, phi: phi + FRAME_STEP });
+  return {
+    x: centre.x,
+    y: centre.y,
+    east: [(east.x - centre.x) / CENTRE_UNITS, (east.y - centre.y) / CENTRE_UNITS] as const,
+    north: [(north.x - centre.x) / CENTRE_UNITS, (north.y - centre.y) / CENTRE_UNITS] as const,
+  };
+}
+
 function unitVector({ theta, phi }: Angles) {
   const t = (theta * Math.PI) / 180;
   const p = (phi * Math.PI) / 180;
   return [Math.cos(p) * Math.sin(t), Math.sin(p), Math.cos(p) * Math.cos(t)];
 }
 
+// Beyond this θ a route has left the view past the seam; much further and the
+// sphere turns away, where points would fold back over the front.
+const ROUTE_THETA_LIMIT = CAP_HALF_THETA + 12;
+
 // A low arc hugging the cap: peak height grows gently with distance
 // (0.02 + chord × 0.01, capped), raised by 4·h·t·(1 − t) along the route.
+// Routes take the shorter way round the globe. When that crosses the seam,
+// the end nearer the edge is moved a full turn so the route runs off that
+// edge, and only the part still on the visible side is kept: the comet flies
+// in from (or out past) the edge of the map.
 /** The route as view-box points [x0, y0, x1, y1, …], origin first. */
 export function capRoutePoints(from: Place, to: Place, seam = SEAM_LONGITUDE) {
   const a = sphereAngles(from.longitude, from.latitude, seam);
   const b = sphereAngles(to.longitude, to.latitude, seam);
+  if (Math.abs(b.theta - a.theta) > CAP_HALF_THETA) {
+    const turn = 2 * CAP_HALF_THETA;
+    if (Math.abs(a.theta) > Math.abs(b.theta)) a.theta -= Math.sign(a.theta) * turn;
+    else b.theta -= Math.sign(b.theta) * turn;
+  }
   const chord = Math.hypot(...unitVector(a).map((value, index) => value - unitVector(b)[index]));
   const height = 0.02 + Math.min(0.5, chord * 0.01);
-  const steps = 32;
+  const steps = 48;
   const points: number[] = [];
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps;
+    const theta = a.theta + (b.theta - a.theta) * t;
+    if (Math.abs(theta) > ROUTE_THETA_LIMIT) continue;
     const radius = 1.002 + 4 * height * t * (1 - t);
-    const { x, y } = toView({ theta: a.theta + (b.theta - a.theta) * t, phi: a.phi + (b.phi - a.phi) * t }, radius);
+    const { x, y } = toView({ theta, phi: a.phi + (b.phi - a.phi) * t }, radius);
     points.push(x, y);
   }
   return points;

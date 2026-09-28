@@ -1,42 +1,37 @@
 /* City tags and routes for /demo/world-map/cap.
    Each route runs one 14s cycle (keep in sync with CYCLE_SECONDS): a comet
    (drawn on .cometLayer by src/lib/demo/cap-comet.ts) flies to the
-   destination and hits it at 40%, when the destination ripples. Routes have
-   no drawn track. Change --accent to recolour (e.g. #2662ff for brand blue);
+   destination and hits it at 40%, setting off a shockwave (also on the
+   canvas). Routes have no drawn track. Change --accent to recolour (e.g. #2662ff for brand blue);
    keep the comet colours in cap-comet.ts in step. */
-.cityLayer { --accent: #f45300; --accent-rgb: 244, 83, 0; --cycle: 14s; }
+.cityLayer { --accent: #f45300; --accent-rgb: 244, 83, 0; }
 
 .cometLayer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 
 .cityLayer { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; pointer-events: none; }
 .city { position: absolute; width: 0; height: 0; will-change: transform; }
 
-/* Pin with a soft glow 3.75× its diameter. */
-.pin { position: absolute; left: 0; top: 0; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%); }
-.halo { position: absolute; left: 0; top: 0; width: 19px; height: 19px; border-radius: 50%; background: radial-gradient(circle, rgba(var(--accent-rgb), .4) 0, rgba(var(--accent-rgb), .1) 35%, rgba(var(--accent-rgb), 0) 100%); transform: translate(-50%, -50%); }
+/* Pin with a soft glow 3.75× its diameter, both laid flat on the sphere
+   (--surface, set per frame by the city layer). */
+.pin { position: absolute; left: 0; top: 0; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%) var(--surface, scale(1)); }
+.halo { position: absolute; left: 0; top: 0; width: 19px; height: 19px; border-radius: 50%; background: radial-gradient(circle, rgba(var(--accent-rgb), .4) 0, rgba(var(--accent-rgb), .1) 35%, rgba(var(--accent-rgb), 0) 100%); transform: translate(-50%, -50%) var(--surface, scale(1)); }
 
-/* Arrival ripple: a thin ring that eases out and fades as the route lands. */
-.ripple { position: absolute; left: 0; top: 0; width: 30px; height: 30px; border: 1.5px solid var(--accent); border-radius: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.45); }
-.destination .ripple { animation: ripple var(--cycle) linear infinite; animation-delay: var(--cycle-delay, 0s); }
+/* The China hub every comet leaves from: a large pin ringed in white. */
+.hub .pin { width: 14px; height: 14px; box-sizing: border-box; border: 2.5px solid #fff; box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .3), 0 2px 10px rgba(var(--accent-rgb), .5); }
+.hub .halo { width: 64px; height: 64px; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-@keyframes ripple {
-  0%, 39.9% { opacity: 0; transform: translate(-50%, -50%) scale(.45); }
-  40% { opacity: 1; transform: translate(-50%, -50%) scale(.45); animation-timing-function: cubic-bezier(.215, .61, .355, 1); }
-  60%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
-}
-
-/* Centred above the pin, bottom edge half a tag-height clear of it. */
-.tag { position: absolute; left: 0; bottom: 0; padding: .6em .8em; color: #fff; background: #111; font-family: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace; font-size: 10px; line-height: 1.3; letter-spacing: .02em; text-transform: translate(var(--tag-anchor, -50%), -50%); white-space: nowrap; }
+/* Centred above the pin, bottom edge half a tag-height clear of it; near the
+   map edges --tag-anchor pulls it inward. Styled like the site's other light
+   surfaces: frosted white, hairline warm border, 6px radius, Inter. */
+.tag { position: absolute; left: 0; bottom: 0; padding: 5px 9px; border: .5px solid #d3cec6; border-radius: 6px; color: #17243b; background: rgba(255, 255, 255, .92); box-shadow: 0 4px 14px rgba(11, 27, 56, .1); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif; font-size: 12px; font-weight: 500; line-height: 1.1; letter-spacing: 0; white-space: nowrap; transform: translate(var(--tag-anchor, -50%), -50%); }
 .below .tag { top: 0; bottom: auto; transform: translate(var(--tag-anchor, -50%), 50%); }
 
 @container cap (max-width: 600px) {
   .mobileHidden { display: none; }
   .pin { width: 4px; height: 4px; }
   .halo { width: 15px; height: 15px; }
-  .ripple { width: 22px; height: 22px; }
-  .tag { font-size: 7px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .destination .ripple { animation: none; }
+  .hub .pin { width: 11px; height: 11px; border-width: 2px; }
+  .hub .halo { width: 48px; height: 48px; }
+  .tag { padding: 3px 6px; border-radius: 5px; font-size: 9px; }
 }

@@ -14,6 +14,8 @@ const MAP_REDRAW_INTERVAL = 1000 / 24;
 // Matches the @container cap (max-width: 600px) switch in the CSS.
 const MOBILE_WIDTH = 600;
 const COLOR = "#2662FF";
+// China in the accent orange (keep in step with --accent in the city layer CSS).
+const CHINA_COLOR = "#f45300";
 
 // The spherical-cap dot map with its city tags and routes, shared by the home
 // hero and /demo/world-map/cap. It turns slowly like a globe: a canvas redraws
@@ -68,12 +70,18 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { classNa
 
         const draw = (seam: number) => {
           const params = mobile ? CAP_DOTS_MOBILE : CAP_DOTS_DESKTOP;
-          const { land, coast } = renderer(mobile).frame(seam);
+          const { land, coast, chinaLand, chinaCoast, border } = renderer(mobile).frame(seam);
           const scale = canvas.width / CAP_VIEW_WIDTH;
           context.setTransform(scale, 0, 0, scale, 0, 0);
           context.clearRect(0, 0, CAP_VIEW_WIDTH, CAP_VIEW_HEIGHT);
-          context.fillStyle = COLOR;
-          for (const [points, radius, alpha] of [[land, params.landRadius, 0.72], [coast, params.coastRadius, 0.95]] as const) {
+          const layers = [
+            [COLOR, land, params.landRadius, 0.72],
+            [COLOR, coast, params.coastRadius, 0.95],
+            [CHINA_COLOR, chinaLand, params.landRadius, 0.72],
+            [CHINA_COLOR, chinaCoast.concat(border), params.coastRadius, 0.95],
+          ] as const;
+          for (const [color, points, radius, alpha] of layers) {
+            context.fillStyle = color;
             context.globalAlpha = alpha;
             context.beginPath();
             for (let index = 0; index < points.length; index += 2) {

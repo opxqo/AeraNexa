@@ -23,19 +23,18 @@ export const COMET: CometStyle = {
   hot: "255, 214, 180",
   width: 5,
   nose: 9,
-  tailLength: 240,
-  tailFraction: 0.45,
+  tailLength: 960,
+  tailFraction: 1,
   coreFraction: 0.3,
   coreWidth: 1.5,
   glow: 9,
 };
 
 // Phase within one route cycle (0–1). The comet flies over TRAVEL, speeding
-// up as it falls in, hits the destination at TRAVEL (when its ripple fires),
-// then its tail runs into the impact point over IMPACT while a flash fades.
-const TRAVEL = 0.4;
+// up as it falls in, hits the destination at TRAVEL (where drawShockwave takes
+// over), then its tail runs into the impact point over IMPACT.
+export const TRAVEL = 0.4;
 const IMPACT = 0.07;
-const FLASH = 0.02;
 const EASE = 1.6;
 
 type Sample = { x: number; y: number; dx: number; dy: number };
@@ -113,7 +112,7 @@ export function drawComet(
   const headAt = Math.pow(progress, EASE) * total;
   // Tail stretches with speed (derivative of the ease), short when slow.
   const speed = Math.pow(progress, EASE - 1);
-  let tail = Math.min(style.tailLength * px * (0.3 + 0.7 * speed), total * style.tailFraction, headAt);
+  let tail = Math.min(style.tailLength * px * (0.7 + 0.3 * speed), total * style.tailFraction, headAt);
   const impact = flying ? 0 : (phase - TRAVEL) / IMPACT;
   if (!flying) tail *= 1 - impact;
   const fade = alpha * (flying ? 1 : 1 - impact);
@@ -127,14 +126,14 @@ export function drawComet(
     const tip = body[body.length - 1];
     const half = (style.width / 2) * px;
     const nose = (flying ? style.nose : style.nose * (1 - impact)) * px;
-    const taper = (u: number) => half * Math.pow(1 - u, 2);
+    const taper = (u: number) => half * Math.pow(1 - u, 1.6);
 
     // Brightness falls off roughly exponentially from head to tail.
     const bodyFill = context.createLinearGradient(head.x, head.y, tip.x, tip.y);
     bodyFill.addColorStop(0, `rgba(${style.accent}, 1)`);
-    bodyFill.addColorStop(0.12, `rgba(${style.accent}, 0.82)`);
-    bodyFill.addColorStop(0.3, `rgba(${style.accent}, 0.45)`);
-    bodyFill.addColorStop(0.6, `rgba(${style.accent}, 0.14)`);
+    bodyFill.addColorStop(0.15, `rgba(${style.accent}, 0.85)`);
+    bodyFill.addColorStop(0.4, `rgba(${style.accent}, 0.5)`);
+    bodyFill.addColorStop(0.75, `rgba(${style.accent}, 0.22)`);
     bodyFill.addColorStop(1, `rgba(${style.accent}, 0)`);
 
     // 1–2. Body with a soft glow around it (shadow blur is in device pixels).
@@ -162,22 +161,140 @@ export function drawComet(
     context.fill();
     context.restore();
   }
+}
 
-  // Impact flash at the destination, just as the ripple starts.
-  if (!flying && phase < TRAVEL + FLASH) {
-    const t = (phase - TRAVEL) / FLASH;
-    const end = sampleAt(points, cumulative, total);
-    const radius = (4 + 12 * t) * px;
-    const flash = context.createRadialGradient(end.x, end.y, 0, end.x, end.y, radius);
-    flash.addColorStop(0, `rgba(255, 252, 248, ${0.95 * (1 - t)})`);
-    flash.addColorStop(0.35, `rgba(${style.hot}, ${0.6 * (1 - t)})`);
+// The shockwave where a comet lands, drawn flat on the sphere's surface so it
+// reads as a wave spreading over the ground, not a ring stuck to the screen.
+// Layers, all fading out together:
+//   flash  – a white-hot point that swells and dies in the first instant
+//   wave   – a sharp bright front racing out (ease-out-expo), dragging a soft
+//            band of energy behind it, thinning as it spreads
+//   echo   – a second, fainter front a beat later, at 60% of the size
+//   sparks – short streaks thrown just ahead of the front, gone early
+// Sizes are CSS pixels (converted with `unitsPerPixel`); `radius` is the
+// wave's final size.
+export const SHOCKWAVE = {
+  duration: 0.13,    // share of the route cycle (0.13 × 14s ≈ 1.8s)
+  flash: 0.08,       // flash lifetime, share of the shockwave
+  echoDelay: 0.07,   // echo start, share of the shockwave
+  echoScale: 0.6,
+  band: 0.45,        // energy band depth behind the front, share of its radius
+  frontWidth: [2.4, 0.6], // front line width at start / end, px
+  sparks: 7,
+  sparkReach: 1.3,   // how far sparks fly, share of the radius
+  sparkLife: 0.3,    // share of the shockwave
+  sparkLength: 10,   // px
+};
+
+type SurfaceFrame = { x: number; y: number; east: readonly [number, number]; north: readonly [number, number] };
+
+const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+// Deterministic 0–1 noise, so each route's sparks land the same way every time.
+const noise = (seed: number) => {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+};
+
+function ring(
+  context: CanvasRenderingContext2D,
+  radius: number,
+  lineWidth: number,
+  alpha: number,
+  style: CometStyle,
+) {
+  if (alpha <= 0.002 || radius <= 0) return;
+  // Soft band trailing inside the front.
+  const inner = radius * (1 - SHOCKWAVE.band);
+  const band = context.createRadialGradient(0, 0, inner, 0, 0, radius);
+  band.addColorStop(0, `rgba(${style.accent}, 0)`);
+  band.addColorStop(0.7, `rgba(${style.accent}, ${0.1 * alpha})`);
+  band.addColorStop(1, `rgba(${style.accent}, ${0.3 * alpha})`);
+  context.fillStyle = band;
+  context.beginPath();
+  context.arc(0, 0, radius, 0, Math.PI * 2);
+  context.arc(0, 0, inner, 0, Math.PI * 2, true);
+  context.fill();
+  // Halo around the front, then the front itself.
+  context.beginPath();
+  context.arc(0, 0, radius, 0, Math.PI * 2);
+  context.strokeStyle = `rgba(${style.accent}, ${0.18 * alpha})`;
+  context.lineWidth = lineWidth * 3.2;
+  context.stroke();
+  context.strokeStyle = `rgba(${style.accent}, ${alpha})`;
+  context.lineWidth = lineWidth;
+  context.stroke();
+  // Hot inner edge on the front while it is still fresh.
+  context.strokeStyle = `rgba(255, 244, 232, ${0.7 * alpha * alpha})`;
+  context.lineWidth = lineWidth * 0.4;
+  context.stroke();
+}
+
+export function drawShockwave(
+  context: CanvasRenderingContext2D,
+  frame: SurfaceFrame,
+  phase: number,
+  seed: number,
+  radius: number,
+  unitsPerPixel: number,
+  alpha: number,
+  style: CometStyle = COMET,
+) {
+  const s = (phase - TRAVEL) / SHOCKWAVE.duration;
+  if (s < 0 || s >= 1 || alpha <= 0) return;
+  const px = unitsPerPixel;
+  const size = radius * px;
+
+  context.save();
+  context.transform(frame.east[0], frame.east[1], frame.north[0], frame.north[1], frame.x, frame.y);
+  context.globalAlpha = alpha;
+
+  // Wave front.
+  const [startWidth, endWidth] = SHOCKWAVE.frontWidth;
+  const fall = Math.pow(1 - s, 2);
+  ring(context, size * easeOutExpo(s), (startWidth + (endWidth - startWidth) * s) * px, fall, style);
+
+  // Echo.
+  const e = (s - SHOCKWAVE.echoDelay) / (1 - SHOCKWAVE.echoDelay);
+  if (e > 0) {
+    ring(context, size * SHOCKWAVE.echoScale * easeOutExpo(e), (1.1 - 0.6 * e) * px, 0.55 * Math.pow(1 - e, 2), style);
+  }
+
+  // Sparks.
+  const k = s / SHOCKWAVE.sparkLife;
+  if (k < 1) {
+    context.lineCap = "round";
+    for (let index = 0; index < SHOCKWAVE.sparks; index += 1) {
+      const angle = ((index + noise(seed + index) * 0.6) / SHOCKWAVE.sparks) * Math.PI * 2;
+      const reach = size * SHOCKWAVE.sparkReach * (0.85 + 0.15 * noise(seed * 7 + index)) * easeOutExpo(s);
+      const length = SHOCKWAVE.sparkLength * px * (1 - k) * (0.6 + 0.4 * noise(seed * 3 + index));
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      const from = Math.max(0, reach - length);
+      const gradient = context.createLinearGradient(dx * from, dy * from, dx * reach, dy * reach);
+      gradient.addColorStop(0, `rgba(${style.accent}, 0)`);
+      gradient.addColorStop(1, `rgba(${style.accent}, ${Math.pow(1 - k, 1.5)})`);
+      context.strokeStyle = gradient;
+      context.lineWidth = 1.4 * px;
+      context.beginPath();
+      context.moveTo(dx * from, dy * from);
+      context.lineTo(dx * reach, dy * reach);
+      context.stroke();
+    }
+  }
+
+  // Flash.
+  const f = s / SHOCKWAVE.flash;
+  if (f < 1) {
+    const flashRadius = (3 + 10 * easeOutCubic(f)) * px;
+    const flash = context.createRadialGradient(0, 0, 0, 0, 0, flashRadius);
+    flash.addColorStop(0, `rgba(255, 252, 248, ${1 - f})`);
+    flash.addColorStop(0.3, `rgba(${style.accent}, ${0.85 * (1 - f)})`);
     flash.addColorStop(1, `rgba(${style.accent}, 0)`);
-    context.save();
-    context.globalAlpha = alpha;
     context.fillStyle = flash;
     context.beginPath();
-    context.arc(end.x, end.y, radius, 0, Math.PI * 2);
+    context.arc(0, 0, flashRadius, 0, Math.PI * 2);
     context.fill();
-    context.restore();
   }
+  context.restore();
 }
