@@ -1,32 +1,45 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { HomeHeader } from "@/components/home-header";
-import { WorldMapCap } from "@/components/world-map-cap";
+import { FeatureBento } from "@/components/feature-bento";
+import { FeatureClients } from "@/components/feature-clients";
+import { FeatureTabs } from "@/components/feature-tabs";
+import { HomeRelay } from "@/components/home-relay";
+import { featureCopy } from "@/lib/feature-copy";
 import { homeCopy, type HomeLocale } from "@/lib/home-copy";
 import styles from "@/app/home-hero.module.css";
+import featureStyles from "@/components/feature-bento.module.css";
+import relayStyles from "@/components/home-relay.module.css";
 
+// The home page: the hero, whose map carries on into the first feature block
+// (HomeRelay), then the rest of the feature blocks.
 export function HomeHero({ locale }: { locale: HomeLocale }) {
   const copy = homeCopy[locale];
-  const { hero } = copy;
+  const { sections } = featureCopy[locale];
 
   return (
     <div className={styles.page} lang={copy.lang}>
       <HomeHeader locale={locale} />
 
       <main>
-        <section className={styles.intro} aria-labelledby="home-heading">
-          <p className={styles.eyebrow}>GLOBAL NETWORK <span>·</span> HIGH-SPEED <span>·</span> SECURE</p>
-          <h1 id="home-heading">{hero.lead}<br /><span>{hero.highlight}</span>{hero.tail}</h1>
-          <p className={styles.description}>{hero.description}</p>
-          <div className={styles.ctaRow}>
-            <Link className={styles.primaryCta} href="/register">{hero.primary} <ArrowRight size={18} strokeWidth={1.8} aria-hidden="true" /></Link>
-            <Link className={styles.secondaryCta} href="/plan">{hero.secondary}</Link>
-          </div>
-        </section>
+        <HomeRelay locale={locale} />
 
-        <div className={styles.mapViewport} aria-label={hero.mapLabel}>
-          <WorldMapCap className={styles.mapCanvas} label={hero.mapImageLabel} />
-        </div>
+        <section className={`${featureStyles.page} ${relayStyles.features}`}>
+          <span className={`${featureStyles.rails} ${featureStyles.outer}`} aria-hidden="true" />
+          <span className={featureStyles.rails} aria-hidden="true" />
+
+          <header className={featureStyles.head}>
+            <h2>{sections.stableTitle}</h2>
+            <p>{sections.stableLead}</p>
+          </header>
+          <FeatureBento locale={locale} />
+
+          <header className={`${featureStyles.head} ${featureStyles.secondHead}`}>
+            <h2>{sections.detailTitle}</h2>
+            <p>{sections.detailLead}</p>
+          </header>
+          <FeatureTabs locale={locale} />
+
+          <div className={featureStyles.block}><FeatureClients locale={locale} /></div>
+        </section>
       </main>
     </div>
   );

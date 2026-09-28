@@ -1,0 +1,61 @@
+/* Home hero → "AI & streaming" block, one map (see home-relay.tsx). The
+   track's and stage's heights and the stage's sticky top are set from JS;
+   --p, --q, --h and --u (0–1) come from the scroll. */
+.track { position: relative; }
+.stage { --p: 0; --q: 0; --h: 0; --u: 0; position: sticky; top: 0; height: 100vh; min-height: 840px; }
+
+/* The hero as it was: headline and CTAs, then the (empty) map viewport the
+   map starts from. The headline lifts and fades as the map curls. */
+.heroLayer { position: absolute; top: 0; left: 0; right: 0; z-index: 1; }
+.heroIntro { opacity: calc(1 - var(--h)); transform: translateY(calc(-48px * var(--h))); }
+.stage[data-unlocked] .heroLayer { pointer-events: none; }
+.heroSlot { visibility: hidden; }
+
+/* The one map. Left, top and width come from the hero's slot; the transform
+   carries it to the box's slot. The hero's soft edges fade away as it curls. */
+.mapLayer {
+  position: absolute;
+  z-index: 2;
+  transform-origin: 0 0;
+  will-change: transform;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 calc(20% * (1 - var(--p))), #000 calc(100% - 22% * (1 - var(--p))), transparent), linear-gradient(to right, transparent, #000 calc(16% * (1 - var(--p))), #000 calc(100% - 16% * (1 - var(--p))), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to bottom, transparent, #000 calc(20% * (1 - var(--p))), #000 calc(100% - 22% * (1 - var(--p))), transparent), linear-gradient(to right, transparent, #000 calc(16% * (1 - var(--p))), #000 calc(100% - 16% * (1 - var(--p))), transparent);
+  mask-composite: intersect;
+}
+
+/* The block, over the map, in the bottom viewport's worth of the stage. Its
+   heading, frame and brand strip fade in with --u; the requests, groups and
+   comets inside follow --q as on its own. */
+.unlockLayer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: min(1200px, calc(100% - 64px));
+  height: 100vh;
+  min-height: 840px;
+  margin: 0 auto;
+  /* Clear of the fixed 60px site header. */
+  padding-top: 60px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  color: var(--ink);
+  pointer-events: none;
+}
+.unlockLayer > * { opacity: var(--u); }
+.stage[data-unlocked] .unlockLayer { pointer-events: auto; }
+
+/* Narrow screens / reduced motion: the block on its own, below the hero. */
+.apart { position: relative; padding: 64px 32px 0; }
+@media (max-width: 600px) {
+  .apart { padding: 48px 16px 0; }
+}
+
+/* The rest of the feature blocks, after the relay. */
+.features.features { min-height: 0; padding-top: 120px; background: transparent; }

@@ -1,0 +1,87 @@
+/* Client showcase after cloudflare.com's #home-customers block (light theme,
+   measured at 1440px): title and subtitle, a 480px window (dots, a tab strip
+   whose selected tab carries a 4.5s progress line, a pause button, and a
+   dashed quote box with a sweeping beam), then a caption over a scrolling
+   wall. The content is this site's: clients and platforms, not testimonials. */
+.section {
+  --accent: #f45300;
+  --accent-rgb: 244, 83, 0;
+  --line: #f0f0f0;
+  --ink: #262626;
+  --muted: rgba(38, 38, 38, .7);
+  --cycle: 4500ms;
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  color: var(--ink);
+}
+
+.head { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.head h2 { margin: 0; font-size: 48px; font-weight: 500; line-height: 48px; letter-spacing: 0; text-wrap: balance; }
+.head p { margin: 32px 0 0; color: var(--muted); font-size: 19.2px; line-height: 23.04px; text-wrap: balance; }
+
+.window { position: relative; margin-top: 40px; overflow: hidden; height: 480px; background: #fff; border: 1px solid var(--line); border-bottom: 0; border-radius: 12px 12px 0 0; -webkit-mask-image: linear-gradient(to bottom, #000 90%, transparent); mask-image: linear-gradient(to bottom, #000 90%, transparent); }
+.bar { display: flex; align-items: stretch; gap: 8px; height: 76px; padding: 0 16px; background: #fafafa; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.bar::-webkit-scrollbar { display: none; }
+.lights { flex: none; display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+.lights i { width: 16px; height: 16px; border: 1px solid rgba(38, 38, 38, .2); border-radius: 50%; }
+.tab { position: relative; flex: none; display: flex; align-items: center; padding: 8px 6px; color: rgba(38, 38, 38, .5); background: none; border: 0; border-bottom: 2px solid transparent; font: inherit; cursor: pointer; transition: color .2s ease-out; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); }
+.tab:focus-visible { outline: 2px solid rgba(var(--accent-rgb), .5); outline-offset: -2px; }
+.tabInner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid transparent; border-radius: 6px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.tab[aria-selected="true"] .tabInner { background: #fff; border-color: var(--line); }
+.tab svg { width: 20px; height: 20px; }
+/* Progress line along the selected tab's bottom edge; when it fills, the
+   next client comes up. */
+.progress { position: absolute; left: 0; right: 0; bottom: -2px; height: 2px; background: var(--accent); transform-origin: left; transform: scaleX(0); animation: fill var(--cycle) linear forwards; }
+.paused .progress { animation-play-state: paused; }
+@keyframes fill { to { transform: scaleX(1); } }
+
+.body { position: relative; display: flex; flex-direction: column; gap: 20px; padding: 12px 24px 24px; }
+.pause { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 50%; cursor: pointer; }
+.pause:hover { background: #fafafa; }
+.pause svg { width: 12px; height: 12px; }
+
+.stage { position: relative; padding: 24px 20px 24px 32px; animation: swap .4s ease-out; }
+@keyframes swap { from { opacity: 0; } }
+.frame { position: absolute; inset: 0; border: 1px dashed rgba(38, 38, 38, .18); background: #fdfdfc; pointer-events: none; }
+/* A beam of light travels round the dashed box once per cycle. */
+.beam { position: absolute; inset: -1px; padding: 1px; border-radius: 0; background: conic-gradient(from var(--angle, 0deg), transparent 0 80%, rgba(var(--accent-rgb), .9) 96%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); animation: sweep var(--cycle) linear infinite; }
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes sweep { to { --angle: 360deg; } }
+.paused .beam { animation-play-state: paused; }
+.grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 24px; }
+.quote { margin: 0; font-size: 28px; font-weight: 500; line-height: 1.22; letter-spacing: -.02em; color: var(--accent); text-wrap: pretty; }
+.quote span { color: var(--ink); }
+.who { display: flex; flex-direction: column; gap: 4px; margin-top: 20px; font-size: 16px; }
+.who b { font-weight: 500; }
+.who span { color: var(--muted); }
+.tile { position: relative; justify-self: end; display: grid; place-items: center; width: 112px; height: 112px; color: #fff; background: var(--accent); border-radius: 6px; box-shadow: inset 1px 6px 6px rgba(255, 255, 255, .2), 0 4px 12px rgba(0, 0, 0, .02), 0 2px 12px rgba(0, 0, 0, .03); }
+.tile svg { width: 52px; height: 52px; }
+.tile small { position: absolute; right: -14px; bottom: -14px; padding: 6px 10px; color: #fff; background: var(--ink); border: 2px solid #fff; border-radius: 6px; font-size: 12px; white-space: nowrap; }
+
+.caption { margin: 24px 0 0; color: var(--muted); font-size: 19.2px; line-height: 23.04px; text-align: center; }
+.wall { position: relative; margin-top: 24px; overflow: hidden; -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent); }
+.track { display: flex; width: max-content; animation: scroll 60s linear infinite; }
+.track span { flex: none; padding: 0 40px; color: rgba(38, 38, 38, .35); font-size: 44px; font-weight: 500; line-height: 87px; letter-spacing: -.02em; white-space: nowrap; }
+@keyframes scroll { to { transform: translateX(-50%); } }
+
+@media (min-width: 768px) {
+  .grid { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .stage { padding: 36px 48px; }
+}
+@media (max-width: 767px) {
+  .head h2 { font-size: 32px; line-height: 36px; }
+  .window { height: 540px; }
+  .bar { padding: 0 8px; }
+  .lights { display: none; }
+  .quote { font-size: 22px; }
+  .tile { justify-self: start; width: 88px; height: 88px; }
+  .track span { font-size: 32px; padding: 0 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress, .beam, .track, .stage { animation: none; }
+  .progress { transform: scaleX(1); }
+}

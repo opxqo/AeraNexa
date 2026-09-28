@@ -91,7 +91,9 @@ function position(city: City): CSSProperties {
 // City tags and routes. Rendered at the resting seam on the server; when the
 // map turns, WorldMapCap calls the function registered in `updateRef` every
 // frame, which moves them straight in the DOM (no React re-render).
-export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((seam: number, width: number, height: number) => void) | null> }) {
+// `routes={false}` keeps the markers but launches no comets (for pages that
+// draw their own connections over the map).
+export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?: RefObject<((seam: number, width: number, height: number) => void) | null>; routes?: boolean }) {
   const cityRefs = useRef<(HTMLLIElement | null)[]>([]);
   const cometRef = useRef<HTMLCanvasElement>(null);
 
@@ -150,7 +152,7 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
         element.style.setProperty("--tag-anchor", tagAnchor(point.x));
         element.style.setProperty("--surface", surfaceMatrix(city, seam));
       });
-      if (!context) return;
+      if (!context || !routes) return;
       const now = performance.now() / 1000;
       flights = flights.filter((flight) => (now - flight.launched) / CYCLE_SECONDS < LIFE);
       // After a pause (tab hidden, map off screen) start the rhythm afresh
@@ -193,7 +195,7 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
     return () => {
       updateRef.current = null;
     };
-  }, [updateRef]);
+  }, [updateRef, routes]);
 
   return (
     <>

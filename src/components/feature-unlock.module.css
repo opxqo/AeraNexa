@@ -1,0 +1,130 @@
+/* AI & streaming block after cloudflare.com's #home-waveform (measured from
+   its popups/shipping/waveform scripts): requests → node groups → globe.
+   The stage sticks for the length of a tall track; --p (0 cap … 1 globe)
+   slides the map right as it curls, and --q (0 … 1, from p = .78) brings in
+   the requests, the groups, the comets and the status chip. */
+.scope {
+  --accent: #f45300;
+  --accent-rgb: 244, 83, 0;
+  --line: #f0f0f0;
+  --ink: #262626;
+  --muted: rgba(38, 38, 38, .7);
+}
+.track {
+  position: relative;
+  max-width: 1200px;
+  height: 240vh;
+  margin: 0 auto;
+  color: var(--ink);
+}
+.stage { --p: 0; --q: 0; position: sticky; top: 0; display: flex; flex-direction: column; justify-content: center; gap: 28px; height: 100vh; min-height: 840px; }
+
+.head { text-align: center; }
+.head h2 { margin: 0; font-size: 48px; font-weight: 500; line-height: 1.15; letter-spacing: 0; text-wrap: balance; }
+.head p { margin: 16px 0 0; color: var(--muted); font-size: 19.2px; line-height: 23.04px; text-wrap: balance; }
+
+/* Bordered box with corner ticks, like Cloudflare's, holding three columns:
+   requests (0–480px), node groups (~490–690px) and the globe (centre at
+   ~945px, i.e. the map shifted 28.75% right once curled). */
+.box { position: relative; height: 500px; overflow: hidden; background: #fff; }
+.boxWrap { position: relative; flex: none; border: 1px solid var(--line); }
+.ticks { position: absolute; inset: -1px; z-index: 40; pointer-events: none; }
+.ticks i { position: absolute; width: 14px; height: 14px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
+.ticks i:nth-child(1) { top: -7px; left: -7px; }
+.ticks i:nth-child(2) { top: -7px; right: -7px; }
+.ticks i:nth-child(3) { bottom: -7px; left: -7px; }
+.ticks i:nth-child(4) { bottom: -7px; right: -7px; }
+
+.map { position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 1600 / 640; transform: translate(calc(28.75% * var(--p)), -50%); will-change: transform; }
+/* On the home page the hero's map lands here: where .map ends up at --p 1. */
+.mapSlot { position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 1600 / 640; transform: translate(28.75%, -50%); visibility: hidden; pointer-events: none; }
+/* …and the box lets it show through (it sits under the box's contents). */
+.clearBox { background: transparent; }
+
+/* Traffic waveform behind the requests. */
+.wave { position: absolute; left: 0; width: 40%; top: 50%; z-index: 1; height: 200px; overflow: hidden; opacity: var(--q); transform: translateY(-50%) scaleX(-1); -webkit-mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent); mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent); }
+.waveTrack { display: flex; width: max-content; height: 100%; animation: waveScroll 20s linear infinite; }
+.waveCopy { flex: none; height: 100%; width: auto; fill: rgba(var(--accent-rgb), .22); }
+@keyframes waveScroll { to { transform: translateX(-50%); } }
+
+/* Node groups: a column between dashed rails, cards styled like
+   Cloudflare's agents panel, each with an input and an output port. */
+.groupsCol { position: absolute; top: 0; bottom: 0; left: 40.8%; width: 16.7%; z-index: 6; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 0 10px; opacity: var(--q); background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, .8) 20%, rgba(255, 255, 255, .8) 80%, rgba(255, 255, 255, 0)); }
+.groupsCol::before, .groupsCol::after { content: ""; position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed rgba(38, 38, 38, .1); }
+.groupsCol::before { left: 0; }
+.groupsCol::after { right: 0; }
+.colLabel { display: flex; align-items: baseline; justify-content: space-between; padding: 0 2px; color: var(--muted); font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.02em; }
+.colLabel small { color: rgba(38, 38, 38, .4); font-size: 11px; }
+.group { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: #fff; border: 1px solid rgba(38, 38, 38, .1); border-radius: 10px; box-shadow: 0 4px 24px rgba(0, 0, 0, .04); }
+.groupHead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.groupHead b { overflow: hidden; font-size: 13.5px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.groupHead code { margin-left: auto; padding: 1px 5px; white-space: nowrap; color: var(--accent); background: rgba(var(--accent-rgb), .1); border-radius: 999px; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.04em; }
+.groupIcon { display: grid; place-items: center; width: 22px; height: 22px; color: var(--accent); background: rgba(var(--accent-rgb), .08); border-radius: 6px; }
+.groupIcon svg { width: 14px; height: 14px; }
+.groupMeta, .groupCount { color: rgba(38, 38, 38, .55); font: 11.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.03em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.groupCount span { color: var(--ink); }
+.portIn, .portOut { position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; background: #fff; border: 1.5px solid var(--accent); border-radius: 50%; }
+.portIn { left: -5px; }
+.portOut { right: -5px; background: var(--accent); }
+.portIn i { position: absolute; inset: -1.5px; border: 1.5px solid var(--accent); border-radius: 50%; opacity: 0; }
+
+/* Comets from the groups to the globe, over the map and the cards. */
+.beams { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; opacity: var(--q); }
+
+/* Request cards (positioned by the Web Animations in the component); they
+   pass under the group column, so they vanish into their group. */
+.flyLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: var(--q); }
+.card { position: absolute; top: 0; left: 0; min-width: 192px; max-width: 280px; opacity: 0; transform-origin: 50% 50%; }
+.bob { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; background: #fafafa; border: 1px solid rgba(38, 38, 38, .08); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .04); animation: bob var(--bob-time) ease-in-out infinite alternate; }
+@keyframes bob { to { transform: translateY(8px); } }
+.cardHead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cardHead svg { width: 20px; height: 20px; fill: currentColor; }
+.cardHead b { padding: 2px 8px; color: var(--accent); background: rgba(var(--accent-rgb), .1); border-radius: 999px; font-size: 12px; font-weight: 500; }
+.host, .call { font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.04em; white-space: nowrap; }
+.host { color: var(--ink); }
+.call { color: rgba(38, 38, 38, .5); }
+.srList { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* Under the globe: a dashed line with a glass chip naming the last delivery. */
+.status { position: absolute; left: 57.5%; right: 0; bottom: 40px; z-index: 6; display: flex; align-items: center; justify-content: center; opacity: var(--q); transform: scale(calc(.7 + .3 * var(--q))); }
+.line { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed rgba(var(--accent-rgb), .45); }
+.chip { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; color: var(--ink); background: rgba(255, 255, 255, .78); border: 1px solid rgba(38, 38, 38, .08); border-radius: 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, .05); font-size: 14px; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.chip svg { color: var(--accent); }
+.roll { position: relative; display: inline-block; overflow: hidden; font-weight: 500; white-space: nowrap; }
+.roll span { display: inline-block; }
+
+.fine { margin: -16px 0 0; color: rgba(38, 38, 38, .45); font-size: 12px; text-align: right; }
+
+/* Brand strip along the bottom of the box, below a hairline (after
+   Cloudflare's logo wall: logos 64px apart, one continuous crawl, faded at
+   both ends). Pauses on hover. */
+.marquee { position: relative; z-index: 31; padding: 12px 0; background: #fff; border-top: 1px solid var(--line); }
+.marqueeView { overflow: hidden; -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); }
+.marqueeTrack { display: flex; width: max-content; animation: marquee 48s linear infinite; }
+.marquee:hover .marqueeTrack { animation-play-state: paused; }
+.marqueeRow { display: flex; flex: none; align-items: center; gap: 64px; margin: 0; padding: 0 32px; list-style: none; }
+.marqueeRow li { display: flex; align-items: center; gap: 12px; height: 56px; color: #262626; font-size: 22px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; }
+.marqueeRow svg { width: 30px; height: 30px; fill: currentColor; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+
+/* Narrow screens and reduced motion: no scroll effect or flights; the globe
+   sits above the three node groups. */
+@media (max-width: 768px), (prefers-reduced-motion: reduce) {
+  .track { height: auto; }
+  .stage { position: static; height: auto; min-height: 0; }
+  .head h2 { font-size: 30px; }
+  .head p { font-size: 16px; line-height: 22px; }
+  .box { height: auto; display: flex; flex-direction: column; }
+  .ticks, .wave, .flyLayer, .beams { display: none; }
+  .map { position: relative; top: auto; left: -35%; width: 170%; transform: none; }
+  .groupsCol { position: relative; top: auto; bottom: auto; left: auto; width: auto; flex-direction: column; padding: 16px; opacity: 1; background: none; }
+  .groupsCol::before, .groupsCol::after { display: none; }
+  .portIn, .portOut { display: none; }
+  .status { position: relative; left: auto; bottom: auto; padding: 8px 0 24px; opacity: 1; transform: none; }
+  .fine { margin: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyLayer, .beams { display: none; }
+  .bob, .waveTrack, .marqueeTrack { animation: none; }
+}

@@ -1,0 +1,214 @@
+/* Feature showcase (bento grid), after cloudflare.com's "Tailored to your
+   team" block (measured at 1440px): a 1200px column between dashed rails,
+   a 12-column grid with 8px gaps and 373px rows, white cards with a 1px
+   #f0f0f0 border and 4px radius, one solid accent card, and 14px corner
+   ticks on the frame. Colours and type are this site's. */
+.page {
+  --accent: #f45300;
+  --accent-rgb: 244, 83, 0;
+  --line: #f0f0f0;
+  --ink: #262626;
+  --muted: rgba(38, 38, 38, .7);
+  position: relative;
+  min-height: 100vh;
+  overflow-x: clip;
+  padding: 72px 32px 120px;
+  color: var(--ink);
+  background: #fff;
+  font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+/* Dashed vertical rails: 16px dash, 16px gap. */
+.rails { position: absolute; inset: 0 auto 0 50%; width: 1200px; transform: translateX(-50%); pointer-events: none; }
+.rails.outer { width: 1480px; }
+.rails::before, .rails::after { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: linear-gradient(var(--line) 50%, transparent 50%) 0 0 / 1px 32px; }
+.rails::before { left: 0; }
+.rails::after { right: 0; }
+
+.back { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 1200px; margin: 0 auto; color: var(--muted); font-size: 14px; text-decoration: none; }
+.backRow { position: relative; max-width: 1200px; margin: 0 auto 40px; }
+.back:hover { color: var(--ink); }
+
+.head { position: relative; max-width: 1200px; margin: 0 auto 32px; text-align: center; }
+.head h2 { margin: 0; font-size: 48px; font-weight: 500; line-height: 48px; letter-spacing: 0; text-wrap: balance; }
+.secondHead { margin-top: 120px; }
+/* Full-width blocks below the grid (Region, clients), 80px apart like Cloudflare's gap-section. */
+.block { position: relative; margin-top: 80px; }
+.head p { margin: 16px 0 0; color: var(--muted); font-size: 19.2px; line-height: 23.04px; letter-spacing: 0; text-wrap: balance; }
+
+/* The grid's frame, with a tick at each corner. */
+.frame { position: relative; max-width: 1200px; margin: 0 auto; }
+.tick { position: absolute; z-index: 2; width: 14px; height: 14px; border: 1px solid var(--line); border-radius: 3px; background: #fff; }
+.tick:nth-child(1) { top: -7px; left: -7px; }
+.tick:nth-child(2) { top: -7px; right: -7px; }
+.tick:nth-child(3) { bottom: -7px; left: -7px; }
+.tick:nth-child(4) { bottom: -7px; right: -7px; }
+
+.grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+
+.card { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+.visual { position: relative; flex: 1; min-height: 200px; }
+.copy { display: flex; flex-direction: column; gap: 8px; padding: 0 32px 32px; }
+.copy h3, .accentCard h3 { margin: 0; font-size: 18px; font-weight: 500; line-height: 21.6px; letter-spacing: 0; }
+.copy p, .accentCard p { max-width: 28rem; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.35; }
+
+/* Solid accent card with Cloudflare's "shadow-stack". */
+.accentCard { display: flex; flex-direction: column; gap: 8px; padding: 32px; color: #fff; background: var(--accent); border-radius: 4px; box-shadow: inset 1px 6px 6px rgba(255, 255, 255, .2), 0 4px 12px rgba(0, 0, 0, .02), 0 2px 12px rgba(0, 0, 0, .03); }
+.accentCard p { color: #fff; }
+.accentIcon { margin-bottom: 8px; }
+
+/* Card whose copy sits beside its visual (text left, panel right). */
+.split { flex-direction: column; }
+.split .copy { padding: 32px 32px 0; }
+.split .visual { min-height: 260px; }
+
+@media (min-width: 1024px) {
+  .grid { grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: 373px; }
+  .span4 { grid-column: span 4; }
+  .span6 { grid-column: span 6; }
+  .span8 { grid-column: span 8; }
+  .visual { min-height: 0; }
+  .split { flex-direction: row; }
+  .split .copy { flex: 0 0 45%; padding: 32px 0 32px 32px; }
+  .split .visual { min-height: 0; }
+}
+
+/* One-time reveal as the grid scrolls into view. */
+.grid[data-reveal] > * { opacity: 0; transform: translateY(12px); transition: opacity .6s ease-out, transform .6s cubic-bezier(.22, 1, .36, 1); }
+.grid[data-reveal="in"] > * { opacity: 1; transform: none; }
+.grid[data-reveal="in"] > :nth-child(2) { transition-delay: 60ms; }
+.grid[data-reveal="in"] > :nth-child(3) { transition-delay: 120ms; }
+.grid[data-reveal="in"] > :nth-child(4) { transition-delay: 180ms; }
+.grid[data-reveal="in"] > :nth-child(5) { transition-delay: 240ms; }
+.grid[data-reveal="in"] > :nth-child(6) { transition-delay: 300ms; }
+
+/* ① Subscription feed (after Cloudflare's WorkflowCard). */
+.feed { position: absolute; inset: 0; display: flex; align-items: flex-start; gap: 16px; padding: 24px; overflow: hidden; white-space: nowrap; }
+.appTile { position: relative; flex: none; display: grid; place-items: center; width: 64px; height: 64px; color: #fff; background: var(--accent); border-radius: 4px; box-shadow: inset 1px 6px 6px rgba(255, 255, 255, .2), 0 4px 12px rgba(0, 0, 0, .02), 0 2px 12px rgba(0, 0, 0, .03); }
+.appBadge { position: absolute; right: -16px; bottom: -16px; display: grid; place-items: center; width: 32px; height: 32px; color: #fff; background: #262626; border: 2px solid #fff; border-radius: 4px; }
+.feedList { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; -webkit-mask-image: linear-gradient(to bottom, #000, transparent); mask-image: linear-gradient(to bottom, #000, transparent); }
+.feedList.slide { animation: feedSlide .5s cubic-bezier(.22, 1, .36, 1); }
+@keyframes feedSlide { from { transform: translateY(-58px); } }
+.feedRow { display: flex; align-items: center; }
+.pointer { flex: none; width: 15px; height: 20px; opacity: 0; transition: opacity .5s ease-out; }
+.feedRow:first-child .pointer { opacity: 1; }
+.feedCells { flex: 1; display: grid; grid-template-columns: 112px 1fr auto; align-items: center; gap: 16px; padding: 16px; color: var(--accent); background: rgba(var(--accent-rgb), .1); border-radius: 4px; font-size: 14px; }
+.feedRow:first-child .feedCells { animation: rowIn .5s ease-out; }
+@keyframes rowIn { from { opacity: 0; } }
+.feedClient { overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
+.feedFormat { overflow: hidden; opacity: .8; text-overflow: ellipsis; }
+.feedStatus { display: flex; align-items: center; gap: 8px; }
+.statusDone { display: grid; place-items: center; width: 20px; height: 20px; color: #fff; background: var(--accent); border-radius: 50%; }
+.statusQueued { width: 20px; height: 20px; opacity: .7; }
+.statusBusy { width: 20px; height: 20px; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ③ Protocols: a 3×3 dot mark that breathes, and protocol chips. */
+.protocols { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 20px; padding: 32px; }
+.dotMark { display: grid; grid-template-columns: repeat(3, 3px); grid-template-rows: repeat(3, 3px); gap: 2px; }
+.dotMark i { width: 3px; height: 3px; background: var(--accent); animation: breathe 2s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .3; transform: translate3d(1.2px, 1.2px, 0); } }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; color: var(--ink); background: #fafafa; border: 1px solid var(--line); border-radius: 4px; font: 500 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chip b { color: var(--accent); font-weight: 500; }
+
+.sample { margin-left: auto; padding: 2px 6px; color: var(--muted); background: #f5f5f5; border-radius: 3px; font-size: 11px; }
+
+/* ④ Node status, after the agents panel on cloudflare.com's "Fast path to
+   AI adoption" card: a status panel and a prompt bar tucked into the card's
+   bottom-right corner, running off its right and bottom edges. */
+.console { position: absolute; left: 0; right: -36px; bottom: -18px; display: flex; flex-direction: column; gap: 8px; }
+.panel { display: flex; flex-direction: column; gap: 12px; padding: 12px 36px 12px 16px; background: #fff; border: 1px solid rgba(38, 38, 38, .1); border-radius: 10px; box-shadow: 0 4px 24px rgba(0, 0, 0, .04); }
+.panelTitle { color: var(--ink); font-size: 14px; }
+.panelStatus { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 14px; }
+.panelStatus > i { flex: none; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+/* Three rows in view; on each tick the list rises one row: the top row
+   blurs out as the next node blurs in at the bottom. */
+.nodeList { height: 88px; padding: 4px 0 12px; overflow: hidden; }
+.nodeTrack { display: flex; flex-direction: column; gap: 8px; }
+.nodeTrack.rising { transform: translateY(-28px); transition: transform .4s cubic-bezier(.22, 1, .36, 1); }
+.nodeRow { display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 18px; font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.02em; white-space: nowrap; transition: opacity .4s ease-out, filter .4s ease-out; }
+.nodeTrack.rising .nodeRow:first-child { opacity: 0; filter: blur(4px); }
+.nodeTrack .nodeRow:last-child { opacity: 0; filter: blur(4px); }
+.nodeTrack.rising .nodeRow:last-child { opacity: 1; filter: none; }
+.nodeName { display: flex; align-items: center; gap: 8px; flex: none; }
+.nodeName svg, .nodeMeta svg { flex: none; width: 16px; height: 16px; color: rgba(38, 38, 38, .5); }
+.nodeName svg { opacity: .5; }
+.nodeName b { padding: 2px 6px; color: var(--ink); background: rgba(var(--accent-rgb), .1); border-radius: 999px; font-weight: 400; line-height: 16px; letter-spacing: -.04em; }
+.nodeMeta { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink); opacity: .5; }
+.nodeMeta i { flex: none; width: 4px; height: 4px; background: var(--ink); border-radius: 50%; }
+.panelFoot { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 14px; }
+/* "…" types itself out, one dot at a time, every 1.5s. */
+.ellipsis i { font-style: normal; animation: dot 1.5s steps(1) infinite; }
+.ellipsis i:nth-child(2) { animation-name: dot2; }
+.ellipsis i:nth-child(3) { animation-name: dot3; }
+@keyframes dot { 0% { opacity: 1; } }
+@keyframes dot2 { 0% { opacity: 0; } 33% { opacity: 1; } }
+@keyframes dot3 { 0% { opacity: 0; } 66% { opacity: 1; } }
+.prompt { display: flex; align-items: center; gap: 4px; height: 44px; padding: 0 26px 0 16px; background: #fff; border: 1px solid rgba(38, 38, 38, .1); border-radius: 10px; box-shadow: 0 4px 24px rgba(0, 0, 0, .04); color: var(--muted); font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.caret { width: 7px; height: 15px; background: var(--ink); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.enter { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 6px 10px; color: #fff; background: var(--accent); border-radius: 6px; font-family: Inter, "PingFang SC", sans-serif; font-size: 12px; box-shadow: inset 1px 6px 6px rgba(255, 255, 255, .2); }
+
+/* ⑤ Device seats. */
+.devices { position: absolute; inset: 24px 24px 0; display: flex; flex-direction: column; gap: 6px; }
+.devicesHead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
+.devicesHead strong { color: var(--ink); font-size: 15px; font-weight: 500; }
+.deviceRow { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #fafafa; border: 1px solid var(--line); border-radius: 4px; font-size: 14px; animation: rowIn .3s ease-out; }
+.deviceRow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deviceRow small { color: var(--muted); font-size: 12px; }
+.remove { padding: 4px 8px; color: var(--accent); background: none; border: 1px solid rgba(var(--accent-rgb), .3); border-radius: 4px; font: inherit; font-size: 12px; cursor: pointer; }
+.remove:hover { background: rgba(var(--accent-rgb), .08); }
+.reset { align-self: flex-start; padding: 0; color: var(--muted); background: none; border: 0; font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+/* ⑥ Usage panel, laid out like a dashboard health card. */
+.usage { position: absolute; inset: 24px 24px auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; background: #fff; border: 1px solid rgba(38, 38, 38, .1); border-radius: 10px; box-shadow: 0 4px 24px rgba(0, 0, 0, .04); font-variant-numeric: tabular-nums; }
+.usageHead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.usageHead h4 { margin: 0; font-size: 15px; font-weight: 500; }
+.usageHead p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+/* Segmented cycle meter; the reading rides above the last lit segment. */
+.cycle { position: relative; flex: none; width: 168px; padding-top: 30px; }
+.reading { position: absolute; top: 0; padding: 3px 7px; color: #fff; background: var(--accent); border-radius: 4px; font-size: 13px; font-weight: 500; line-height: 16px; transform: translateX(-50%); transition: left .1s linear; box-shadow: inset 1px 4px 4px rgba(255, 255, 255, .2); }
+.reading::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 8px; height: 8px; background: var(--accent); transform: translateX(-50%) rotate(45deg); border-radius: 1px; z-index: -1; }
+.segments { display: flex; gap: 2px; }
+.segments i { flex: 1; height: 6px; background: #ececec; border-radius: 1px; }
+.segments i[data-on] { background: var(--accent); }
+/* Usage histogram with an average line. */
+.histogram { position: relative; display: flex; align-items: flex-end; gap: 3px; height: 44px; padding-bottom: 1px; border-bottom: 1px solid var(--line); }
+.histogram i { flex: 1; min-height: 2px; background: rgba(var(--accent-rgb), .22); border-radius: 2px 2px 0 0; transform-origin: bottom; transition: height .5s cubic-bezier(.22, 1, .36, 1); animation: barIn .55s cubic-bezier(.22, 1, .36, 1) both; }
+/* On a period switch the bars remount and regrow, staggered left to right. */
+@keyframes barIn { from { transform: scaleY(0); opacity: 0; } }
+.histogram i[data-last] { background: var(--accent); }
+.average { animation: fadeUp .4s ease-out both; position: absolute; top: 0; left: 0; padding: 1px 6px; color: var(--muted); background: rgba(255, 255, 255, .9); border: 1px dashed #e4e4e4; border-radius: 3px; font-size: 11px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.stats div { padding: 10px 12px; background: #fafafa; border: 1px solid var(--line); border-radius: 6px; }
+.stats dt { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.stats dd { display: flex; align-items: baseline; gap: 4px; margin: 6px 0 0; }
+.stats strong { font-size: 22px; font-weight: 500; line-height: 1; letter-spacing: -.02em; }
+.stats small { color: var(--muted); font-size: 12px; }
+.change { animation: fadeUp .4s ease-out both; margin-left: auto; padding: 1px 5px; border-radius: 4px; font-size: 11px; font-weight: 500; line-height: 16px; }
+.up { color: #c2410c; background: rgba(var(--accent-rgb), .12); }
+.down { color: #15803d; background: rgba(22, 163, 74, .12); }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(3px); } }
+.usageFoot { display: flex; align-items: center; justify-content: space-between; }
+.sampleNote { color: rgba(38, 38, 38, .45); font-size: 12px; }
+.periods { display: flex; gap: 2px; }
+.periods button { padding: 3px 8px; color: rgba(38, 38, 38, .55); background: none; border: 0; border-radius: 4px; font: inherit; font-size: 12px; cursor: pointer; }
+.periods button:hover { color: var(--ink); }
+.periods button[aria-selected="true"] { color: var(--ink); background: #f0f0f0; font-weight: 500; }
+
+@media (max-width: 700px) {
+  .page { padding: 32px 16px 80px; }
+  .rails { display: none; }
+  .head h2 { font-size: 32px; line-height: 36px; }
+  .head p { font-size: 16px; line-height: 22px; }
+  .feedCells { grid-template-columns: 1fr auto; }
+  .feedFormat { display: none; }
+  .console { position: relative; left: 0; right: 0; bottom: 0; padding: 0 16px 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid[data-reveal] > * { opacity: 1; transform: none; transition: none; }
+  .feedList.slide, .feedRow:first-child .feedCells, .deviceRow { animation: none; }
+  .dotMark i, .statusBusy, .ellipsis i, .caret, .histogram i, .average, .change { animation: none; }
+}

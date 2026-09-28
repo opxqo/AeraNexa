@@ -60,3 +60,11 @@
 - NAT 的公网映射端口节点无法自知，需在生成命令时由管理员填写
 - 不做节点长期回连；仅当 A6 证明 NAT 场景确实需要时再评估，且不在节点上放 AN 的管理凭据
 - 依据：`docs/node-market-task-plan.md` 阶段 B；真机联调结论见 `docs/3x-node-an-panel-integration-report.md`
+
+## 10. Clash 订阅补上「AI 专线」「流媒体解锁」分流组（2026-09-28 记）
+
+首页特性展示（`/demo/features` 首个模块）把请求画成「按类型进入 AI 专线 / 流媒体解锁 / 自动选择 三个节点组」，但订阅里目前只有「节点选择」「自动选择」两个组（`src/lib/server/panel/clash.ts` 的 `renderClashConfig`）。上线该宣传前补齐：
+
+- 在 `renderClashConfig` 增加「AI 专线」「流媒体解锁」两个 `url-test` / `select` 组，成员为后台标注了对应能力的节点（需要节点层面的标签或分组来源）
+- 增加分流规则：OpenAI / Anthropic / Google Gemini / GitHub Copilot / Perplexity / xAI / Midjourney 等域名走 AI 组，Netflix / YouTube / Disney+ / Prime Video / HBO Max / Spotify / TikTok 等走流媒体组，放在 `GEOIP,CN,DIRECT` 之前
+- Base64 订阅无法表达分组，只影响 Clash 系客户端；页面文案需与之一致

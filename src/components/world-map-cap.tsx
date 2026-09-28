@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { WorldMapCapCityLayer } from "@/components/world-map-cap-city-layer";
 import { CAP_DOTS_DESKTOP, CAP_DOTS_MOBILE, createCapDots, type CapLandData } from "@/lib/demo/cap-dots";
-import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capSilhouette, getCapCurl, setCapCurl } from "@/lib/demo/cap-projection";
+import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capSilhouette, getCapCurl, setCapCurl, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap.module.css";
 
 // One full turn every 60 seconds, eastward.
@@ -21,10 +21,65 @@ const CHINA_COLOR = "#f45300";
 // canvas takes over, and stays put when reduced motion is requested.
 const DEFAULT_LABEL = "球冠式半球世界陆地点阵，地图贴合倾斜球面，边缘向后弯曲";
 
+// Graticule: a line every 30° of latitude and longitude, sampled every 3°.
+const GRATICULE_STEP = 30;
+const GRATICULE_SAMPLE = 3;
+
+function drawGraticule(context: CanvasRenderingContext2D, seam: number) {
+  context.beginPath();
+  const line = (points: [number, number][]) => {
+    let open = false;
+    for (const [longitude, latitude] of points) {
+      const angles = sphereAngles(longitude, latitude, seam);
+      // Only the side facing the viewer.
+      if (capFacing(angles) <= 0) {
+        open = false;
+        continue;
+      }
+      const { x, y } = toView(angles);
+      if (open) context.lineTo(x, y);
+      else context.moveTo(x, y);
+      open = true;
+    }
+  };
+  for (let latitude = -60; latitude <= 60; latitude += GRATICULE_STEP) {
+    const points: [number, number][] = [];
+    for (let longitude = -180; longitude <= 180; longitude += GRATICULE_SAMPLE) points.push([longitude, latitude]);
+    line(points);
+  }
+  for (let longitude = -180; longitude < 180; longitude += GRATICULE_STEP) {
+    const points: [number, number][] = [];
+    for (let latitude = -90; latitude <= 90; latitude += GRATICULE_SAMPLE) points.push([longitude, latitude]);
+    line(points);
+  }
+  context.globalAlpha = 1;
+  context.strokeStyle = "rgba(38, 38, 38, 0.09)";
+  context.lineWidth = 1;
+  context.stroke();
+}
+
 // `curlRef` (optional, the /demo/world-map/cap scroll effect) holds how far
 // the cap has curled into a globe, 0–1; it is read every frame, so scrolling
-// never re-renders React. Without it the map stays a cap.
-export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: { className?: string; label?: string; curlRef?: RefObject<number> }) {
+// never re-renders React. Without it the map stays a cap. `globe` shows the
+// map fully curled from the first frame (the cap's static SVG is skipped),
+// `graticule` adds latitude/longitude lines, and `routes={false}` drops the
+// hub's comets. The curl lives in cap-projection.ts's module state; each
+// map sets its own before drawing, so several maps can share a page.
+export function WorldMapCap({
+  className = "",
+  label = DEFAULT_LABEL,
+  curlRef,
+  globe = false,
+  graticule = false,
+  routes = true,
+}: {
+  className?: string;
+  label?: string;
+  curlRef?: RefObject<number>;
+  globe?: boolean;
+  graticule?: boolean;
+  routes?: boolean;
+}) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const updateCitiesRef = useRef<((seam: number, width: number, height: number) => void) | null>(null);
@@ -88,6 +143,7 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
             context.lineWidth = 1.2;
             context.stroke();
           }
+          if (graticule && curl > 0) drawGraticule(context, seam);
           const layers = [
             [COLOR, land, params.landRadius, 0.72],
             [COLOR, coast, params.coastRadius, 0.95],
@@ -110,6 +166,14 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
         let frameId = 0;
         let last = 0;
         let seam = CAP_SEAM_LONGITUDE;
+        // The curl lives in cap-projection.ts's module state, shared by every
+        // map on the page, so each map sets its own right before it projects
+        // anything (markers, then dots, all in the same synchronous pass).
+        const render = () => {
+          setCapCurl(globe ? 1 : curlRef?.current ?? 0);
+          updateCitiesRef.current?.(seam, width, height);
+          draw(seam);
+        };
         const tick = (now: number) => {
           frameId = requestAnimationFrame(tick);
           if (!running || document.hidden) {
@@ -118,23 +182,18 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
           }
           if (last) seam = ((seam + ((now - last) / 1000) * DEGREES_PER_SECOND + 180) % 360) - 180;
           last = now;
-          const curl = curlRef?.current ?? 0;
-          if (curl !== getCapCurl()) setCapCurl(curl);
           // The dots are fixed to the globe and move with it, so the map is
           // redrawn every frame, in step with the markers and routes.
-          updateCitiesRef.current?.(seam, width, height);
-          draw(seam);
+          render();
         };
 
-        draw(seam);
-        updateCitiesRef.current?.(seam, width, height);
+        render();
         setLive(true);
         frameId = requestAnimationFrame(tick);
 
         const resizeObserver = new ResizeObserver(() => {
           resize();
-          draw(seam);
-          updateCitiesRef.current?.(seam, width, height);
+          render();
         });
         resizeObserver.observe(frameElement);
         // Pause while the map is scrolled out of view.
@@ -159,12 +218,12 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
       controller.abort();
       cleanup();
     };
-  }, [curlRef]);
+  }, [curlRef, globe, graticule]);
 
   return (
     <div ref={frameRef} className={`${styles.frame} ${className}`}>
       <svg
-        className={`${styles.map} ${live ? styles.hidden : ""}`}
+        className={`${styles.map} ${live || globe ? styles.hidden : ""}`}
         viewBox={`0 0 ${CAP_VIEW_WIDTH} ${CAP_VIEW_HEIGHT}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -174,7 +233,7 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
         <image className={styles.mobileDots} href="/demo/world-map-cap-mobile.svg" width={CAP_VIEW_WIDTH} height={CAP_VIEW_HEIGHT} />
       </svg>
       <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-      <WorldMapCapCityLayer updateRef={updateCitiesRef} />
+      <WorldMapCapCityLayer updateRef={updateCitiesRef} routes={routes} />
     </div>
   );
 }

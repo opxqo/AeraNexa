@@ -1,0 +1,61 @@
+.page { min-height: 100svh; padding: 36px 32px 28px; color: #24272b; background: #fff; }
+.shell { width: min(1200px, 100%); margin: 0 auto; }
+.back { display: inline-flex; align-items: center; gap: 7px; color: #7a828e; font-size: 13px; text-decoration: none; transition: color .2s ease; }
+.back:hover { color: #24272b; }
+.header { margin: 42px auto 30px; text-align: center; }
+.kicker { display: flex; justify-content: center; align-items: center; gap: 9px; margin: 0 0 15px; color: #76839a; font-size: 11px; font-weight: 650; letter-spacing: .16em; }
+.kicker svg { color: #4774df; }
+.header h1 { margin: 0; font-size: clamp(30px, 4vw, 46px); font-weight: 560; letter-spacing: -.045em; line-height: 1.15; }
+.description { margin: 13px 0 0; color: #7a828e; font-size: 15px; line-height: 1.7; }
+.stage { position: relative; width: 100%; aspect-ratio: 1200 / 560; min-height: 440px; overflow: hidden; isolation: isolate; background: radial-gradient(ellipse 36% 58% at 81% 50%, rgba(230,238,249,.55), transparent 76%); }
+.stage::before { position: absolute; z-index: -1; inset: 0; background-image: radial-gradient(#e5eaf0 0.7px, transparent 0.7px); background-size: 18px 18px; content: ""; mask-image: linear-gradient(90deg, #000 0, transparent 50%, #000 100%); opacity: .42; }
+.routes, .mobileRoutes { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; overflow: visible; }
+.route { fill: none; stroke: #d5deea; stroke-width: 1.35; vector-effect: non-scaling-stroke; }
+.logoArc { fill: none; stroke: url(#topology-brand-line); stroke-width: 1.7; stroke-linecap: round; opacity: .72; vector-effect: non-scaling-stroke; }
+.routeCore { fill: none; stroke: #f45300; stroke-width: 1.15; stroke-dasharray: 3 9; stroke-linecap: round; opacity: .32; vector-effect: non-scaling-stroke; }
+.signal { fill: #f45300; filter: drop-shadow(0 0 5px rgba(244,83,0,.55)); }
+.anchor { fill: #fff; stroke: #6d8fe0; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.sourceTop, .sourceBottom { position: absolute; z-index: 1; left: 5.25%; width: 198px; height: 198px; }
+.sourceTop { top: 1%; }
+.sourceBottom { bottom: 1%; }
+.node { display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #dfe5ed; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 16px 45px rgba(31,47,70,.055), inset 0 0 0 7px rgba(247,249,252,.65); text-align: center; }
+.nodeIcons { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; color: #4774df; }
+.nodeIcons svg { width: 19px; height: 19px; stroke-width: 1.7; }
+.nodeIcons svg + svg { color: #f45300; }
+.node h2 { margin: 0; color: #292e36; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+.node p { margin: 7px 0 0; color: #858d99; font-size: 12px; }
+.globeNode, .mobileGlobe { position: absolute; z-index: 1; top: 50%; right: 3.5%; width: min(36%, 380px); aspect-ratio: 1; transform: translateY(-50%); }
+.globeClip { position: absolute; inset: 0; overflow: hidden; border: 1px solid rgba(155,174,201,.32); border-radius: 50%; background: radial-gradient(circle at 36% 28%, #fff 0, #f7f9fc 65%, #edf3fa 100%); box-shadow: 0 28px 65px rgba(45,67,99,.09), inset 0 0 35px rgba(130,148,174,.08); }
+.globeArtwork { position: absolute; inset: 0; width: 100%; height: 100%; }
+.globeClip :global(ul[aria-label="Cities"]), .globeClip :global(canvas[class*="cometLayer"]) { display: none; }
+.mapProjection { position: absolute !important; top: 0; left: -75%; width: 250% !important; height: 100%; aspect-ratio: auto !important; }
+.globeLabel { position: absolute; z-index: 3; left: 50%; bottom: 7%; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border: 1px solid rgba(224,230,238,.9); border-radius: 999px; color: #566171; background: rgba(255,255,255,.9); box-shadow: 0 7px 22px rgba(31,47,70,.08); font-size: 11px; white-space: nowrap; transform: translateX(-50%); }
+.globeLabel svg { color: #5276cd; }
+.footer { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 0; color: #9299a4; font-size: 11px; }
+.footerDot { width: 6px; height: 6px; border-radius: 50%; background: #f45300; }
+.mobileSources, .mobileRoutes { display: none; }
+
+@media (max-width: 760px) {
+  .page { padding: 22px 18px 24px; }
+  .header { margin: 38px auto 20px; }
+  .description { max-width: 34em; margin-inline: auto; font-size: 14px; }
+  .stage { display: flex; min-height: 0; aspect-ratio: auto; flex-direction: column; align-items: center; gap: 0; overflow: hidden; padding: 14px 0 4px; background: radial-gradient(ellipse 68% 44% at 50% 75%, rgba(230,238,249,.55), transparent 78%); }
+  .stage::before { mask-image: linear-gradient(180deg, #000, transparent 90%); }
+  .routes, .sourceTop, .sourceBottom { display: none; }
+  .mobileSources { position: relative; z-index: 1; display: grid; width: min(100%, 430px); grid-template-columns: 1fr 1fr; gap: 18px; }
+  .mobileSources .node { width: min(39vw, 164px); height: min(39vw, 164px); justify-self: center; }
+  .mobileSources .nodeIcons { margin-bottom: 10px; }
+  .mobileSources .nodeIcons svg { width: 17px; height: 17px; }
+  .mobileSources .node h2 { max-width: 9em; padding-inline: 7px; font-size: 12px; }
+  .mobileSources .node p { padding-inline: 6px; font-size: 10px; }
+  .mobileRoutes { position: relative; inset: auto; display: block; width: min(100%, 430px); height: 95px; margin: -2px 0 -5px; }
+  .mobileRoutes .route { stroke-width: 1.25; }
+  .mobileRoutes .logoArc { stroke-width: 1.6; }
+  .globeNode { position: relative; inset: auto; display: block; width: min(72vw, 290px); flex: none; margin: 0 auto; transform: none; }
+  .globeLabel { bottom: 5%; }
+  .footer { margin-top: 12px; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back { transition: none; }
+}

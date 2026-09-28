@@ -20,7 +20,8 @@ const FRAME_EDGE_LAT = 25;
 // the globe (1): longitudes wrap all the way round, latitudes run pole to
 // pole, the tilt swings the north toward the viewer and the camera pulls back until the whole sphere sits
 // in the view. Everything in this module reads the current shape, so dots,
-// cities, routes and markers curl together. The home page never sets curl.
+// cities, routes and markers curl together. The state is shared by every map
+// on a page, so WorldMapCap sets its own curl right before each draw.
 type Shape = {
   north: number;
   south: number;
