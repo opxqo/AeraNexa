@@ -1,39 +1,31 @@
-// Per-frame land dots for the rotating spherical-cap map. Same sampling as
-// scripts/generate-demo-cap-map.py (staggered screen grid, dotted coastline,
-// a gap between them), but recomputed for any seam longitude so the map can
-// turn. Data comes from public/demo/world-cap-land.json (same generator).
-// China comes out as its own dot sets, with its dotted borders (land borders
-// and the ten-dash line) and small islands, so it can be drawn in the accent
-// colour.
+// Per-frame land dots for the rotating spherical-cap map. Every dot is fixed
+// to a longitude/latitude on the globe, so the dots travel with the land as
+// the map turns (rather than the land sliding under a fixed screen grid).
+// scripts/generate-demo-cap-map.py picks the dots once: a staggered lon/lat
+// lattice of land dots kept clear of the coast, and evenly spaced coast and
+// border dots, with China sorted out for the accent colour. It writes them to
+// public/demo/world-cap-land.json; this module only projects them each frame.
 
-import { CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capLatRange, capLonLat, getCapCurl, sphereAngles, toView, unprojectCap } from "@/lib/demo/cap-projection";
+import { CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capLatRange, getCapCurl, sphereAngles, toView } from "@/lib/demo/cap-projection";
 
-export type CapLandData = {
-  north: number;
-  south: number;
-  step: number;
-  columns: number;
-  rows: number;
-  mask: string;
-  rings: number[][];
-  china: string;       // mask of China, same grid as `mask`
-  borders: number[][]; // China's borders and the ten-dash line, [lon, lat, …] per line
-  islands: number[];   // China's small islands, one dot each: [lon, lat, …]
+/** One parameter set (desktop or mobile) from the generator. */
+export type CapDotSet = {
+  rows: number;         // lattice rows, pole to pole
+  cols: number;         // lattice columns round the globe
+  land: string;         // base64 bits, one per lattice point: a land dot
+  china: string;        // base64 bits: that land dot is in China
+  coast: number[];      // [lon, lat, …] in hundredths of a degree
+  chinaCoast: number[];
+  border: number[];     // China's borders, the ten-dash line and small islands
 };
 
-export type CapDotParams = {
-  columnGap: number;
-  rowGap: number;
-  coastSpacing: number;
-  clearance: number;
-  minPerimeter: number;
-  landRadius: number;
-  coastRadius: number;
-};
+export type CapLandData = { desktop: CapDotSet; mobile: CapDotSet };
 
-// The two build(...) parameter sets in the generator.
-export const CAP_DOTS_DESKTOP: CapDotParams = { columnGap: 6, rowGap: 5.2, coastSpacing: 2.6, clearance: 3.4, minPerimeter: 14, landRadius: 1.35, coastRadius: 1.05 };
-export const CAP_DOTS_MOBILE: CapDotParams = { columnGap: 14, rowGap: 12, coastSpacing: 6, clearance: 7, minPerimeter: 40, landRadius: 3.4, coastRadius: 2.6 };
+export type CapDotParams = { landRadius: number; coastRadius: number };
+
+// Dot sizes for the two parameter sets (spacing lives in the generator).
+export const CAP_DOTS_DESKTOP: CapDotParams = { landRadius: 1.35, coastRadius: 1.05 };
+export const CAP_DOTS_MOBILE: CapDotParams = { landRadius: 3.4, coastRadius: 2.6 };
 
 export type CapDotFrame = {
   land: number[];
@@ -43,177 +35,83 @@ export type CapDotFrame = {
   border: number[];
 };
 
-function decodeMask(base64: string) {
+function decodeBits(base64: string) {
   const binary = atob(base64);
   const bits = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bits[index] = binary.charCodeAt(index);
   return bits;
 }
 
-export function createCapDots(data: CapLandData, params: CapDotParams) {
-  const bits = decodeMask(data.mask);
-  const chinaBits = decodeMask(data.china);
+/** Mirrors lattice_point() in the generator. */
+function latticePoint(rows: number, cols: number, row: number, col: number) {
+  const latitude = 90 - ((row + 0.5) * 180) / rows;
+  const longitude = -180 + ((col + 0.5 + (row % 2 ? 0.5 : 0)) * 360) / cols;
+  return { longitude, latitude };
+}
 
-  // `reach` also accepts cells that many steps away (coast dots sit right on
-  // the land edge). Mirrors mask_lookup() in the generator.
-  function inMask(mask: Uint8Array, longitude: number, latitude: number, reach = 0) {
-    const row = Math.floor((data.north - latitude) / data.step);
-    const column = Math.floor((longitude + 180) / data.step);
-    for (let dr = -reach; dr <= reach; dr += 1) {
-      const r = row + dr;
-      if (r < 0 || r >= data.rows) continue;
-      for (let dc = -reach; dc <= reach; dc += 1) {
-        const index = r * data.columns + ((((column + dc) % data.columns) + data.columns) % data.columns);
-        if ((mask[index >> 3] & (0x80 >> (index & 7))) !== 0) return true;
-      }
+const hundredths = (values: number[]) => values.map((value) => value / 100);
+
+export function createCapDots(set: CapDotSet) {
+  // Land dots as [lon, lat, column, …], split into China and the rest.
+  const land: number[] = [];
+  const chinaLand: number[] = [];
+  const landBits = decodeBits(set.land);
+  const chinaBits = decodeBits(set.china);
+  for (let row = 0; row < set.rows; row += 1) {
+    for (let col = 0; col < set.cols; col += 1) {
+      const index = row * set.cols + col;
+      const bit = 0x80 >> (index & 7);
+      if ((landBits[index >> 3] & bit) === 0) continue;
+      const { longitude, latitude } = latticePoint(set.rows, set.cols, row, col);
+      ((chinaBits[index >> 3] & bit) !== 0 ? chinaLand : land).push(longitude, latitude, col);
     }
-    return false;
   }
-  const isLand = (longitude: number, latitude: number) => inMask(bits, longitude, latitude);
+  const coast = hundredths(set.coast);
+  const chinaCoast = hundredths(set.chinaCoast);
+  const border = hundredths(set.border);
 
-  // Coast rings that come near China; only their dots need classifying.
-  const chinaRings: number[][] = [];
-  const otherRings: number[][] = [];
-  for (const ring of data.rings) {
-    let near = false;
-    for (let index = 0; index < ring.length && !near; index += 2) near = inMask(chinaBits, ring[index], ring[index + 1], 2);
-    (near ? chinaRings : otherRings).push(ring);
-  }
-
-  // Is this view point (on the sphere) over China?
-  function overChina(x: number, y: number, seam: number, reach: number) {
-    const hit = unprojectCap(x, y);
-    if (!hit) return false;
-    const { longitude, latitude } = capLonLat(hit, seam);
-    return inMask(chinaBits, longitude, latitude, reach);
-  }
-
-  // Screen grid points and where they land on the sphere. The sphere angles
-  // are measured from the seam, so this only changes when the map curls.
-  let grid: number[] = [];
-  let gridCurl = -1;
-  function currentGrid() {
-    const curl = getCapCurl();
-    if (curl === gridCurl) return grid;
-    gridCurl = curl;
-    grid = [];
-    let row = 0;
-    for (let y = params.rowGap / 2; y < CAP_VIEW_HEIGHT; y += params.rowGap, row += 1) {
-      for (let x = params.columnGap / 2 + (row % 2 ? params.columnGap / 2 : 0); x < CAP_VIEW_WIDTH; x += params.columnGap) {
-        const hit = unprojectCap(x, y);
-        if (hit) grid.push(x, y, hit.theta, hit.phi);
-      }
-    }
-    return grid;
-  }
-
+  const lonStep = 360 / set.cols;
+  const latStep = 180 / set.rows;
   const inside = (x: number, y: number) => x >= -4 && x <= CAP_VIEW_WIDTH + 4 && y >= -4 && y <= CAP_VIEW_HEIGHT + 4;
 
-  // Evenly spaced dots along lon/lat lines (coast rings or borders).
-  function trace(lines: number[][], minPerimeter: number, seam: number) {
-    const dots: number[] = [];
-    const curled = getCapCurl() > 0;
-    const { north, south } = capLatRange();
-    for (const ring of lines) {
-      const thetas: number[] = [];
-      const points: number[] = [];
-      const hidden: boolean[] = [];
-      for (let index = 0; index < ring.length; index += 2) {
-        // Vertices beyond the latitudes in view are left out (the ring joins
-        // up across them), as the generator does for the cap.
-        if (ring[index + 1] < south || ring[index + 1] > north) continue;
-        const angles = sphereAngles(ring[index], ring[index + 1], seam);
-        const point = toView(angles);
-        thetas.push(angles.theta);
-        points.push(point.x, point.y);
-        hidden.push(curled && capFacing(angles) <= 0);
-      }
-      // Segments between consecutive vertices, skipping ones that cross the
-      // seam or (once curled into a globe) touch the far side.
-      const segments: number[] = [];
-      let perimeter = 0;
-      for (let index = 1; index < thetas.length; index += 1) {
-        if (Math.abs(thetas[index] - thetas[index - 1]) >= 30) continue;
-        if (hidden[index] || hidden[index - 1]) continue;
-        const ax = points[index * 2 - 2], ay = points[index * 2 - 1];
-        const bx = points[index * 2], by = points[index * 2 + 1];
-        segments.push(ax, ay, bx, by);
-        perimeter += Math.hypot(bx - ax, by - ay);
-      }
-      if (perimeter < minPerimeter) continue;
-      let carry = 0;
-      for (let index = 0; index < segments.length; index += 4) {
-        const ax = segments[index], ay = segments[index + 1], bx = segments[index + 2], by = segments[index + 3];
-        const length = Math.hypot(bx - ax, by - ay);
-        let position = carry;
-        while (position < length) {
-          const t = position / length;
-          const x = ax + (bx - ax) * t;
-          const y = ay + (by - ay) * t;
-          if (inside(x, y)) dots.push(x, y);
-          position += params.coastSpacing;
-        }
-        carry = position - length;
-      }
-    }
-    return dots;
-  }
-
   function frame(seam: number): CapDotFrame {
-    const otherCoast = trace(otherRings, params.minPerimeter, seam);
-    const nearChinaCoast = trace(chinaRings, params.minPerimeter, seam);
-    const border = trace(data.borders, 0, seam);
-    for (let index = 0; index < data.islands.length; index += 2) {
-      const angles = sphereAngles(data.islands[index], data.islands[index + 1], seam);
-      if (getCapCurl() > 0 && capFacing(angles) <= 0) continue;
-      const point = toView(angles);
-      if (inside(point.x, point.y)) border.push(point.x, point.y);
-    }
-    // Border dots clear a gap in the land dots the same way the coast does.
-    const coast = otherCoast.concat(nearChinaCoast, border);
-    const cell = params.clearance;
-    const buckets = new Map<number, number[]>();
-    for (let index = 0; index < coast.length; index += 2) {
-      const key = Math.floor(coast[index] / cell) * 4096 + Math.floor(coast[index + 1] / cell);
-      const bucket = buckets.get(key);
-      if (bucket) bucket.push(coast[index], coast[index + 1]);
-      else buckets.set(key, [coast[index], coast[index + 1]]);
-    }
-    const nearCoast = (x: number, y: number) => {
-      const cx = Math.floor(x / cell);
-      const cy = Math.floor(y / cell);
-      for (let dx = -1; dx <= 1; dx += 1) {
-        for (let dy = -1; dy <= 1; dy += 1) {
-          const bucket = buckets.get((cx + dx) * 4096 + cy + dy);
-          if (!bucket) continue;
-          for (let index = 0; index < bucket.length; index += 2) {
-            if (Math.hypot(x - bucket[index], y - bucket[index + 1]) < cell) return true;
-          }
-        }
-      }
-      return false;
-    };
+    const curl = getCapCurl();
+    const { north, south } = capLatRange();
 
-    const land: number[] = [];
-    const chinaLand: number[] = [];
-    const grid = currentGrid();
-    for (let index = 0; index < grid.length; index += 4) {
-      const { longitude, latitude } = capLonLat({ theta: grid[index + 2], phi: grid[index + 3] }, seam);
-      const x = grid[index];
-      const y = grid[index + 1];
-      if (!isLand(longitude, latitude) || nearCoast(x, y)) continue;
-      if (inMask(chinaBits, longitude, latitude)) chinaLand.push(x, y);
-      else land.push(x, y);
+    // Project lon/lat dots (`stride` values each) to the view, leaving out
+    // latitudes the shape crops, the far side once curled, and anything off
+    // the canvas. The lattice is spaced for the cap, which squeezes latitude
+    // more than longitude; on a whole globe its rows would read as solid
+    // lines. So as the map curls, each row keeps an evenly spread share of
+    // its dots, easing toward the share that makes the gap along the row
+    // match the gap between rows.
+    function place(points: number[], stride: number, thin: boolean) {
+      const placed: number[] = [];
+      for (let index = 0; index < points.length; index += stride) {
+        const longitude = points[index];
+        const latitude = points[index + 1];
+        if (latitude < south || latitude > north) continue;
+        if (thin && curl > 0) {
+          const even = Math.min(1, (lonStep * Math.cos((latitude * Math.PI) / 180)) / latStep);
+          const share = 1 + (even - 1) * curl;
+          const col = points[index + 2];
+          if (Math.floor((col + 1) * share) === Math.floor(col * share)) continue;
+        }
+        const angles = sphereAngles(longitude, latitude, seam);
+        if (curl > 0 && capFacing(angles) <= 0) continue;
+        const point = toView(angles);
+        if (inside(point.x, point.y)) placed.push(point.x, point.y);
+      }
+      return placed;
     }
-    const plainCoast = otherCoast;
-    const chinaCoast: number[] = [];
-    for (let index = 0; index < nearChinaCoast.length; index += 2) {
-      const x = nearChinaCoast[index];
-      const y = nearChinaCoast[index + 1];
-      if (overChina(x, y, seam, 1)) chinaCoast.push(x, y);
-      else plainCoast.push(x, y);
-    }
-    return { land, coast: plainCoast, chinaLand, chinaCoast, border };
+
+    return {
+      land: place(land, 3, true),
+      chinaLand: place(chinaLand, 3, true),
+      coast: place(coast, 2, false),
+      chinaCoast: place(chinaCoast, 2, false),
+      border: place(border, 2, false),
+    };
   }
 
   return { frame };

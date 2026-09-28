@@ -3,10 +3,12 @@
 tilted sphere and seen in perspective, filling the width with the sides and
 bottom running out of frame.
 
-Only the shape differs from /demo/world-map/arch-3d; the dot style is the
-same (see scripts/generate-demo-arch-map-globe.py): evenly spaced round land
-dots on a staggered screen grid, a dotted coastline, and a gap between them.
-Screen-grid dots are traced back onto the sphere to test for land.
+The dot style follows /demo/world-map/arch-3d: round land dots on a
+staggered grid, a dotted coastline, and a gap between them. Here every dot is
+fixed to a longitude/latitude, so it travels with the land as the map turns:
+this script picks the dots once (public/demo/world-cap-land.json) and
+src/lib/demo/cap-dots.ts projects them every frame; the SVGs are the resting
+frame.
 
 Land comes from Natural Earth 1:110m (the 3D globe demo's source). China is
 drawn in the accent orange with a dotted border, from Natural Earth 1:110m
@@ -87,18 +89,11 @@ CAMERA = 2.75
 FRAME_EDGE = 14       # map longitudes this far inside the seam touch the view's sides
 FRAME_EDGE_LAT = 25
 TOP_Y = 40            # where the top of the cap rim sits
-HALF_THETA = 180 * SPAN_LON
-PHI_MIN, PHI_MAX = (SOUTH - LAT_CENTER) * SPAN_LAT, (NORTH - LAT_CENTER) * SPAN_LAT
 
 
 def sphere_angles(lon, lat):
     theta = (((lon - SEAM_LONGITUDE) % 360) - 180) * SPAN_LON
     return theta, (lat - LAT_CENTER) * SPAN_LAT
-
-
-def lonlat(theta, phi):
-    lon = (theta / SPAN_LON + 180 + SEAM_LONGITUDE + 180) % 360 - 180
-    return lon, phi / SPAN_LAT + LAT_CENTER
 
 
 def raw(theta, phi):
@@ -127,65 +122,87 @@ def project(theta, phi):
     return x * SCALE + OFFSET_X, y * SCALE + OFFSET_Y
 
 
-def unproject(px, py):
-    """Trace a screen point back to (theta, phi) on the front of the sphere."""
-    u = (px - OFFSET_X) / SCALE
-    v = -(py - OFFSET_Y) / SCALE
-    a = u * u + v * v + 1
-    disc = CAMERA * CAMERA - a * (CAMERA * CAMERA - 1)
-    if disc < 0:
-        return None
-    s = (CAMERA - math.sqrt(disc)) / a
-    x, y, z = u * s, v * s, CAMERA - s
-    y0 = y * math.cos(TILT) - z * math.sin(TILT)
-    z0 = y * math.sin(TILT) + z * math.cos(TILT)
-    phi = math.degrees(math.asin(max(-1, min(1, y0))))
-    theta = math.degrees(math.atan2(x, z0))
-    if not (-HALF_THETA <= theta <= HALF_THETA and PHI_MIN <= phi <= PHI_MAX):
-        return None
-    return theta, phi
-
-
 def inside(x, y, pad=4):
     return -pad <= x <= VIEW_WIDTH + pad and -pad <= y <= VIEW_HEIGHT + pad
 
 
-# --- sampling (same approach as the arch-3d generator, in screen pixels) ---
-def coastline(polygons, spacing, min_perimeter):
+# --- surface dots (fixed to the map; src/lib/demo/cap-dots.ts projects them) ---
+# Every dot sits at a fixed longitude/latitude, so the dots move with the map
+# as it turns instead of the land sliding under a screen grid. Spacing is set
+# so that at REFERENCE_LATITUDE, where most of the land is, one step lands one
+# screen gap apart; away from it the sphere's perspective spreads the rows
+# (nearer the viewer) or squeezes them (toward the far rim).
+REFERENCE_LATITUDE = 40
+
+
+def _units():
+    phi = (REFERENCE_LATITUDE - LAT_CENTER) * SPAN_LAT
+    x0, y0 = project(0, phi)
+    x1 = project(0.5, phi)[0]
+    y1 = project(0, phi + 0.5)[1]
+    return (x1 - x0) / 0.5 * SPAN_LON, (y0 - y1) / 0.5 * SPAN_LAT
+
+
+UNITS_LON, UNITS_LAT = _units()  # view units per degree of longitude / latitude there
+
+
+def lattice(column_gap, row_gap):
+    """Rows and columns of the staggered lon/lat lattice (pole to pole, with a
+    whole number of columns round the globe so it wraps without a seam)."""
+    return round(180 / (row_gap / UNITS_LAT)), round(360 / (column_gap / UNITS_LON))
+
+
+def lattice_point(rows, cols, row, col):
+    """Mirrors latticePoint() in cap-dots.ts."""
+    lat = 90 - (row + 0.5) * 180 / rows
+    lon = -180 + (col + 0.5 + (0.5 if row % 2 else 0)) * 360 / cols
+    return lon, lat
+
+
+def sample(paths, spacing, min_perimeter):
+    """Evenly spaced (lon, lat) dots along lon/lat polylines, measured in view
+    units at the centre of the cap. Skips the edge Natural Earth runs along
+    the South Pole to close Antarctica."""
     dots = []
-    for rings, _ in polygons:
-        for ring in rings:
-            path = []
-            for lon, lat in ring:
-                if SOUTH <= lat <= NORTH:
-                    theta, phi = sphere_angles(lon, lat)
-                    path.append((theta, project(theta, phi)))
-            segments = [(a[1], b[1]) for a, b in zip(path, path[1:]) if abs(b[0] - a[0]) < 30]
-            if sum(math.dist(a, b) for a, b in segments) < min_perimeter:
-                continue
-            carry = 0.0
-            for a, b in segments:
-                length = math.dist(a, b)
-                position = carry
-                while position < length:
-                    t = position / length
-                    dots.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
-                    position += spacing
-                carry = position - length
-    return [(x, y) for x, y in dots if inside(x, y)]
+    for path in paths:
+        points = [(lon * UNITS_LON, lat * UNITS_LAT, lon, lat) for lon, lat in path]
+        segments = [(a, b) for a, b in zip(points, points[1:]) if not (a[3] <= -89.9 and b[3] <= -89.9)]
+        if sum(math.dist(a[:2], b[:2]) for a, b in segments) < min_perimeter:
+            continue
+        carry = 0.0
+        for a, b in segments:
+            length = math.dist(a[:2], b[:2])
+            position = carry
+            while position < length:
+                t = position / length
+                dots.append((a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t))
+                position += spacing
+            carry = position - length
+    return [(((lon + 180) % 360) - 180, lat) for lon, lat in dots]
 
 
-def lines(paths, spacing):
-    """Evenly spaced dots along open polylines of (lon, lat) points."""
-    return coastline([([path], None) for path in paths], spacing, 0)
+def encode(points):
+    """(lon, lat) points as whole hundredths of a degree, flattened."""
+    return [value for lon, lat in points for value in (round(lon * 100), round(lat * 100))]
 
 
-def interior(polygons, is_land, column_gap, row_gap, coast, clearance):
+def decode(values):
+    return [(values[index] / 100, values[index + 1] / 100) for index in range(0, len(values), 2)]
+
+
+def build(polygons, is_land, borders, china_bits, column_gap, row_gap, coast_spacing, clearance, min_perimeter):
+    rings = [ring for ring_set, _ in polygons for ring in ring_set]
+    coast = sample(rings, coast_spacing, min_perimeter)
+    border = sample(borders, coast_spacing, 0) + list(ISLANDS)
+
+    # Land dots keep a gap from the coast and border dots.
     buckets = {}
-    for x, y in coast:
+    for lon, lat in coast + border:
+        x, y = lon * UNITS_LON, lat * UNITS_LAT
         buckets.setdefault((int(x // clearance), int(y // clearance)), []).append((x, y))
 
-    def near_coast(x, y):
+    def near_line(lon, lat):
+        x, y = lon * UNITS_LON, lat * UNITS_LAT
         cx, cy = int(x // clearance), int(y // clearance)
         return any(
             math.dist((x, y), point) < clearance
@@ -193,22 +210,63 @@ def interior(polygons, is_land, column_gap, row_gap, coast, clearance):
             for point in buckets.get((cx + dx, cy + dy), ())
         )
 
-    dots = []
-    row = 0
-    y = row_gap / 2
-    while y < VIEW_HEIGHT:
-        x = column_gap / 2 + (column_gap / 2 if row % 2 else 0)
-        while x < VIEW_WIDTH:
-            hit = unproject(x, y)
-            if hit:
-                lon, lat = lonlat(*hit)
-                candidates = [item for item in polygons if item[1][0][1] <= lat <= item[1][0][3]]
-                if is_land(lon, lat, candidates) and not near_coast(x, y):
-                    dots.append((x, y))
-            x += column_gap
-        y += row_gap
-        row += 1
-    return dots
+    in_china = mask_lookup(china_bits)
+    near_china = mask_lookup(china_bits, reach=1)
+    rows, cols = lattice(column_gap, row_gap)
+    land_bits = bytearray((rows * cols + 7) // 8)
+    china_land_bits = bytearray((rows * cols + 7) // 8)
+    for row in range(rows):
+        lat = lattice_point(rows, cols, row, 0)[1]
+        candidates = [item for item in polygons if item[1][0][1] <= lat <= item[1][0][3]]
+        for col in range(cols):
+            lon = lattice_point(rows, cols, row, col)[0]
+            if not is_land(lon, lat, candidates) or near_line(lon, lat):
+                continue
+            index = row * cols + col
+            land_bits[index >> 3] |= 0x80 >> (index & 7)
+            if in_china(lon, lat):
+                china_land_bits[index >> 3] |= 0x80 >> (index & 7)
+
+    return {
+        "rows": rows,
+        "cols": cols,
+        "land": base64.b64encode(bytes(land_bits)).decode("ascii"),
+        "china": base64.b64encode(bytes(china_land_bits)).decode("ascii"),
+        "coast": encode([p for p in coast if not near_china(*p)]),
+        "chinaCoast": encode([p for p in coast if near_china(*p)]),
+        "border": encode(border),
+    }
+
+
+def at_rest(dots):
+    """Screen positions at the resting seam, as the canvas draws its first
+    frame (mirrors frame() in cap-dots.ts with no curl)."""
+    def place(points):
+        placed = []
+        for lon, lat in points:
+            if not SOUTH <= lat <= NORTH:
+                continue
+            point = project(*sphere_angles(lon, lat))
+            if inside(*point):
+                placed.append(point)
+        return placed
+
+    land, china_land = [], []
+    land_bits = base64.b64decode(dots["land"])
+    china_bits = base64.b64decode(dots["china"])
+    for row in range(dots["rows"]):
+        for col in range(dots["cols"]):
+            index = row * dots["cols"] + col
+            if land_bits[index >> 3] & (0x80 >> (index & 7)):
+                target = china_land if china_bits[index >> 3] & (0x80 >> (index & 7)) else land
+                target.append(lattice_point(dots["rows"], dots["cols"], row, col))
+    return {
+        "land": place(land),
+        "china_land": place(china_land),
+        "coast": place(decode(dots["coast"])),
+        "china_coast": place(decode(dots["chinaCoast"])),
+        "border": place(decode(dots["border"])),
+    }
 
 
 def circles(points, radius):
@@ -329,66 +387,6 @@ def china(topology, decode_topology, in_ring, is_land):
     return bits, borders + [SOUTH_TIBET_LINE] + TEN_DASH_LINE
 
 
-def classify(land, coast, china_bits):
-    """Split land/coast dots (screen points) into China and the rest. Coast
-    dots also match one mask cell out, as they sit right on the land edge."""
-    in_china = mask_lookup(china_bits)
-    near_china = mask_lookup(china_bits, reach=1)
-
-    def test(point, lookup):
-        hit = unproject(*point)
-        return bool(hit) and lookup(*lonlat(*hit))
-
-    return {
-        "land": [p for p in land if not test(p, in_china)],
-        "china_land": [p for p in land if test(p, in_china)],
-        "coast": [p for p in coast if not test(p, near_china)],
-        "china_coast": [p for p in coast if test(p, near_china)],
-    }
-
-
-def runtime_data(polygons, is_land, china_bits, borders):
-    """Land mask and coastline rings for the in-browser rotating renderer
-    (src/lib/demo/cap-dots.ts), which redraws the same dots every frame as
-    the seam longitude moves; plus China's mask and land borders."""
-    columns, rows = MASK_COLUMNS, MASK_ROWS
-    bits = mask(polygons, is_land)
-    # Same vertex filter as coastline(): keep in-range vertices in ring order.
-    rings = []
-    for ring_set, _ in polygons:
-        for ring in ring_set:
-            flat = []
-            for lon, lat in ring:
-                if MASK_SOUTH <= lat <= MASK_NORTH:
-                    flat += [round(lon, 3), round(lat, 3)]
-            if len(flat) >= 4:
-                rings.append(flat)
-    return json.dumps({
-        "north": MASK_NORTH,
-        "south": MASK_SOUTH,
-        "step": MASK_STEP,
-        "columns": columns,
-        "rows": rows,
-        "mask": base64.b64encode(bytes(bits)).decode("ascii"),
-        "rings": rings,
-        "china": base64.b64encode(bytes(china_bits)).decode("ascii"),
-        "borders": [[value for lon, lat in path for value in (round(lon, 3), round(lat, 3))] for path in borders],
-        "islands": [value for lon, lat in ISLANDS for value in (lon, lat)],
-    }, separators=(",", ":")) + "\n"
-
-
-def build(polygons, is_land, borders, china_bits, column_gap, row_gap, coast_spacing, clearance, min_perimeter):
-    coast = coastline(polygons, coast_spacing, min_perimeter)
-    border = lines(borders, coast_spacing)
-    for lon, lat in ISLANDS:
-        point = project(*sphere_angles(lon, lat))
-        if inside(*point):
-            border.append(point)
-    # Border dots clear a gap in the land dots the same way the coast does.
-    land = interior(polygons, is_land, column_gap, row_gap, coast + border, clearance)
-    return {**classify(land, coast, china_bits), "border": border}
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Compare generated assets without writing")
@@ -403,9 +401,9 @@ def main():
     desktop = build(polygons, is_land, borders, china_bits, 6.0, 5.2, 2.6, 3.4, 14)
     mobile = build(polygons, is_land, borders, china_bits, 14, 12, 6, 7, 40)
     files = {
-        OUTPUT / "world-map-cap-desktop.svg": render(desktop, 1.35, 1.05),
-        OUTPUT / "world-map-cap-mobile.svg": render(mobile, 3.4, 2.6),
-        OUTPUT / "world-cap-land.json": runtime_data(polygons, is_land, china_bits, borders),
+        OUTPUT / "world-map-cap-desktop.svg": render(at_rest(desktop), 1.35, 1.05),
+        OUTPUT / "world-map-cap-mobile.svg": render(at_rest(mobile), 3.4, 2.6),
+        OUTPUT / "world-cap-land.json": json.dumps({"desktop": desktop, "mobile": mobile}, separators=(",", ":")) + "\n",
     }
     if args.check:
         mismatches = [str(path) for path, content in files.items()
@@ -418,7 +416,7 @@ def main():
     for path, content in files.items():
         path.write_text(content)
     for name, dots in (("Desktop", desktop), ("Mobile", mobile)):
-        print(name, {key: len(value) for key, value in dots.items()})
+        print(name, {key: len(value) for key, value in at_rest(dots).items()})
 
 
 if __name__ == "__main__":

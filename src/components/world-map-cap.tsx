@@ -8,9 +8,6 @@ import styles from "./world-map-cap.module.css";
 
 // One full turn every 60 seconds, eastward.
 const DEGREES_PER_SECOND = 360 / 60;
-// Dot sampling is expensive; give the markers a light animation frame between
-// canvas redraws so their movement stays smooth while the map rotates.
-const MAP_REDRAW_INTERVAL = 1000 / 24;
 // Matches the @container cap (max-width: 600px) switch in the CSS.
 const MOBILE_WIDTH = 600;
 const COLOR = "#2662FF";
@@ -52,7 +49,7 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
         const renderer = (mobile: boolean) => {
           let existing = renderers.get(mobile);
           if (!existing) {
-            existing = createCapDots(data, mobile ? CAP_DOTS_MOBILE : CAP_DOTS_DESKTOP);
+            existing = createCapDots(mobile ? data.mobile : data.desktop);
             renderers.set(mobile, existing);
           }
           return existing;
@@ -112,7 +109,6 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
         let running = true;
         let frameId = 0;
         let last = 0;
-        let lastMapDraw = 0;
         let seam = CAP_SEAM_LONGITUDE;
         const tick = (now: number) => {
           frameId = requestAnimationFrame(tick);
@@ -122,21 +118,16 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
           }
           if (last) seam = ((seam + ((now - last) / 1000) * DEGREES_PER_SECOND + 180) % 360) - 180;
           last = now;
-          // While curling, redraw the dots every frame so they keep up with
-          // the markers and routes.
           const curl = curlRef?.current ?? 0;
-          const curling = curl !== getCapCurl();
-          if (curling) setCapCurl(curl);
+          if (curl !== getCapCurl()) setCapCurl(curl);
+          // The dots are fixed to the globe and move with it, so the map is
+          // redrawn every frame, in step with the markers and routes.
           updateCitiesRef.current?.(seam, width, height);
-          if (curling || now - lastMapDraw >= MAP_REDRAW_INTERVAL) {
-            draw(seam);
-            lastMapDraw = performance.now();
-          }
+          draw(seam);
         };
 
         draw(seam);
         updateCitiesRef.current?.(seam, width, height);
-        lastMapDraw = performance.now();
         setLive(true);
         frameId = requestAnimationFrame(tick);
 
@@ -144,7 +135,6 @@ export function WorldMapCap({ className = "", label = DEFAULT_LABEL, curlRef }: 
           resize();
           draw(seam);
           updateCitiesRef.current?.(seam, width, height);
-          lastMapDraw = performance.now();
         });
         resizeObserver.observe(frameElement);
         // Pause while the map is scrolled out of view.
