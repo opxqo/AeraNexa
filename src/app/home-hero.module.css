@@ -33,30 +33,33 @@
 .brand svg { display: block; flex: none; color: #265bf6; }
 .desktopNavigation { flex: none; }
 .desktopNavList { display: flex; align-items: center; gap: 2px; padding: 0; margin: 0; list-style: none; }
-.navTrigger, .navDirectLink { display: inline-flex; height: 40px; align-items: center; gap: 3px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: #17243b; font: inherit; font-size: 14px; font-weight: 500; line-height: 1.1; white-space: nowrap; cursor: pointer; }
+/* Desktop menu, matched to intercom.com's measured values: 40px triggers
+   (12px left / 4px right padding, 6px radius, 16px/400), an 18px chevron at
+   60% that flips when open, and a borderline-only popup 6px below the
+   trigger — 0.5px warm-grey border, 8px radius, no shadow or backdrop,
+   200ms ease-out fade + 6px slide. */
+.navTrigger, .navDirectLink { display: inline-flex; height: 40px; align-items: center; gap: 4px; padding: 0 4px 0 12px; border: 0; border-radius: 6px; background: transparent; color: #17243b; font: inherit; font-size: 16px; font-weight: 400; line-height: 1.1; white-space: nowrap; cursor: pointer; }
+.navDirectLink { padding: 0 12px; }
 .navTrigger:hover, .navTrigger[data-popup-open], .navDirectLink:hover { background: #f2f4f8; }
-.navChevron { display: inline-flex; align-items: center; justify-content: center; color: #748197; transition: transform .2s ease; }
+.navChevron { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; color: currentColor; opacity: .6; transition: transform .2s ease-out; }
 .navChevron[data-popup-open] { transform: rotate(180deg); }
-.navPortal { position: relative; z-index: 75; }
-.navBackdrop { position: fixed; inset: 60px 0 0; background: rgba(15, 30, 55, .2); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); transition: opacity .2s ease; }
-.navBackdrop[data-starting-style], .navBackdrop[data-ending-style] { opacity: 0; }
-.navPositioner { z-index: 1; }
-.navPopup { overflow: hidden; border: 1px solid #e0e5ed; border-radius: 8px; background: #fff; box-shadow: 0 16px 36px rgba(11, 27, 56, .12); transition: opacity .2s ease, translate .2s ease; }
+/* The portal mounts at the end of <body>; it must not be a positioned box,
+   or the absolutely positioned popup would measure from the page bottom. */
+.navPositioner { z-index: 85; }
+.navPopup { overflow: hidden; border: .5px solid #d3cec6; border-radius: 8px; background: #fff; transition: opacity .2s ease-out, translate .2s ease-out; }
 .navPopup[data-starting-style], .navPopup[data-ending-style] { opacity: 0; translate: 0 -6px; }
-.navPanel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(640px, calc(100vw - 32px)); min-height: 240px; }
-.navPanelColumn { min-width: 0; padding: 30px; }
-.navPanelColumn + .navPanelColumn { border-left: 1px solid #e7eaf1; }
-.navPanelHeading { margin: 0 0 18px; color: #17243b; font-size: 15px; font-weight: 650; }
-.navPanelEntries { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.navPanelLink { display: flex; flex-direction: column; gap: 5px; padding: 10px 11px; border-left: 2px solid transparent; border-radius: 3px; color: #17243b; transition: background-color .15s ease, border-color .15s ease; }
-.navPanelLink:hover, .navPanelLink:focus-visible { border-left-color: #265bf6; background: #f6f8fc; }
-.navPanelLinkTitle { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; }
-.navPanelLinkTitle svg { color: #265bf6; opacity: 0; transform: translateX(-3px); transition: opacity .15s ease, transform .15s ease; }
-.navPanelLink:hover .navPanelLinkTitle svg, .navPanelLink:focus-visible .navPanelLinkTitle svg { opacity: 1; transform: none; }
-.navPanelLinkDescription { color: #6c788c; font-size: 12px; line-height: 1.5; }
+/* Two 320px columns, 36px padding, 1px warm-grey rule between them. Each
+   group is a plain 14px link list hung off a 0.5px left rule. */
+.navPanel { display: flex; }
+.navPanelColumn { display: flex; width: 320px; flex-direction: column; padding: 36px; }
+.navPanelColumn + .navPanelColumn { border-left: 1px solid #d3cec6; }
+.navPanelHeading { margin: 0 0 18px; color: #17243b; font-size: 16px; font-weight: 500; line-height: 1.25; }
+.navPanelEntries { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 0 0 0 8px; list-style: none; border-left: .5px solid #d3cec6; }
+.navPanelLink { display: block; color: #17243b; font-size: 14px; font-weight: 400; line-height: 16px; transition: color .15s ease-out; }
+.navPanelLink:hover { color: #265bf6; }
 .headerActions { display: flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
 .locale { position: relative; }
-.localeButton { display: inline-flex; height: 40px; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 5px; color: #17243b; background: transparent; font: inherit; font-size: 14px; cursor: pointer; }
+.localeButton { display: inline-flex; height: 40px; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 6px; color: #17243b; background: transparent; font: inherit; font-size: 14px; cursor: pointer; }
 .localeButton:hover, .localeButton[aria-expanded="true"] { background: #f2f4f8; }
 .localeButton svg:last-child { transition: transform .2s ease; }
 .localeButton[aria-expanded="true"] svg:last-child { transform: rotate(180deg); }
@@ -64,15 +67,19 @@
 .localeOption { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 0; border-radius: 5px; color: #17243b; background: transparent; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .localeOption:hover { background: #f2f4f8; }
 .localeOption[aria-checked="true"] { color: #265bf6; }
-.loginButton, .headerPrimary { display: inline-flex; height: 40px; align-items: center; justify-content: center; border-radius: 5px; font-size: 14px; font-weight: 500; }
-.loginButton { padding: 0 12px; color: #17243b; }
+/* Text link (40px, 6px radius, 8px padding) and the 4px-radius buttons. */
+.loginButton, .headerPrimary, .headerOutline { display: inline-flex; height: 40px; align-items: center; justify-content: center; font-size: 14px; font-weight: 400; line-height: 1.1; }
+.loginButton { padding: 8px; border-radius: 6px; color: #17243b; }
 .loginButton:hover { background: #f2f4f8; }
-.headerPrimary { gap: 7px; padding: 0 14px; color: #fff; background: #265bf6; }
+.headerPrimary { gap: 4px; padding: 0 12px; border-radius: 4px; color: #fff; background: #265bf6; }
+.headerDivider { width: 1px; height: 33px; margin: 0 1px; background: color-mix(in oklab, #17243b 15%, transparent); }
+.headerOutline { gap: 4px; padding: 0 12px; border: 1px solid #17243b; border-radius: 4px; color: #17243b; transition: background-color .4s cubic-bezier(.25, 1, .5, 1), color .4s cubic-bezier(.25, 1, .5, 1); }
+.headerOutline:hover { color: #fff; background: #17243b; }
 .headerPrimary:hover, .primaryCta:hover { background: #1945d9; }
 .mobileMenuButton, .mobileMenuPortal { display: none; }
 .mobileMenuButton { align-items: center; justify-content: center; width: 40px; height: 40px; border: 0; border-radius: 5px; color: #17243b; background: transparent; cursor: pointer; }
 .mobileMenuButton:hover { background: #f2f4f8; }
-.brand:focus-visible, .navTrigger:focus-visible, .navDirectLink:focus-visible, .navPanelLink:focus-visible, .localeButton:focus-visible, .localeOption:focus-visible, .loginButton:focus-visible, .headerPrimary:focus-visible, .mobileMenuButton:focus-visible, .mobileCloseButton:focus-visible, .mobileSectionTrigger:focus-visible, .mobileDirectLink:focus-visible, .mobileSubLink:focus-visible { outline: 2px solid #265bf6; outline-offset: 2px; }
+.brand:focus-visible, .navTrigger:focus-visible, .navDirectLink:focus-visible, .navPanelLink:focus-visible, .localeButton:focus-visible, .localeOption:focus-visible, .loginButton:focus-visible, .headerPrimary:focus-visible, .headerOutline:focus-visible, .mobileMenuButton:focus-visible, .mobileCloseButton:focus-visible, .mobileSectionTrigger:focus-visible, .mobileDirectLink:focus-visible, .mobileSubLink:focus-visible { outline: 2px solid #265bf6; outline-offset: 2px; }
 
 .intro { position: relative; z-index: 3; padding: 102px 20px 0; text-align: center; }
 .eyebrow { margin: 0; color: #8096c4; font-size: 11px; line-height: 20px; font-weight: 600; letter-spacing: .31em; }
@@ -144,7 +151,7 @@
 }
 
 @media (max-width: 700px) {
-  .locale, .loginButton { display: none; }
+  .locale, .loginButton, .headerDivider, .headerOutline { display: none; }
 }
 
 @media (max-width: 600px) {

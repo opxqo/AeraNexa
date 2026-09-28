@@ -20,7 +20,9 @@ const COLOR = "#2662FF";
 // the dots every frame as the seam longitude moves, and the city layer follows.
 // The pre-rendered SVG (seam −95°, the canvas's first frame) shows until the
 // canvas takes over, and stays put when reduced motion is requested.
-export function WorldMapCap({ className = "" }: { className?: string }) {
+const DEFAULT_LABEL = "球冠式半球世界陆地点阵，地图贴合倾斜球面，边缘向后弯曲";
+
+export function WorldMapCap({ className = "", label = DEFAULT_LABEL }: { className?: string; label?: string }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const updateCitiesRef = useRef<((seam: number, width: number, height: number) => void) | null>(null);
@@ -145,7 +147,7 @@ export function WorldMapCap({ className = "" }: { className?: string }) {
         viewBox={`0 0 ${CAP_VIEW_WIDTH} ${CAP_VIEW_HEIGHT}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label="球冠式半球世界陆地点阵，地图贴合倾斜球面，边缘向后弯曲"
+        aria-label={label}
       >
         <image className={styles.desktopDots} href="/demo/world-map-cap-desktop.svg" width={CAP_VIEW_WIDTH} height={CAP_VIEW_HEIGHT} />
         <image className={styles.mobileDots} href="/demo/world-map-cap-mobile.svg" width={CAP_VIEW_WIDTH} height={CAP_VIEW_HEIGHT} />

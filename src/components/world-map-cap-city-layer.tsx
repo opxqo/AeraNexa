@@ -2,15 +2,19 @@
 
 import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { cities, routes } from "@/lib/demo/world-map-cities";
-import { CAP_HALF_THETA, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capRoutePath, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
+import { drawComet } from "@/lib/demo/cap-comet";
+import { CAP_HALF_THETA, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capRoutePoints, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap-city-layer.module.css";
 
 type City = (typeof cities)[number];
 
 const cityByName = new Map(cities.map((city) => [city.name, city]));
+// Matches the @container cap (max-width: 600px) rule that hides secondary cities.
+const SMALL_MAP_WIDTH = 600;
 
-// One draw → erase → rest cycle per route. Routes start at golden-ratio
-// offsets through the cycle so they never move in step.
+// One cycle per route: a comet flies origin → destination and hits it at 40%,
+// when the destination ripples. Routes start at golden-ratio offsets through
+// the cycle so they never move in step.
 const CYCLE_SECONDS = 14;
 const routeDelay = (index: number) => `${-(((index * 0.6180339887) % 1) * CYCLE_SECONDS).toFixed(2)}s`;
 const delayByDestination = new Map(routes.map((route, index) => [route.to, routeDelay(index)]));
@@ -62,11 +66,35 @@ function position(city: City): CSSProperties {
 // frame, which moves them straight in the DOM (no React re-render).
 export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((seam: number, width: number, height: number) => void) | null> }) {
   const cityRefs = useRef<(HTMLLIElement | null)[]>([]);
-  const routeRefs = useRef<(SVGGElement | null)[]>([]);
+  const cometRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (!updateRef) return;
+    const canvas = cometRef.current;
+    const context = canvas?.getContext("2d");
+    // Each comet's phase comes from its destination's ripple animation, so the
+    // head always lands exactly as the ripple starts.
+    const ripplePhase = (index: number) => {
+      const destination = cities.findIndex((city) => city.name === routes[index].to);
+      const ripple = cityRefs.current[destination]?.querySelector<HTMLElement>(`.${styles.ripple}`);
+      const progress = ripple?.getAnimations()[0]?.effect?.getComputedTiming().progress;
+      return typeof progress === "number" ? progress : null;
+    };
+
     updateRef.current = (seam: number, width: number, height: number) => {
+      if (canvas && context) {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const pixelWidth = Math.round(width * ratio);
+        const pixelHeight = Math.round(height * ratio);
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+          canvas.width = pixelWidth;
+          canvas.height = pixelHeight;
+        }
+        const scale = pixelWidth / CAP_VIEW_WIDTH;
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, pixelWidth, pixelHeight);
+        context.setTransform(scale, 0, 0, scale, 0, 0);
+      }
       cities.forEach((city, index) => {
         const element = cityRefs.current[index];
         if (!element) return;
@@ -78,22 +106,22 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
         element.style.opacity = String(fade(angles.theta));
         element.style.setProperty("--tag-anchor", tagAnchor(point.x));
       });
+      if (!context) return;
+      // Routes are only visible as comets; there is no drawn track.
       routes.forEach(({ from, to }, index) => {
-        const group = routeRefs.current[index];
-        if (!group) return;
         const start = cityByName.get(from)!;
         const end = cityByName.get(to)!;
+        // Same rule as the city tags: secondary destinations drop out on small maps.
+        if (!end.mobile && width <= SMALL_MAP_WIDTH) return;
         const a = sphereAngles(start.longitude, start.latitude, seam).theta;
         const b = sphereAngles(end.longitude, end.latitude, seam).theta;
         // Endpoints on opposite sides of the seam: the route would cut across
-        // the whole map, so hide it until both ends are back on one side.
-        if (Math.abs(a - b) > CAP_HALF_THETA) {
-          group.style.opacity = "0";
-          return;
-        }
-        group.style.opacity = String(Math.min(fade(a), fade(b)));
-        const d = capRoutePath(start, end, seam);
-        for (const path of group.children) path.setAttribute("d", d);
+        // the whole map, so skip it until both ends are back on one side.
+        if (Math.abs(a - b) > CAP_HALF_THETA) return;
+        const alpha = Math.min(fade(a), fade(b));
+        const phase = ripplePhase(index);
+        if (phase === null || alpha <= 0) return;
+        drawComet(context, capRoutePoints(start, end, seam), phase, CAP_VIEW_WIDTH / width, alpha);
       });
     };
     return () => {
@@ -103,25 +131,7 @@ export function WorldMapCapCityLayer({ updateRef }: { updateRef?: RefObject<((se
 
   return (
     <>
-      <svg className={styles.routeLayer} viewBox={`0 0 ${CAP_VIEW_WIDTH} ${CAP_VIEW_HEIGHT}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        {routes.map(({ from, to }, index) => {
-          const d = capRoutePath(cityByName.get(from)!, cityByName.get(to)!);
-          const timing = { animationDelay: routeDelay(index) };
-          return (
-            // Three stacked copies, each covering the leading part of the drawn
-            // segment, so the line brightens from its tail toward its head.
-            <g
-              key={`${from}-${to}`}
-              ref={(element) => { routeRefs.current[index] = element; }}
-              className={cityByName.get(to)!.mobile ? "" : styles.mobileHidden}
-            >
-              <path d={d} pathLength={100} className={`${styles.route} ${styles.full}`} style={timing} />
-              <path d={d} pathLength={100} className={`${styles.route} ${styles.lead}`} style={timing} />
-              <path d={d} pathLength={100} className={`${styles.route} ${styles.head}`} style={timing} />
-            </g>
-          );
-        })}
-      </svg>
+      <canvas ref={cometRef} className={styles.cometLayer} aria-hidden="true" />
 
       <ul className={styles.cityLayer} aria-label="Cities">
         {cities.map((city, index) => (

@@ -101,18 +101,28 @@ function unitVector({ theta, phi }: Angles) {
 
 // A low arc hugging the cap: peak height grows gently with distance
 // (0.02 + chord × 0.01, capped), raised by 4·h·t·(1 − t) along the route.
-export function capRoutePath(from: Place, to: Place, seam = SEAM_LONGITUDE) {
+/** The route as view-box points [x0, y0, x1, y1, …], origin first. */
+export function capRoutePoints(from: Place, to: Place, seam = SEAM_LONGITUDE) {
   const a = sphereAngles(from.longitude, from.latitude, seam);
   const b = sphereAngles(to.longitude, to.latitude, seam);
   const chord = Math.hypot(...unitVector(a).map((value, index) => value - unitVector(b)[index]));
   const height = 0.02 + Math.min(0.5, chord * 0.01);
   const steps = 32;
-  const points: string[] = [];
+  const points: number[] = [];
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps;
     const radius = 1.002 + 4 * height * t * (1 - t);
     const { x, y } = toView({ theta: a.theta + (b.theta - a.theta) * t, phi: a.phi + (b.phi - a.phi) * t }, radius);
-    points.push(`${index ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`);
+    points.push(x, y);
   }
-  return points.join(" ");
+  return points;
+}
+
+export function capRoutePath(from: Place, to: Place, seam = SEAM_LONGITUDE) {
+  const points = capRoutePoints(from, to, seam);
+  let d = "";
+  for (let index = 0; index < points.length; index += 2) {
+    d += `${index ? " L" : "M"} ${points[index].toFixed(1)} ${points[index + 1].toFixed(1)}`;
+  }
+  return d;
 }

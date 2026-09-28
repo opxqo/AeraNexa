@@ -1,54 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Dialog } from "@base-ui/react/dialog";
 import { NavigationMenu } from "@base-ui/react/navigation-menu";
 import { ArrowRight, Check, ChevronDown, Globe2, Menu, X } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { setHomeLocale } from "@/app/home-locale-action";
+import { homeCopy, type HomeLocale } from "@/lib/home-copy";
 import styles from "@/app/home-hero.module.css";
 
 type MenuKey = "product" | "help";
-type MenuEntry = { label: string; href: string; description: string };
-type MenuSection = { heading: string; entries: MenuEntry[] };
+type MenuSection = (typeof homeCopy)[HomeLocale]["header"]["menus"][MenuKey][number];
 
-const menuSections: Record<MenuKey, MenuSection[]> = {
-  product: [
-    { heading: "探索产品", entries: [
-      { label: "产品概览", href: "/", description: "了解 AeraNexa 全球网络服务" },
-      { label: "全球节点", href: "/node", description: "查看可用的网络节点" },
-    ] },
-    { heading: "开始使用", entries: [
-      { label: "套餐价格", href: "/plan", description: "选择适合自己的连接方案" },
-      { label: "创建账户", href: "/register", description: "注册并开始使用 AeraNexa" },
-    ] },
-  ],
-  help: [
-    { heading: "支持资源", entries: [
-      { label: "使用文档", href: "/knowledge", description: "查找设置与使用说明" },
-    ] },
-    { heading: "账户服务", entries: [
-      { label: "登录账户", href: "/login", description: "返回你的 AeraNexa 账户" },
-      { label: "创建账户", href: "/register", description: "开始使用全球网络服务" },
-    ] },
-  ],
-};
+// Each option is shown in its own language.
+const locales: { value: HomeLocale; label: string }[] = [
+  { value: "zh", label: "简体中文" },
+  { value: "en", label: "English" },
+];
 
-const locales = ["简体中文", "English"] as const;
-
-function DesktopMenuPanel({ menu, onNavigate }: { menu: MenuKey; onNavigate: () => void }) {
+function DesktopMenuPanel({ sections, onNavigate }: { sections: MenuSection[]; onNavigate: () => void }) {
   return (
     <div className={styles.navPanel}>
-      {menuSections[menu].map((section) => (
+      {sections.map((section) => (
         <div className={styles.navPanelColumn} key={section.heading}>
           <p className={styles.navPanelHeading}>{section.heading}</p>
           <ul className={styles.navPanelEntries}>
             {section.entries.map((entry) => (
               <li key={entry.href}>
                 <NavigationMenu.Link render={<Link href={entry.href} />} className={styles.navPanelLink} onClick={onNavigate}>
-                  <span className={styles.navPanelLinkTitle}>{entry.label}<ArrowRight size={15} aria-hidden="true" /></span>
-                  <span className={styles.navPanelLinkDescription}>{entry.description}</span>
+                  {entry.label}
                 </NavigationMenu.Link>
               </li>
             ))}
@@ -59,9 +41,9 @@ function DesktopMenuPanel({ menu, onNavigate }: { menu: MenuKey; onNavigate: () 
   );
 }
 
-function MobileMenuSection({ title, menu, open, onOpenChange, onNavigate }: {
+function MobileMenuSection({ title, sections, open, onOpenChange, onNavigate }: {
   title: string;
-  menu: MenuKey;
+  sections: MenuSection[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onNavigate: () => void;
@@ -72,7 +54,7 @@ function MobileMenuSection({ title, menu, open, onOpenChange, onNavigate }: {
         {title}<ChevronDown size={18} aria-hidden="true" />
       </Collapsible.Trigger>
       <Collapsible.Panel className={styles.mobileSectionPanel}>
-        {menuSections[menu].map((section) => (
+        {sections.map((section) => (
           <div className={styles.mobileLinkGroup} key={section.heading}>
             <p>{section.heading}</p>
             {section.entries.map((entry) => (
@@ -87,13 +69,14 @@ function MobileMenuSection({ title, menu, open, onOpenChange, onNavigate }: {
   );
 }
 
-export function HomeHeader() {
+export function HomeHeader({ locale }: { locale: HomeLocale }) {
+  const copy = homeCopy[locale].header;
+  const [, startTransition] = useTransition();
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileGroup, setMobileGroup] = useState<MenuKey | null>(null);
   const [localeOpen, setLocaleOpen] = useState(false);
-  const [locale, setLocale] = useState<(typeof locales)[number]>("简体中文");
   const localeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -134,6 +117,21 @@ export function HomeHeader() {
     return () => media.removeEventListener("change", handleBreakpoint);
   }, []);
 
+  // Keep the document language in step with the page (the root layout's
+  // <html lang> is static).
+  useEffect(() => {
+    document.documentElement.lang = homeCopy[locale].lang;
+  }, [locale]);
+
+  // The server action stores the choice and re-renders the page in it.
+  const chooseLocale = (next: HomeLocale) => {
+    setLocaleOpen(false);
+    if (next === locale) return;
+    startTransition(async () => {
+      await setHomeLocale(next);
+    });
+  };
+
   const closeMobile = () => {
     setMobileOpen(false);
     setMobileGroup(null);
@@ -146,40 +144,39 @@ export function HomeHeader() {
     }}>
       <header className={styles.header} data-scrolled={scrolled || undefined}>
         <div className={styles.headerInner}>
-          <Link className={styles.brand} href="/" aria-label="AeraNexa 首页" onClick={() => setActiveMenu(null)}>
+          <Link className={styles.brand} href="/" aria-label={copy.homeLabel} onClick={() => setActiveMenu(null)}>
             <BrandMark size={28} />
             <span>AeraNexa</span>
           </Link>
 
           <NavigationMenu.Root value={activeMenu} onValueChange={setActiveMenu} delay={0} closeDelay={80}
-            className={styles.desktopNavigation} aria-label="网站导航">
+            className={styles.desktopNavigation} aria-label={copy.navLabel}>
             <NavigationMenu.List className={styles.desktopNavList}>
               <NavigationMenu.Item value="product">
                 <NavigationMenu.Trigger className={styles.navTrigger}>
-                  产品<NavigationMenu.Icon className={styles.navChevron}><ChevronDown size={15} aria-hidden="true" /></NavigationMenu.Icon>
+                  {copy.product}<NavigationMenu.Icon className={styles.navChevron}><ChevronDown size={18} aria-hidden="true" /></NavigationMenu.Icon>
                 </NavigationMenu.Trigger>
                 <NavigationMenu.Content keepMounted>
-                  <DesktopMenuPanel menu="product" onNavigate={() => setActiveMenu(null)} />
+                  <DesktopMenuPanel sections={copy.menus.product} onNavigate={() => setActiveMenu(null)} />
                 </NavigationMenu.Content>
               </NavigationMenu.Item>
               <NavigationMenu.Item>
-                <NavigationMenu.Link render={<Link href="/node" />} className={styles.navDirectLink}>节点</NavigationMenu.Link>
+                <NavigationMenu.Link render={<Link href="/node" />} className={styles.navDirectLink}>{copy.nodes}</NavigationMenu.Link>
               </NavigationMenu.Item>
               <NavigationMenu.Item>
-                <NavigationMenu.Link render={<Link href="/plan" />} className={styles.navDirectLink}>价格</NavigationMenu.Link>
+                <NavigationMenu.Link render={<Link href="/plan" />} className={styles.navDirectLink}>{copy.pricing}</NavigationMenu.Link>
               </NavigationMenu.Item>
               <NavigationMenu.Item value="help">
                 <NavigationMenu.Trigger className={styles.navTrigger}>
-                  帮助<NavigationMenu.Icon className={styles.navChevron}><ChevronDown size={15} aria-hidden="true" /></NavigationMenu.Icon>
+                  {copy.help}<NavigationMenu.Icon className={styles.navChevron}><ChevronDown size={18} aria-hidden="true" /></NavigationMenu.Icon>
                 </NavigationMenu.Trigger>
                 <NavigationMenu.Content keepMounted>
-                  <DesktopMenuPanel menu="help" onNavigate={() => setActiveMenu(null)} />
+                  <DesktopMenuPanel sections={copy.menus.help} onNavigate={() => setActiveMenu(null)} />
                 </NavigationMenu.Content>
               </NavigationMenu.Item>
             </NavigationMenu.List>
             <NavigationMenu.Portal className={styles.navPortal} keepMounted>
-              <NavigationMenu.Backdrop className={styles.navBackdrop} />
-              <NavigationMenu.Positioner sideOffset={10} align="start" className={styles.navPositioner}>
+              <NavigationMenu.Positioner sideOffset={6} align="start" className={styles.navPositioner}>
                 <NavigationMenu.Popup className={styles.navPopup}>
                   <NavigationMenu.Viewport />
                 </NavigationMenu.Popup>
@@ -191,24 +188,26 @@ export function HomeHeader() {
             <div className={styles.locale} ref={localeRef}>
               <button type="button" className={styles.localeButton} aria-haspopup="menu"
                 aria-expanded={localeOpen} onClick={() => setLocaleOpen((open) => !open)}>
-                <Globe2 size={17} strokeWidth={1.8} aria-hidden="true" /> {locale} <ChevronDown size={14} aria-hidden="true" />
+                <Globe2 size={17} strokeWidth={1.8} aria-hidden="true" /> {locales.find((option) => option.value === locale)?.label} <ChevronDown size={14} aria-hidden="true" />
               </button>
               {localeOpen && (
-                <ul className={styles.localeMenu} role="menu" aria-label="选择语言">
+                <ul className={styles.localeMenu} role="menu" aria-label={copy.languageLabel}>
                   {locales.map((option) => (
-                    <li key={option} role="none">
-                      <button type="button" role="menuitemradio" aria-checked={option === locale}
-                        className={styles.localeOption} onClick={() => { setLocale(option); setLocaleOpen(false); }}>
-                        {option}{option === locale && <Check size={15} strokeWidth={2} aria-hidden="true" />}
+                    <li key={option.value} role="none">
+                      <button type="button" role="menuitemradio" aria-checked={option.value === locale} lang={homeCopy[option.value].lang}
+                        className={styles.localeOption} onClick={() => chooseLocale(option.value)}>
+                        {option.label}{option.value === locale && <Check size={15} strokeWidth={2} aria-hidden="true" />}
                       </button>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-            <Link className={styles.loginButton} href="/login">登录</Link>
-            <Link className={styles.headerPrimary} href="/register">立即开始 <ArrowRight size={16} strokeWidth={1.8} aria-hidden="true" /></Link>
-            <Dialog.Trigger className={styles.mobileMenuButton} aria-label="打开导航菜单"><Menu size={21} aria-hidden="true" /></Dialog.Trigger>
+            <Link className={styles.loginButton} href="/login">{copy.login}</Link>
+            <Link className={styles.headerPrimary} href="/register">{copy.getStarted} <ArrowRight size={16} strokeWidth={1.8} aria-hidden="true" /></Link>
+            <span className={styles.headerDivider} aria-hidden="true" />
+            <Link className={styles.headerOutline} href="/node">{copy.viewNodes}<span aria-hidden="true">→</span></Link>
+            <Dialog.Trigger className={styles.mobileMenuButton} aria-label={copy.openMenu}><Menu size={21} aria-hidden="true" /></Dialog.Trigger>
           </div>
         </div>
       </header>
@@ -217,19 +216,19 @@ export function HomeHeader() {
         <Dialog.Backdrop className={styles.mobileBackdrop} />
         <Dialog.Popup className={styles.mobileMenuPopup}>
           <div className={styles.mobileMenuHeading}>
-            <Dialog.Title>菜单</Dialog.Title>
-            <Dialog.Close className={styles.mobileCloseButton} aria-label="关闭导航菜单"><X size={21} aria-hidden="true" /></Dialog.Close>
+            <Dialog.Title>{copy.menuTitle}</Dialog.Title>
+            <Dialog.Close className={styles.mobileCloseButton} aria-label={copy.closeMenu}><X size={21} aria-hidden="true" /></Dialog.Close>
           </div>
-          <nav aria-label="手机网站导航" className={styles.mobileNavigation}>
-            <MobileMenuSection title="产品" menu="product" open={mobileGroup === "product"}
+          <nav aria-label={copy.mobileNavLabel} className={styles.mobileNavigation}>
+            <MobileMenuSection title={copy.product} sections={copy.menus.product} open={mobileGroup === "product"}
               onOpenChange={(open) => setMobileGroup(open ? "product" : null)} onNavigate={closeMobile} />
-            <Link href="/node" onClick={closeMobile} className={styles.mobileDirectLink}>节点</Link>
-            <Link href="/plan" onClick={closeMobile} className={styles.mobileDirectLink}>价格</Link>
-            <MobileMenuSection title="帮助" menu="help" open={mobileGroup === "help"}
+            <Link href="/node" onClick={closeMobile} className={styles.mobileDirectLink}>{copy.nodes}</Link>
+            <Link href="/plan" onClick={closeMobile} className={styles.mobileDirectLink}>{copy.pricing}</Link>
+            <MobileMenuSection title={copy.help} sections={copy.menus.help} open={mobileGroup === "help"}
               onOpenChange={(open) => setMobileGroup(open ? "help" : null)} onNavigate={closeMobile} />
             <div className={styles.mobileMenuActions}>
-              <Link href="/login" onClick={closeMobile}>登录</Link>
-              <Link href="/register" onClick={closeMobile}>立即开始 <ArrowRight size={16} aria-hidden="true" /></Link>
+              <Link href="/login" onClick={closeMobile}>{copy.login}</Link>
+              <Link href="/register" onClick={closeMobile}>{copy.getStarted} <ArrowRight size={16} aria-hidden="true" /></Link>
             </div>
           </nav>
         </Dialog.Popup>
