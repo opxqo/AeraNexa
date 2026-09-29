@@ -1,3 +1,4 @@
+import { SiteFooter } from "@/components/footer/site-footer";
 import { HomeHeader } from "@/components/home-header";
 import { FeatureBento } from "@/components/feature-bento";
 import { FeatureClients } from "@/components/feature-clients";
@@ -44,6 +45,8 @@ export function HomeHero({ locale }: { locale: HomeLocale }) {
           <HomePricing locale={locale} />
         </section>
       </main>
+
+      <SiteFooter locale={locale} current="/" />
     </div>
   );
 }

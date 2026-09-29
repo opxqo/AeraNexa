@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { SiteFooter } from "@/components/footer/site-footer";
 import { HomeHeader } from "@/components/home-header";
 import { PricingCards, PricingHero } from "@/components/pricing/pricing-plans";
 import { PricingTables } from "@/components/pricing/pricing-tables";
@@ -31,6 +32,7 @@ export default async function PricingPage() {
         <PricingCards copy={copy} />
         <PricingTables copy={copy} />
       </main>
+      <SiteFooter locale={locale} current="/pricing" />
     </div>
   );
 }
