@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { CAP_HUB, capCities as cities, capLaunchers, type CapCity } from "@/lib/demo/cap-cities";
-import { SHOCKWAVE, TRAVEL, drawComet, drawShockwave } from "@/lib/demo/cap-comet";
+import { GREEN, IMPACT, SHOCKWAVE, TRAVEL, drawComet, drawShockwave } from "@/lib/demo/cap-comet";
 import { type Angles, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capHalfTheta, capRoutePoints, capSurfaceFrame, getCapCurl, projectCapCity, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap-city-layer.module.css";
 
@@ -30,6 +30,32 @@ const EDGE_CLEAR = 0.01;
 const EDGE_SOLID = 0.07;
 // Shockwave size: 38px on a full map, smaller on narrow ones.
 const shockwaveRadius = (width: number) => Math.min(38, width * 0.03);
+
+// A round trip for pages that tell the story of one request (the home page's
+// "unlock" block): the request reaches China (a small orange ring), a comet
+// flies to `city` and lands with a shockwave, then a green pulse flies back
+// to China and ends in a green ring. `onArrive` fires when the comet lands,
+// `onReturn` when the pulse is home. Stage lengths in seconds; the comet
+// phases are mapped onto cap-comet.ts's own (a synthetic `phase`), so neither
+// drawComet nor drawShockwave needs to know about trips.
+export type CapTrip = { city: string; onArrive?: () => void; onReturn?: () => void };
+const TRIP = { receive: 0.5, out: 1.5, land: 1.3, gap: 0.3, back: 1.3, home: 1.0, launch: 0.15, tail: 0.25 };
+const TRIP_ARRIVE = TRIP.launch + TRIP.out;
+const TRIP_BACK = TRIP_ARRIVE + TRIP.gap;
+const TRIP_HOME = TRIP_BACK + TRIP.back;
+const TRIP_END = TRIP_HOME + TRIP.home;
+
+// Phase for a comet that left at `at` and flies for `travel` seconds, then
+// runs its tail into the impact point.
+function tripPhase(time: number, at: number, travel: number) {
+  const elapsed = time - at;
+  if (elapsed < 0) return -1;
+  if (elapsed < travel) return TRAVEL * (elapsed / travel);
+  return TRAVEL + IMPACT * ((elapsed - travel) / TRIP.tail);
+}
+
+// Phase for a shockwave that began at `at` and plays over `length` seconds.
+const wavePhase = (time: number, at: number, length: number) => TRAVEL + SHOCKWAVE.duration * ((time - at) / length);
 
 // Tags are centred above their marker. Where two markers are close enough for
 // tags to collide, one tag drops below instead.
@@ -93,7 +119,7 @@ function position(city: City): CSSProperties {
 // frame, which moves them straight in the DOM (no React re-render).
 // `routes={false}` keeps the markers but launches no comets (for pages that
 // draw their own connections over the map).
-export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?: RefObject<((seam: number, width: number, height: number) => void) | null>; routes?: boolean }) {
+export function WorldMapCapCityLayer({ updateRef, routes = true, tripRef }: { updateRef?: RefObject<((seam: number, width: number, height: number) => void) | null>; routes?: boolean; tripRef?: RefObject<((trip: CapTrip) => boolean) | null> }) {
   const cityRefs = useRef<(HTMLLIElement | null)[]>([]);
   const cometRef = useRef<HTMLCanvasElement>(null);
 
@@ -106,6 +132,32 @@ export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?:
     const cursors = capLaunchers.map(() => 0);
     let turn = 0;
     let lastBeat: number | null = null;
+    // Round trips in progress (`born` is stamped by the first frame that draws it).
+    type Trip = { end: City; seed: number; born: number | null; trip: CapTrip; arrived: boolean; returned: boolean; hot: string };
+    let trips: Trip[] = [];
+    let seamNow = 0;
+    let widthNow = 0;
+    const hub = cityByName.get(CAP_HUB)!;
+    const visible = (city: City) => fade(sphereAngles(city.longitude, city.latitude, seamNow)) >= LAUNCH_FADE;
+
+    if (tripRef) {
+      // False when the trip can't be shown right now: China or the city is
+      // round the back, or the city is hidden on a small map.
+      tripRef.current = (request) => {
+        const end = cityByName.get(request.city as CapCity["name"]);
+        if (!end || end === hub || !context || !visible(hub) || !visible(end)) return false;
+        if (!end.mobile && widthNow <= SMALL_MAP_WIDTH) return false;
+        trips.push({ end, seed: cities.indexOf(end) + 1, born: null, trip: request, arrived: false, returned: false, hot: "" });
+        return true;
+      };
+    }
+
+    const setHot = (city: City, value: string) => {
+      const element = cityRefs.current[cities.indexOf(city)];
+      if (!element) return;
+      if (value) element.dataset.hot = value;
+      else delete element.dataset.hot;
+    };
 
     const launch = (seam: number, width: number, now: number) => {
       const which = turn;
@@ -127,6 +179,8 @@ export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?:
     };
 
     updateRef.current = (seam: number, width: number, height: number) => {
+      seamNow = seam;
+      widthNow = width;
       if (canvas && context) {
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
         const pixelWidth = Math.round(width * ratio);
@@ -152,17 +206,22 @@ export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?:
         element.style.setProperty("--tag-anchor", tagAnchor(point.x));
         element.style.setProperty("--surface", surfaceMatrix(city, seam));
       });
-      if (!context || !routes) return;
+      if (!context) return;
       const now = performance.now() / 1000;
-      flights = flights.filter((flight) => (now - flight.launched) / CYCLE_SECONDS < LIFE);
-      // After a pause (tab hidden, map off screen) start the rhythm afresh
-      // instead of firing every missed beat at once.
-      if (lastBeat === null || now - lastBeat > BEAT * 2) lastBeat = now - BEAT;
-      while (now - lastBeat >= BEAT) {
-        lastBeat += BEAT;
-        launch(seam, width, now);
-      }
       const unitsPerPixel = CAP_VIEW_WIDTH / width;
+      if (routes) {
+        flights = flights.filter((flight) => (now - flight.launched) / CYCLE_SECONDS < LIFE);
+        // After a pause (tab hidden, map off screen) start the rhythm afresh
+        // instead of firing every missed beat at once.
+        if (lastBeat === null || now - lastBeat > BEAT * 2) lastBeat = now - BEAT;
+        while (now - lastBeat >= BEAT) {
+          lastBeat += BEAT;
+          launch(seam, width, now);
+        }
+      } else {
+        flights = [];
+        lastBeat = null;
+      }
       // Routes are only visible as comets; there is no drawn track.
       flights.forEach(({ start, end, launched, seed }) => {
         // Same rule as the city tags: secondary destinations drop out on small maps.
@@ -175,9 +234,50 @@ export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?:
           drawShockwave(context, capSurfaceFrame(end.longitude, end.latitude, seam), phase, seed, shockwaveRadius(width), unitsPerPixel, arrival);
         }
       });
+      // Round trips (see CapTrip).
+      const radius = shockwaveRadius(width);
+      trips = trips.filter((entry) => {
+        if (entry.born === null) entry.born = now;
+        const time = now - entry.born;
+        if (time >= TRIP_END) {
+          if (entry.hot) setHot(entry.end, "");
+          return false;
+        }
+        const hubFrame = capSurfaceFrame(hub.longitude, hub.latitude, seam);
+        const hubFade = fade(sphereAngles(hub.longitude, hub.latitude, seam));
+        const endFrame = capSurfaceFrame(entry.end.longitude, entry.end.latitude, seam);
+        const endFade = fade(sphereAngles(entry.end.longitude, entry.end.latitude, seam));
+        // Request received in China.
+        if (time < TRIP.receive && hubFade > 0) drawShockwave(context, hubFrame, wavePhase(time, 0, TRIP.receive), entry.seed, radius * 0.55, unitsPerPixel, hubFade);
+        // Out: an orange comet, then the shockwave where it lands.
+        const out = tripPhase(time, TRIP.launch, TRIP.out);
+        if (out >= 0) drawComet(context, capRoutePoints(hub, entry.end, seam), out, unitsPerPixel, 1);
+        if (time >= TRIP_ARRIVE && time < TRIP_ARRIVE + TRIP.land && endFade > 0) drawShockwave(context, endFrame, wavePhase(time, TRIP_ARRIVE, TRIP.land), entry.seed, radius, unitsPerPixel, endFade);
+        if (!entry.arrived && time >= TRIP_ARRIVE) {
+          entry.arrived = true;
+          entry.hot = "out";
+          setHot(entry.end, "out");
+          entry.trip.onArrive?.();
+        }
+        // Back: the green pulse, then a green ring in China.
+        const back = tripPhase(time, TRIP_BACK, TRIP.back);
+        if (back >= 0) {
+          if (entry.hot === "out") {
+            entry.hot = "ok";
+            setHot(entry.end, "ok");
+          }
+          drawComet(context, capRoutePoints(entry.end, hub, seam), back, unitsPerPixel, 1, GREEN);
+        }
+        if (time >= TRIP_HOME && hubFade > 0) drawShockwave(context, hubFrame, wavePhase(time, TRIP_HOME, TRIP.home), entry.seed, radius * 0.7, unitsPerPixel, hubFade, GREEN);
+        if (!entry.returned && time >= TRIP_HOME) {
+          entry.returned = true;
+          entry.trip.onReturn?.();
+        }
+        return true;
+      });
       // Fade everything out toward the left and right edges, so comets
       // crossing the seam slip in and out instead of being cut off.
-      if (flights.length) {
+      if (flights.length || trips.length) {
         const edge = context.createLinearGradient(0, 0, CAP_VIEW_WIDTH, 0);
         edge.addColorStop(0, "rgba(0, 0, 0, 0)");
         edge.addColorStop(EDGE_CLEAR, "rgba(0, 0, 0, 0)");
@@ -194,8 +294,10 @@ export function WorldMapCapCityLayer({ updateRef, routes = true }: { updateRef?:
     };
     return () => {
       updateRef.current = null;
+      if (tripRef) tripRef.current = null;
+      trips.forEach((entry) => setHot(entry.end, ""));
     };
-  }, [updateRef, routes]);
+  }, [updateRef, routes, tripRef]);
 
   return (
     <>

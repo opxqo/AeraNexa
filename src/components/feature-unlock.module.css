@@ -1,24 +1,20 @@
-/* AI & streaming block after cloudflare.com's #home-waveform (measured from
-   its popups/shipping/waveform scripts): requests → node groups → globe.
+/* AI & streaming block. The globe on the right is the star; on the left,
+   requests slide along fixed rails to their ports (same tokens as the Tabs
+   block below: 1px #f0f0f0 rules, small monospace type). Around it,
+   Cloudflare's #home-waveform layout: a bordered box with corner ticks and a
+   logo strip along the bottom.
    The stage sticks for the length of a tall track; --p (0 cap … 1 globe)
    slides the map right as it curls, and --q (0 … 1, from p = .78) brings in
-   the requests, the groups, the comets and the status chip. */
-/* Tokens from Cloudflare's design spec (measured values only): orange
-   #ff5e1f with #ff4800 for emphasis, #c43c00 for small text on a tinted
-   orange ground (≈4.6:1, WCAG AA), off-white #fdfdfc surfaces, a faint
-   orange-lit card shadow, radii of at most 4px (pills aside) and the
-   cubic-bezier(.19, 1, .22, 1) ease. */
+   the rails, the requests and the legend. */
 .scope {
-  --accent: #ff5e1f;
-  --accent-rgb: 255, 94, 31;
-  --accent-strong: #ff4800;
-  --accent-ink: #c43c00;
+  --accent: #f45300;
+  --accent-rgb: 244, 83, 0;
+  --ok: #15803d;
   --line: #f0f0f0;
   --ink: #262626;
   --muted: rgba(38, 38, 38, .7);
-  --surface: #fdfdfc;
-  --shadow-card: 0 4px 60px rgba(255, 80, 10, .06), 0 2px 12px rgba(0, 0, 0, .03);
-  --ease: cubic-bezier(.19, 1, .22, 1);
+  --faint: #707070;
+  --ease: cubic-bezier(.32, .72, 0, 1);
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .track {
@@ -34,9 +30,9 @@
 .head h2 { margin: 0; font-size: 48px; font-weight: 500; line-height: 1.1; letter-spacing: -1.2px; text-wrap: balance; }
 .head p { margin: 16px 0 0; color: var(--muted); font-size: 19.2px; line-height: 23.04px; letter-spacing: -.2px; text-wrap: balance; }
 
-/* Bordered box with corner ticks, like Cloudflare's, holding three columns:
-   requests (0–480px), node groups (~490–690px) and the globe (centre at
-   ~945px, i.e. the map shifted 28.75% right once curled). */
+/* Bordered box with corner ticks, like Cloudflare's: the rails on the left
+   (24–540px) and the globe on the right (centre at ~945px, i.e. the
+   map shifted 28.75% right once curled). */
 .box { position: relative; height: 500px; overflow: hidden; background: #fff; }
 .boxWrap { position: relative; flex: none; border: 1px solid var(--line); }
 .ticks { position: absolute; inset: -1px; z-index: 40; pointer-events: none; }
@@ -52,58 +48,43 @@
 /* …and the box lets it show through (it sits under the box's contents). */
 .clearBox { background: transparent; }
 
-/* Traffic waveform behind the requests. */
-.wave { position: absolute; left: 0; width: 40%; top: 50%; z-index: 1; height: 200px; overflow: hidden; opacity: var(--q); transform: translateY(-50%) scaleX(-1); -webkit-mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent); mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent); }
-.waveTrack { display: flex; width: max-content; height: 100%; animation: waveScroll 20s linear infinite; }
-.waveCopy { flex: none; height: 100%; width: auto; fill: rgba(var(--accent-rgb), .22); }
-@keyframes waveScroll { to { transform: translateX(-50%); } }
+/* ---- Rails and requests ----
+   Five dashed rails, 64px apart, each ending in a port; a request card
+   slides along one to its port. Everything sits on these lines: nothing
+   drifts. */
+.rails { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: var(--q); }
+.rail { position: absolute; left: 24px; width: 516px; height: 0; border-top: 1px dashed rgba(38, 38, 38, .14); }
+.port { position: absolute; right: -4px; top: -4px; width: 7px; height: 7px; box-sizing: border-box; background: #fff; border: 1.5px solid rgba(38, 38, 38, .3); border-radius: 50%; transition: border-color .3s; }
+.port span { position: absolute; inset: -1.5px; border: 1.5px solid var(--accent); border-radius: 50%; opacity: 0; }
+.port[data-ok] { border-color: var(--ok); }
+.port[data-ok] span { border-color: var(--ok); }
 
-/* Node groups: a column between dashed rails, cards styled like
-   Cloudflare's agents panel, each with an input and an output port. */
-.groupsCol { position: absolute; top: 0; bottom: 0; left: 40.8%; width: 16.7%; z-index: 6; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 0 8px; opacity: var(--q); background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, .8) 20%, rgba(255, 255, 255, .8) 80%, rgba(255, 255, 255, 0)); }
-.groupsCol::before, .groupsCol::after { content: ""; position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed rgba(38, 38, 38, .1); }
-.groupsCol::before { left: 0; }
-.groupsCol::after { right: 0; }
-.colLabel { display: flex; align-items: baseline; justify-content: space-between; padding: 0 2px; color: var(--muted); font: 12px/1.5 var(--mono); letter-spacing: -.02em; }
-.colLabel small { color: rgba(38, 38, 38, .55); font-size: 12px; }
-.group { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #fff; border: 1px solid rgba(38, 38, 38, .1); border-radius: 4px; box-shadow: var(--shadow-card); }
-.groupHead { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
-.groupHead b { overflow: hidden; font-size: 14px; font-weight: 500; line-height: 1.15; letter-spacing: -.14px; white-space: nowrap; text-overflow: ellipsis; }
-.groupHead code { margin-left: auto; padding: 1px 5px; white-space: nowrap; color: var(--accent-ink); background: rgba(var(--accent-rgb), .1); border-radius: 999px; font: 11px/16px var(--mono); letter-spacing: -.04em; }
-.groupIcon { display: grid; place-items: center; width: 22px; height: 22px; color: var(--accent); background: rgba(var(--accent-rgb), .08); border-radius: 3px; }
-.groupIcon svg { width: 14px; height: 14px; }
-.groupMeta, .groupCount { color: var(--muted); font: 12px/1.5 var(--mono); letter-spacing: -.03em; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.groupCount span { color: var(--ink); }
-.portIn, .portOut { position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; background: #fff; border: 1.5px solid var(--accent); border-radius: 50%; }
-.portIn { left: -5px; }
-.portOut { right: -5px; background: var(--accent); }
-.portIn i { position: absolute; inset: -1.5px; border: 1.5px solid var(--accent); border-radius: 50%; opacity: 0; }
+.reqLayer { position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: var(--q); }
+.req { position: absolute; left: 24px; top: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr) 16px; align-items: center; gap: 12px; width: 296px; height: 48px; padding: 0 14px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); opacity: 0; visibility: hidden; }
+.req:not([data-state="idle"]) { visibility: visible; }
+.req > svg { width: 20px; height: 20px; fill: currentColor; }
+.reqText { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.reqText b, .reqText small { overflow: hidden; font: 12px/1.5 var(--mono); letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
+.reqText b { color: var(--ink); font-weight: 400; }
+.reqText small { color: var(--muted); }
+/* Waiting: the Tabs block's spinner. Success: a green disc with a tick, and
+   the result line turns green. */
+.mark { display: grid; place-items: center; width: 16px; height: 16px; box-sizing: border-box; color: #fff; border: 1.5px solid rgba(var(--accent-rgb), .25); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
+.mark svg { display: none; }
+.req[data-state="ok"] .mark { background: var(--ok); border: 0; animation: none; }
+.req[data-state="ok"] .mark svg { display: block; }
+.req[data-state="ok"] .reqText small { color: var(--ok); }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* Comets from the groups to the globe, over the map and the cards. */
+/* What the two colours mean, under the globe. */
+.legend { position: absolute; left: 57.5%; right: 0; bottom: 24px; z-index: 6; display: flex; justify-content: center; gap: 24px; color: var(--muted); font: 12px/1.5 var(--mono); letter-spacing: -.02em; opacity: var(--q); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 24px; height: 2px; border-radius: 2px; background: linear-gradient(to right, rgba(var(--accent-rgb), 0), var(--accent)); }
+.legend [data-tone="ok"] i { background: linear-gradient(to right, rgba(34, 197, 94, 0), #22c55e); }
+
+/* The packets from the ports to China, over the map. */
 .beams { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; opacity: var(--q); }
-
-/* Request cards (positioned by the Web Animations in the component); they
-   pass under the group column, so they vanish into their group. */
-.flyLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: var(--q); }
-.card { position: absolute; top: 0; left: 0; min-width: 192px; max-width: 280px; opacity: 0; transform-origin: 50% 50%; }
-.bob { display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow-card); animation: bob var(--bob-time) ease-in-out infinite alternate; }
-@keyframes bob { to { transform: translateY(8px); } }
-.cardHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.cardHead svg { width: 20px; height: 20px; fill: currentColor; }
-.cardHead b { padding: 2px 8px; color: var(--accent-ink); background: rgba(var(--accent-rgb), .1); border-radius: 999px; font-size: 12px; font-weight: 500; letter-spacing: -.12px; }
-.host, .call { font: 12px/1.5 var(--mono); letter-spacing: -.04em; white-space: nowrap; }
-.host { color: var(--ink); }
-.call { color: var(--muted); }
 .srList { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-
-/* Under the globe: a short dashed line, faded at both ends, with a flat chip
-   naming the last delivery. */
-.status { position: absolute; left: 57.5%; right: 0; bottom: 40px; z-index: 6; display: flex; align-items: center; justify-content: center; opacity: var(--q); transform: scale(calc(.7 + .3 * var(--q))); }
-.line { position: absolute; left: 50%; width: min(100%, 640px); top: 50%; border-top: 1px dashed rgba(var(--accent-rgb), .45); transform: translateX(-50%); -webkit-mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent); mask-image: linear-gradient(to right, transparent, #000 25%, #000 75%, transparent); }
-.chip { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 12px 16px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow-card); font-size: 14px; line-height: 1.15; letter-spacing: -.14px; }
-.chip svg { color: var(--accent); }
-.roll { position: relative; display: inline-block; overflow: hidden; font-weight: 500; white-space: nowrap; }
-.roll span { display: inline-block; }
 
 .fine { margin: -16px 0 0; color: rgba(38, 38, 38, .45); font-size: 12px; text-align: right; }
 
@@ -119,24 +100,19 @@
 .marqueeRow svg { width: 30px; height: 30px; fill: currentColor; }
 @keyframes marquee { to { transform: translateX(-50%); } }
 
-/* Narrow screens and reduced motion: no scroll effect or flights; the globe
-   sits above the three node groups. */
+/* Narrow screens and reduced motion: no scroll effect, rails or requests; the
+   globe turns with the home page's own comets, above the logo strip. */
 @media (max-width: 768px), (prefers-reduced-motion: reduce) {
   .track { height: auto; }
   .stage { position: static; height: auto; min-height: 0; }
   .head h2 { font-size: 30px; letter-spacing: -.75px; }
   .head p { font-size: 16px; line-height: 22px; }
   .box { height: auto; display: flex; flex-direction: column; }
-  .ticks, .wave, .flyLayer, .beams { display: none; }
+  .ticks, .rails, .reqLayer, .beams, .legend { display: none; }
   .map { position: relative; top: auto; left: -35%; width: 170%; transform: none; }
-  .groupsCol { position: relative; top: auto; bottom: auto; left: auto; width: auto; flex-direction: column; padding: 16px; opacity: 1; background: none; }
-  .groupsCol::before, .groupsCol::after { display: none; }
-  .portIn, .portOut { display: none; }
-  .status { position: relative; left: auto; bottom: auto; padding: 8px 0 24px; opacity: 1; transform: none; }
   .fine { margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flyLayer, .beams { display: none; }
-  .bob, .waveTrack, .marqueeTrack { animation: none; }
+  .marqueeTrack, .mark { animation: none; }
 }

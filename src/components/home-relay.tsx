@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowRight } from "lucide-react";
-import { FeatureUnlock, UnlockContent } from "@/components/feature-unlock";
+import { FeatureUnlock, UnlockContent, useGlobeLink } from "@/components/feature-unlock";
 import { WorldMapCap } from "@/components/world-map-cap";
 import { featureCopy } from "@/lib/feature-copy";
 import { homeCopy, type HomeLocale } from "@/lib/home-copy";
@@ -15,8 +15,8 @@ import styles from "./home-relay.module.css";
 // told with one map. The hero's flat cap sits under the headline; scrolling
 // down, the stage sticks, the headline fades, and the same map curls into a
 // globe while it shrinks and slides into the right side of the block's box
-// (an empty slot there marks where it lands). Then the requests, node groups
-// and comets come in around it.
+// (an empty slot there marks where it lands). Then the requests, comets and
+// the green pulses back to China come in around it.
 //
 // Scroll progress p (0–1, eased) is written straight to the DOM: the map's
 // transform, the curl (curlRef) and CSS variables on the stage (--p, --q for
@@ -68,6 +68,7 @@ function Relay({ locale }: { locale: HomeLocale }) {
   const boxSlotRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const curlRef = useRef(0);
+  const link = useGlobeLink();
   const [routes, setRoutes] = useState(true);
 
   useEffect(() => {
@@ -147,12 +148,13 @@ function Relay({ locale }: { locale: HomeLocale }) {
         </div>
 
         <div ref={mapRef} className={styles.mapLayer} aria-label={hero.mapLabel}>
-          <WorldMapCap curlRef={curlRef} graticule routes={routes} label={featureCopy[locale].unlock.mapLabel} />
+          <WorldMapCap curlRef={curlRef} graticule routes={routes} steerRef={link.steerRef} tripRef={link.tripRef} label={featureCopy[locale].unlock.mapLabel} />
         </div>
 
         <div className={`${unlockStyles.scope} ${styles.unlockLayer}`}>
           <UnlockContent
             locale={locale}
+            link={link}
             mapHostRef={mapRef}
             boxClassName={unlockStyles.clearBox}
             map={<div ref={boxSlotRef} className={unlockStyles.mapSlot} aria-hidden="true" />}

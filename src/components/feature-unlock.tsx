@@ -1,150 +1,149 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Check, Clapperboard, Gauge, Sparkles } from "lucide-react";
-import { siClaude, siGithub, siGithubcopilot, siGoogle, siGooglegemini, siHbomax, siNetflix, siPerplexity, siSpotify, siTiktok, siX, siYoutube } from "simple-icons";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Check } from "lucide-react";
+import { siClaude, siGithubcopilot, siGooglegemini, siHbomax, siNetflix, siPerplexity, siSpotify, siTiktok, siYoutube } from "simple-icons";
 import { WorldMapCap } from "@/components/world-map-cap";
-import { drawComet } from "@/lib/demo/cap-comet";
+import type { CapTrip } from "@/components/world-map-cap-city-layer";
+import { PACKET, drawComet } from "@/lib/demo/cap-comet";
 import { chatgpt, disneyPlus, grok, midjourney, primeVideo, type BrandIcon } from "@/lib/brand-icons";
 import { featureCopy } from "@/lib/feature-copy";
 import type { HomeLocale } from "@/lib/home-copy";
 import styles from "./feature-unlock.module.css";
 
-// First block of /demo/features, laid out after cloudflare.com's "Fighting
-// infra with 'cloud' / Shipping with Cloudflare" block (#home-waveform) and
-// read left to right: requests from AI and streaming services → the node
-// group that serves each kind → a node on the globe.
+// First block of the home page (and /demo/features): every AI and streaming
+// service we unlock, next to the globe that unlocks it.
 //
-// - Requests fly (Web Animations API) from the left into their group's
-//   input port, where they are absorbed: the port rings, the group's count
-//   goes up.
-// - Each absorbed request sends a comet (the home page's, drawComet) from
-//   the group's output port to a city on the globe that is in view; it lands
-//   with a ring, and the status chip names the service and the city.
+// One request at a time tells the story, on fixed rails (nothing drifts):
+//   1. a request card slides along a rail on the left to its port;
+//   2. a small packet flies from the port to China on the globe (a ring
+//      there says "received");
+//   3. an orange comet (the home page's) flies from China to a city that is
+//      in view and lands with a shockwave;
+//   4. a green pulse flies back from the city to China and ends in a green
+//      ring — the request succeeded;
+//   5. the card turns green ("200 · via Tokyo · 52ms") and fades out.
+// Steps 3–4 are the map's own round trip (`tripRef`, see CapTrip).
+//
+// So that China and the city are always in view together, the globe is
+// steered (`steerRef`): the requests are told in two scenes, the AI services
+// over Asia-Pacific and the streaming services over Eurasia, and the globe
+// turns from one to the other between them.
 //
 // The site owner confirmed every service listed is tested on the nodes; the
-// request lines, node counts and latencies are illustrations. The Clash
-// subscription today only has the "节点选择" and "自动选择" groups; the AI and
-// streaming groups are on the backlog (docs/backlog.md).
+// requests and latencies are illustrations.
 //
 // On its own (FeatureUnlock, /demo/features and narrow screens) the stage
 // sticks while its track scrolls past, a flat cap curls into a globe that
-// settles on the right, and the left two columns fade in near the end (--p
-// drives the map, --q the rest; no re-renders). On the home page
-// (HomeRelay) the hero's own map makes that trip instead: UnlockContent is
-// rendered without a map, around an empty slot the hero map lands in.
+// settles on the right, and the rails come in near the end (--p drives the
+// map, --q the rest; no re-renders). On the home page (HomeRelay) the hero's
+// own map makes that trip instead: UnlockContent is rendered without a map,
+// around an empty slot the hero map lands in.
 
-type GroupId = "ai" | "media" | "auto";
-type Copy = (typeof featureCopy)[HomeLocale]["unlock"];
-
-type Request = { name: string; brand: string; icon: BrandIcon; host: string; call: string; group: GroupId };
+type Request = { name: string; brand: string; icon: BrandIcon; host: string; call: string; scene: number };
 
 const si = (icon: { path: string }): BrandIcon => ({ path: icon.path });
 
+// Scene 0 (AI services, Asia-Pacific) then scene 1 (streaming, Eurasia).
 const REQUESTS: Request[] = [
-  { name: "ChatGPT", brand: "#10A37F", icon: chatgpt, host: "chatgpt.com", call: "POST /backend-api/conversation", group: "ai" },
-  { name: "Netflix", brand: `#${siNetflix.hex}`, icon: si(siNetflix), host: "www.netflix.com", call: "GET /watch · 4K HDR", group: "media" },
-  { name: "Claude", brand: `#${siClaude.hex}`, icon: si(siClaude), host: "claude.ai", call: "POST /api/append_message", group: "ai" },
-  { name: "YouTube", brand: `#${siYoutube.hex}`, icon: si(siYoutube), host: "www.youtube.com", call: "GET /watch · Premium", group: "media" },
-  { name: "Google", brand: "#4285F4", icon: si(siGoogle), host: "www.google.com", call: "GET /search", group: "auto" },
-  { name: "Gemini", brand: `#${siGooglegemini.hex}`, icon: si(siGooglegemini), host: "gemini.google.com", call: "POST /app", group: "ai" },
-  { name: "Disney+", brand: "#113CCF", icon: disneyPlus, host: "www.disneyplus.com", call: "GET /play · 1080p", group: "media" },
-  { name: "Perplexity", brand: `#${siPerplexity.hex}`, icon: si(siPerplexity), host: "www.perplexity.ai", call: "POST /rest/sse/perplexity_ask", group: "ai" },
-  { name: "Spotify", brand: `#${siSpotify.hex}`, icon: si(siSpotify), host: "open.spotify.com", call: "GET /track", group: "media" },
-  { name: "GitHub", brand: "#262626", icon: si(siGithub), host: "github.com", call: "GET /explore", group: "auto" },
-  { name: "GitHub Copilot", brand: "#262626", icon: si(siGithubcopilot), host: "api.githubcopilot.com", call: "POST /chat/completions", group: "ai" },
-  { name: "Prime Video", brand: "#00A8E1", icon: primeVideo, host: "www.primevideo.com", call: "GET /detail · 4K", group: "media" },
-  { name: "Grok", brand: "#262626", icon: grok, host: "grok.com", call: "POST /rest/app-chat", group: "ai" },
-  { name: "HBO Max", brand: "#5822B4", icon: si(siHbomax), host: "play.hbomax.com", call: "GET /video · 4K", group: "media" },
-  { name: "X", brand: "#262626", icon: si(siX), host: "x.com", call: "GET /home", group: "auto" },
-  { name: "Midjourney", brand: "#262626", icon: midjourney, host: "www.midjourney.com", call: "POST /api/submit-jobs", group: "ai" },
-  { name: "TikTok", brand: "#262626", icon: si(siTiktok), host: "www.tiktok.com", call: "GET /foryou", group: "media" },
+  { name: "ChatGPT", brand: "#10A37F", icon: chatgpt, host: "chatgpt.com", call: "POST /backend-api/conversation", scene: 0 },
+  { name: "Claude", brand: `#${siClaude.hex}`, icon: si(siClaude), host: "claude.ai", call: "POST /api/append_message", scene: 0 },
+  { name: "Gemini", brand: `#${siGooglegemini.hex}`, icon: si(siGooglegemini), host: "gemini.google.com", call: "POST /app", scene: 0 },
+  { name: "Perplexity", brand: `#${siPerplexity.hex}`, icon: si(siPerplexity), host: "www.perplexity.ai", call: "POST /rest/sse/perplexity_ask", scene: 0 },
+  { name: "GitHub Copilot", brand: "#262626", icon: si(siGithubcopilot), host: "api.githubcopilot.com", call: "POST /chat/completions", scene: 0 },
+  { name: "Grok", brand: "#262626", icon: grok, host: "grok.com", call: "POST /rest/app-chat", scene: 0 },
+  { name: "Midjourney", brand: "#262626", icon: midjourney, host: "www.midjourney.com", call: "POST /api/submit-jobs", scene: 0 },
+  { name: "Netflix", brand: `#${siNetflix.hex}`, icon: si(siNetflix), host: "www.netflix.com", call: "GET /watch", scene: 1 },
+  { name: "YouTube", brand: `#${siYoutube.hex}`, icon: si(siYoutube), host: "www.youtube.com", call: "GET /watch", scene: 1 },
+  { name: "Disney+", brand: "#113CCF", icon: disneyPlus, host: "www.disneyplus.com", call: "GET /play", scene: 1 },
+  { name: "Prime Video", brand: "#00A8E1", icon: primeVideo, host: "www.primevideo.com", call: "GET /detail", scene: 1 },
+  { name: "HBO Max", brand: "#5822B4", icon: si(siHbomax), host: "play.hbomax.com", call: "GET /video", scene: 1 },
+  { name: "Spotify", brand: `#${siSpotify.hex}`, icon: si(siSpotify), host: "open.spotify.com", call: "GET /track", scene: 1 },
+  { name: "TikTok", brand: "#262626", icon: si(siTiktok), host: "www.tiktok.com", call: "GET /foryou", scene: 1 },
 ];
 
-// The services named in the strip and the chip: the AI and streaming ones.
-const SERVICES = REQUESTS.filter((request) => request.group !== "auto");
-
-type Group = { id: GroupId; icon: ReactNode; strategy: string; latency: number; cities: string[] };
-
-const GROUPS: Group[] = [
-  { id: "ai", icon: <Sparkles strokeWidth={1.7} />, strategy: "url-test", latency: 42, cities: ["Los Angeles", "New York", "Tokyo", "Singapore"] },
-  { id: "media", icon: <Clapperboard strokeWidth={1.7} />, strategy: "select", latency: 58, cities: ["Los Angeles", "London", "Tokyo", "Singapore"] },
-  { id: "auto", icon: <Gauge strokeWidth={1.7} />, strategy: "url-test", latency: 36, cities: [] },
+// Where the globe looks (the longitude kept at the middle) and where the
+// requests may land. Both ends of a trip must be in view, and the globe only
+// turns about its axis, so a scene can only show cities within about 60° of
+// longitude of its centre: the Asia-Pacific scene keeps China near the middle
+// (and close to the rails), the Eurasia scene brings Europe and Africa round.
+// (The Americas can't share a view with China without hugging the limb.)
+const SCENES = [
+  { center: 128, cities: ["Tokyo", "Singapore", "Sydney", "Mumbai"] },
+  { center: 62, cities: ["London", "Frankfurt", "Johannesburg", "Mumbai", "Singapore"] },
 ];
+// Sample round-trip times (ms).
+const RTT: Record<string, number> = { Tokyo: 52, Singapore: 61, Sydney: 132, Mumbai: 96, London: 186, Frankfurt: 178, Johannesburg: 224 };
+const latency = (city: string, index: number) => (RTT[city] ?? 100) + ((index * 7) % 9) - 4;
 
-// Flight timing (ms).
-// Cards fly in horizontal lanes, one card per lane, so they never stack.
-const LANES = 4;
-const IN_FLIGHT = LANES;     // cards in the air at once
-const FLY_MIN = 3000;
-const FLY_SPREAD = 2000;
-const REST_MIN = 500;
-const REST_SPREAD = 1500;
-// Comet: flies for BEAM_TRAVEL ms; drawComet's phase puts the hit at 0.4 of
-// its cycle, so the cycle is BEAM_TRAVEL / 0.4.
-const BEAM_TRAVEL = 1200;
-const BEAM_CYCLE = BEAM_TRAVEL / 0.4;
-const RING = 700;
-// Cloudflare's ease (its design spec): quick start, long soft settle.
-const EASE = "cubic-bezier(.19, 1, .22, 1)";
+// Layout of the rails (px): five, 64 apart, centred in the box; the card
+// stops with its right edge just short of the port.
+const LANES = 5;
+const LANE_PITCH = 64;
+const CARD_HEIGHT = 48;
+const CARD_LEFT = 24;
 
-function RequestCard({ request, index, copy }: { request: Request; index: number; copy: Copy }) {
-  return (
-    <div className={styles.card} data-index={index} data-group={request.group}>
-      <div className={styles.bob} style={{ "--bob-time": `${3 + (request.host.length % 4) * 0.7}s` } as CSSProperties}>
-        <span className={styles.cardHead}>
-          <svg viewBox="0 0 24 24" style={{ color: request.brand }} aria-hidden="true">
-            <path d={request.icon.path} fillRule={request.icon.fillRule} />
-          </svg>
-          <b>{request.group === "auto" ? copy.accelerated : copy.unlocked}</b>
-        </span>
-        <small className={styles.host}>{request.host}</small>
-        <small className={styles.call}>{copy.calls[request.name] ?? request.call}</small>
-      </div>
-    </div>
-  );
+// Timing (ms). A packet flies for PACKET_TRAVEL; drawComet's phase puts its
+// hit at 0.4 of its cycle, so the cycle is PACKET_TRAVEL / 0.4.
+const SLIDE = 800;
+const PACKET_TRAVEL = 900;
+const PACKET_CYCLE = PACKET_TRAVEL / 0.4;
+const HOLD = 900;
+const SPACING = 2200;
+const PER_SCENE = 5;
+const SETTLE = 4000;
+const PAN = 2000;
+const FIRST = 1200;
+const EASE = "cubic-bezier(.32, .72, 0, 1)";
+// Below this share of the reveal (--q) the block is still hidden behind the
+// hero: no requests start, and the globe turns as usual.
+const SHOWN = 0.5;
+
+// Motion is for wide screens without a reduced-motion preference; elsewhere
+// the globe turns with the home page's own comets instead.
+const MOTION = "(min-width: 769px) and (prefers-reduced-motion: no-preference)";
+
+function subscribeMotion(onChange: () => void) {
+  const query = window.matchMedia(MOTION);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
 }
 
-function NodeGroup({ group, copy }: { group: Group; copy: Copy }) {
-  return (
-    <div className={styles.group} data-group={group.id}>
-      <span className={styles.portIn} aria-hidden="true"><i /></span>
-      <div className={styles.groupHead}>
-        <span className={styles.groupIcon} aria-hidden="true">{group.icon}</span>
-        <b>{copy.groups[group.id].name}</b>
-        <code>{group.strategy}</code>
-      </div>
-      <div className={styles.groupMeta}>
-        {copy.groups[group.id].nodes} · {copy.latency} <span data-latency={group.latency}>{group.latency}</span>ms
-      </div>
-      <div className={styles.groupCount}>{copy.received} <span data-count>0</span></div>
-      <span className={styles.portOut} aria-hidden="true" />
-    </div>
-  );
+function useMotion() {
+  return useSyncExternalStore(subscribeMotion, () => window.matchMedia(MOTION).matches, () => true);
 }
 
-// Dotted bars (a traffic waveform), drawn once; two copies scroll by.
-const noise = (seed: number) => {
-  const value = Math.sin(seed * 12.9898) * 43758.5453;
-  return value - Math.floor(value);
+/** The two ways the block drives its globe (see WorldMapCap): `steerRef`
+ *  holds the longitude to keep in the middle, `tripRef` plays a round trip. */
+export type GlobeLink = {
+  steerRef: RefObject<number | null>;
+  tripRef: RefObject<((trip: CapTrip) => boolean) | null>;
 };
-const WAVE_COLUMNS = 80;
-const WAVE_STEP = 6;
-const WAVE_HEIGHT = 200;
-const WAVE_PATH = Array.from({ length: WAVE_COLUMNS }, (_, column) => {
-  const level = 0.25 + 0.35 * Math.abs(Math.sin(column * 0.23)) + 0.4 * noise(column + 7) * noise(column + 13);
-  const half = Math.max(1, Math.round((level * WAVE_HEIGHT) / WAVE_STEP / 2));
-  let d = "";
-  for (let row = -half; row <= half; row += 1) d += `M${column * WAVE_STEP} ${WAVE_HEIGHT / 2 + row * WAVE_STEP}h1.5v1.5h-1.5z`;
-  return d;
-}).join("");
-const WAVE_WIDTH = WAVE_COLUMNS * WAVE_STEP;
 
-function Wave() {
+export function useGlobeLink(): GlobeLink {
+  const steerRef = useRef<number | null>(null);
+  const tripRef = useRef<((trip: CapTrip) => boolean) | null>(null);
+  return { steerRef, tripRef };
+}
+
+function Logo({ request }: { request: Request }) {
   return (
-    <svg className={styles.waveCopy} viewBox={`0 0 ${WAVE_WIDTH} ${WAVE_HEIGHT}`} width={WAVE_WIDTH} height={WAVE_HEIGHT} aria-hidden="true">
-      <path d={WAVE_PATH} />
+    <svg viewBox="0 0 24 24" style={{ color: request.brand }} aria-hidden="true">
+      <path d={request.icon.path} fillRule={request.icon.fillRule} />
     </svg>
+  );
+}
+
+function RequestCard({ request, index }: { request: Request; index: number }) {
+  return (
+    <div className={styles.req} data-index={index} data-state="idle">
+      <Logo request={request} />
+      <span className={styles.reqText}>
+        <b>{request.host}</b>
+        <small>{request.call}</small>
+      </span>
+      <span className={styles.mark}><Check size={11} strokeWidth={3} aria-hidden="true" /></span>
+    </div>
   );
 }
 
@@ -155,12 +154,10 @@ function Wave() {
 function BrandMarquee({ label }: { label: string }) {
   const row = (copy: number) => (
     <ul className={styles.marqueeRow} aria-hidden={copy > 0 ? true : undefined}>
-      {SERVICES.map((service) => (
-        <li key={service.name}>
-          <svg viewBox="0 0 24 24" style={{ color: service.brand }} aria-hidden="true">
-            <path d={service.icon.path} fillRule={service.icon.fillRule} />
-          </svg>
-          {service.name}
+      {REQUESTS.map((request) => (
+        <li key={request.name}>
+          <Logo request={request} />
+          {request.name}
         </li>
       ))}
     </ul>
@@ -174,42 +171,42 @@ function BrandMarquee({ label }: { label: string }) {
   );
 }
 
-type Beam = { from: HTMLElement; to: HTMLElement; start: number; service: string; city: string; landed: boolean };
+// A small orange packet from a rail's port to China; `start` is stamped by
+// the draw loop on the first frame it sees the packet.
+type Packet = { from: HTMLElement; start: number | null };
 
-// Below this share of the reveal (--q) the block is still hidden behind the
-// hero, so arrivals are neither counted nor sent on to the globe.
-const SHOWN = 0.5;
-
-/** The header, the box (requests, node groups, comets, status chip, brand
- *  strip) and the fine print. `map` goes at the bottom of the box: the map
- *  itself, or an empty slot the home hero's map lands in. `mapHostRef`
+/** The header, the box (rails and requests, comets, the globe's steering, the
+ *  brand strip) and the fine print. `map` goes at the bottom of the box: the
+ *  map itself, or an empty slot the home hero's map lands in. `mapHostRef`
  *  points at whatever holds the map, where the city tags are looked up
  *  (defaults to the box). */
-export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { locale: HomeLocale; map: ReactNode; mapHostRef?: RefObject<HTMLElement | null>; boxClassName?: string }) {
+export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = "" }: { locale: HomeLocale; link: GlobeLink; map: ReactNode; mapHostRef?: RefObject<HTMLElement | null>; boxClassName?: string }) {
   const copy = featureCopy[locale].unlock;
   const boxRef = useRef<HTMLDivElement>(null);
   const beamRef = useRef<HTMLCanvasElement>(null);
-  const chipRef = useRef<HTMLSpanElement>(null);
-  const chip = copy.chip;
+  const { steerRef, tripRef } = link;
+  const done = copy.done;
 
-  // Requests → groups → globe.
   useEffect(() => {
     const box = boxRef.current;
     const canvas = beamRef.current;
     const context = canvas?.getContext("2d");
     if (!box || !canvas || !context) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 768px)").matches) return;
+    if (!window.matchMedia(MOTION).matches) return;
 
-    const cards = [...box.querySelectorAll<HTMLElement>(`.${styles.card}`)];
-    const groupOf = (id: string) => box.querySelector<HTMLElement>(`.${styles.group}[data-group="${id}"]`)!;
+    const cards = [...box.querySelectorAll<HTMLElement>(`.${styles.req}`)];
+    const ports = [...box.querySelectorAll<HTMLElement>(`.${styles.port}`)];
+    const sceneCards = SCENES.map((_, scene) => cards.flatMap((_card, index) => (REQUESTS[index].scene === scene ? [index] : [])));
     const idle = new Set(cards.keys());
-    const freeLanes = new Set(Array.from({ length: LANES }, (_, lane) => lane));
+    const freeLanes = new Set(ports.keys());
+    const cursors = SCENES.map(() => 0);
+    const cityCursors = SCENES.map(() => 0);
     const timers = new Set<number>();
-    const animations = new Set<Animation>();
-    const beams: Beam[] = [];
-    const counts: Record<string, number> = { ai: 0, media: 0, auto: 0 };
-    let order = 0;
+    const packets: Packet[] = [];
+    let laneTurn = 0;
+    let scene = 0;
     let disposed = false;
+    let hub: HTMLElement | null = null;
 
     const later = (fn: () => void, ms: number) => {
       const id = window.setTimeout(() => {
@@ -223,102 +220,136 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
       const b = box.getBoundingClientRect();
       return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height };
     };
-
-    // Cities on the globe that are in view (city layer <li>s, by tag text).
-    const visibleCity = (names: string[]) => {
-      const host = mapHostRef?.current ?? box;
-      const items = [...host.querySelectorAll<HTMLLIElement>("ul[aria-label='Cities'] li")];
-      const half = box.getBoundingClientRect().width * 0.575;
-      const choices = items.filter((li) => {
-        const name = li.textContent?.trim() ?? "";
-        if (name === "China") return false;
-        if (names.length && !names.includes(name)) return false;
-        return Number(li.style.opacity || 1) > 0.6 && local(li).x > half;
-      });
-      return choices.length ? choices[Math.floor(Math.random() * choices.length)] : null;
+    const shown = () => Number(getComputedStyle(box).getPropertyValue("--q") || 1) >= SHOWN;
+    // China's marker on the globe (the city layer's <li>, by its hidden text).
+    const findHub = () => {
+      hub ??= [...(mapHostRef?.current ?? box).querySelectorAll<HTMLLIElement>("ul[aria-label='Cities'] li")].find((li) => li.textContent?.trim() === "China") ?? null;
+      return hub;
     };
 
-    const receive = (cardIndex: number) => {
-      if (Number(getComputedStyle(box).getPropertyValue("--q") || 1) < SHOWN) return;
-      const request = REQUESTS[Number(cards[cardIndex].dataset.index)];
-      const group = groupOf(request.group);
-      counts[request.group] += 1;
-      const count = group.querySelector<HTMLElement>("[data-count]");
-      if (count) count.textContent = counts[request.group].toLocaleString(locale === "zh" ? "zh-CN" : "en");
-      group.querySelector(`.${styles.portIn} i`)?.animate(
-        [{ transform: "scale(1)", opacity: 0.9 }, { transform: "scale(3.2)", opacity: 0 }],
-        { duration: 650, easing: EASE },
-      );
-      group.animate([{ borderColor: "rgba(255, 94, 31, .55)" }, { borderColor: "rgba(38, 38, 38, .1)" }], { duration: 700, easing: EASE });
-      const target = visibleCity(GROUPS.find((item) => item.id === request.group)!.cities) ?? visibleCity([]);
-      const from = group.querySelector<HTMLElement>(`.${styles.portOut}`);
-      if (target && from) beams.push({ from, to: target, start: performance.now(), service: request.name, city: target.textContent?.trim() ?? "", landed: false });
-    };
-
-    const fly = () => {
-      if (!idle.size || !freeLanes.size) return;
-      // Cards take turns in a fixed order, skipping ones still in the air.
-      let cardIndex = order % cards.length;
-      while (!idle.has(cardIndex)) cardIndex = (cardIndex + 1) % cards.length;
-      order = cardIndex + 1;
-      idle.delete(cardIndex);
-
+    const release = (cardIndex: number, lane: number) => {
       const card = cards[cardIndex];
-      const request = REQUESTS[Number(card.dataset.index)];
-      const port = local(groupOf(request.group).querySelector(`.${styles.portIn}`)!);
-      const { w, h } = local(card);
-      // Take a free lane at random and start somewhere inside it.
-      const lanes = [...freeLanes];
-      const lane = lanes[Math.floor(Math.random() * lanes.length)];
-      freeLanes.delete(lane);
-      const laneHeight = (box.clientHeight - 40) / LANES;
-      const startX = -40 + Math.random() * 200;
-      const startY = 20 + lane * laneHeight + Math.max(0, laneHeight - h) * Math.random() - Math.max(0, h - laneHeight) / 2;
-      const endX = port.x + port.w / 2 - w / 2;
-      const endY = port.y + port.h / 2 - h / 2;
-      // Cards hold their lane for most of the way and only converge on the
-      // port at the end, shrinking as they do.
-      const midX = startX + (endX - startX) * 0.6;
-      const midY = startY + (endY - startY) * 0.12;
-      const duration = FLY_MIN + Math.random() * FLY_SPREAD;
-      const at = (x: number, y: number, scale: number) => `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${scale})`;
-      const animation = card.animate(
-        [
-          { transform: at(startX, startY, 0.7), opacity: 0, easing: EASE },
-          { transform: at(startX, startY, 1), opacity: 1, offset: 400 / duration, easing: "linear" },
-          { transform: at(midX, midY, 1), opacity: 1, offset: 0.6, easing: "ease-in" },
-          // Gathers in before the node group column, so it doesn't sprawl over it.
-          { transform: at(endX - w * 0.45, endY, 0.55), opacity: 1, offset: 0.82, easing: "ease-in" },
-          { transform: at(endX, endY, 0.1), opacity: 0 },
-        ],
-        { duration, fill: "forwards" },
-      );
-      animations.add(animation);
-      animation.onfinish = () => {
-        animations.delete(animation);
-        freeLanes.add(lane);
-        receive(cardIndex);
-        later(() => {
-          idle.add(cardIndex);
-          fly();
-        }, REST_MIN + Math.random() * REST_SPREAD);
+      card.getAnimations().forEach((animation) => animation.cancel());
+      card.dataset.state = "idle";
+      const port = ports[lane];
+      delete port.dataset.ok;
+      idle.add(cardIndex);
+      freeLanes.add(lane);
+    };
+
+    // The card leaves: a short drift right and a fade.
+    const leave = (cardIndex: number, lane: number, dx: number) => {
+      const card = cards[cardIndex];
+      card.animate([{ transform: `translateX(${dx}px)` }, { transform: `translateX(${dx + 12}px)` }], { duration: 400, easing: EASE, fill: "forwards" });
+      const fadeOut = card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, easing: "ease-out", fill: "forwards" });
+      fadeOut.onfinish = () => {
+        if (!disposed) release(cardIndex, lane);
       };
     };
 
-    for (let slot = 0; slot < IN_FLIGHT; slot += 1) later(fly, slot * 450);
+    // Hand the request to the globe: try the scene's cities in turn until one
+    // is in view together with China (a pan in progress may need a moment).
+    const send = (cardIndex: number, lane: number, sceneIndex: number, dx: number, tries: number) => {
+      const cities = SCENES[sceneIndex].cities;
+      for (let step = 0; step < cities.length; step += 1) {
+        const city = cities[(cityCursors[sceneIndex] + step) % cities.length];
+        const trip: CapTrip = {
+          city,
+          onReturn: () => {
+            if (disposed) return;
+            const card = cards[cardIndex];
+            card.dataset.state = "ok";
+            const result = card.querySelector<HTMLElement>("small");
+            if (result) {
+              result.textContent = done(city, latency(city, cardIndex));
+              result.animate([{ transform: "translateY(60%)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 400, easing: EASE });
+            }
+            const port = ports[lane];
+            port.dataset.ok = "";
+            port.querySelector("span")?.animate([{ transform: "scale(1)", opacity: 0.9 }, { transform: "scale(3.2)", opacity: 0 }], { duration: 650, easing: EASE });
+            later(() => leave(cardIndex, lane, dx), HOLD);
+          },
+        };
+        if (tripRef.current?.(trip)) {
+          cityCursors[sceneIndex] = (cityCursors[sceneIndex] + step + 1) % cities.length;
+          return;
+        }
+      }
+      if (tries < 3) later(() => send(cardIndex, lane, sceneIndex, dx, tries + 1), 350);
+      else leave(cardIndex, lane, dx);
+    };
 
-    // Sample latencies drift a little.
-    const drift = window.setInterval(() => {
-      box.querySelectorAll<HTMLElement>("[data-latency]").forEach((element) => {
-        const base = Number(element.dataset.latency);
-        element.textContent = String(Math.round(base + (Math.random() - 0.5) * 10));
-      });
-    }, 2000);
+    const startRequest = () => {
+      const pool = sceneCards[scene];
+      let cardIndex = -1;
+      for (let step = 0; step < pool.length; step += 1) {
+        const candidate = pool[(cursors[scene] + step) % pool.length];
+        if (idle.has(candidate)) {
+          cardIndex = candidate;
+          cursors[scene] = (cursors[scene] + step + 1) % pool.length;
+          break;
+        }
+      }
+      let lane = -1;
+      for (let step = 0; step < LANES; step += 1) {
+        const candidate = (laneTurn + step) % LANES;
+        if (freeLanes.has(candidate)) {
+          lane = candidate;
+          laneTurn = candidate + 1;
+          break;
+        }
+      }
+      if (cardIndex < 0 || lane < 0) return;
+      idle.delete(cardIndex);
+      freeLanes.delete(lane);
 
-    // Comets and landing rings.
+      const card = cards[cardIndex];
+      const port = ports[lane];
+      const portBox = local(port);
+      // The card slides in from the rail's start and stops just short of the port.
+      const dx = portBox.x + portBox.w / 2 - 10 - CARD_LEFT - card.offsetWidth;
+      card.style.top = `${portBox.y + portBox.h / 2 - CARD_HEIGHT / 2}px`;
+      const result = card.querySelector<HTMLElement>("small");
+      if (result) result.textContent = REQUESTS[cardIndex].call;
+      card.dataset.state = "pending";
+      card.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: "ease-out", fill: "forwards" });
+      card.animate([{ transform: "translateX(-24px)" }, { transform: `translateX(${dx}px)` }], { duration: SLIDE, easing: EASE, fill: "forwards" });
+
+      const sceneIndex = scene;
+      later(() => {
+        // At the port: it rings, and a packet leaves for China.
+        port.querySelector("span")?.animate([{ transform: "scale(1)", opacity: 0.9 }, { transform: "scale(3.2)", opacity: 0 }], { duration: 650, easing: EASE });
+        packets.push({ from: port, start: null });
+        later(() => send(cardIndex, lane, sceneIndex, dx, 0), PACKET_TRAVEL);
+      }, SLIDE);
+    };
+
+    // Scenes: PER_SCENE requests, a wait for the last answers, then the globe
+    // turns to the next scene (no new requests while it does).
+    const step = (index: number, count: number) => {
+      if (!shown()) {
+        later(() => step(index, count), 500);
+        return;
+      }
+      if (count < PER_SCENE) {
+        startRequest();
+        later(() => step(index, count + 1), SPACING);
+        return;
+      }
+      later(() => {
+        scene = (index + 1) % SCENES.length;
+        later(() => step(scene, 0), PAN);
+      }, SETTLE);
+    };
+    later(() => step(0, 0), FIRST);
+
+    // The globe's steering and the packets, drawn on this box's own canvas.
     let frame = 0;
     const draw = (now: number) => {
       frame = requestAnimationFrame(draw);
+      // Look at the current scene, swaying a little; released when hidden.
+      steerRef.current = shown() ? SCENES[scene].center + 8 * Math.sin(((now / 1000) * Math.PI * 2) / 20) : null;
+
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const width = box.clientWidth;
       const height = box.clientHeight;
@@ -329,40 +360,27 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      for (let index = beams.length - 1; index >= 0; index -= 1) {
-        const beam = beams[index];
-        const elapsed = now - beam.start;
-        if (elapsed > BEAM_TRAVEL + RING) {
-          beams.splice(index, 1);
+      const target = findHub();
+      for (let index = packets.length - 1; index >= 0; index -= 1) {
+        const packet = packets[index];
+        if (packet.start === null) packet.start = now;
+        const elapsed = now - packet.start;
+        if (!target || elapsed > PACKET_TRAVEL + 250) {
+          packets.splice(index, 1);
           continue;
         }
-        const from = local(beam.from);
-        const to = local(beam.to);
+        const from = local(packet.from);
+        const to = local(target);
         const ax = from.x + from.w / 2, ay = from.y + from.h / 2;
         const bx = to.x, by = to.y;
-        const cx = (ax + bx) / 2, cy = Math.min(ay, by) - Math.abs(bx - ax) * 0.35;
+        // A gentle arc, so the packets fan in to China rather than run in parallel.
+        const cx = (ax + bx) / 2, cy = Math.min(ay, by) - Math.abs(bx - ax) * 0.14 - 12;
         const points: number[] = [];
-        for (let step = 0; step <= 40; step += 1) {
-          const t = step / 40;
+        for (let stepIndex = 0; stepIndex <= 32; stepIndex += 1) {
+          const t = stepIndex / 32;
           points.push((1 - t) * (1 - t) * ax + 2 * (1 - t) * t * cx + t * t * bx, (1 - t) * (1 - t) * ay + 2 * (1 - t) * t * cy + t * t * by);
         }
-        drawComet(context, points, elapsed / BEAM_CYCLE, 1, 1);
-        if (elapsed >= BEAM_TRAVEL) {
-          if (!beam.landed) {
-            beam.landed = true;
-            const chipText = chipRef.current;
-            if (chipText) {
-              chipText.textContent = chip(beam.service, beam.city);
-              chipText.animate([{ transform: "translateY(100%)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 400, easing: EASE });
-            }
-          }
-          const t = (elapsed - BEAM_TRAVEL) / RING;
-          context.beginPath();
-          context.arc(bx, by, 4 + 18 * (1 - Math.pow(1 - t, 3)), 0, Math.PI * 2);
-          context.strokeStyle = `rgba(255, 72, 0, ${0.8 * (1 - t)})`;
-          context.lineWidth = 1.5;
-          context.stroke();
-        }
+        drawComet(context, points, elapsed / PACKET_CYCLE, 1, 1, PACKET);
       }
     };
     frame = requestAnimationFrame(draw);
@@ -370,11 +388,15 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
     return () => {
       disposed = true;
       timers.forEach((id) => clearTimeout(id));
-      animations.forEach((animation) => animation.cancel());
-      clearInterval(drift);
       cancelAnimationFrame(frame);
+      steerRef.current = null;
+      cards.forEach((card) => {
+        card.getAnimations().forEach((animation) => animation.cancel());
+        card.dataset.state = "idle";
+      });
+      ports.forEach((port) => delete port.dataset.ok);
     };
-  }, [chip, locale, mapHostRef]);
+  }, [done, mapHostRef, steerRef, tripRef]);
 
   return (
     <>
@@ -388,28 +410,26 @@ export function UnlockContent({ locale, map, mapHostRef, boxClassName = "" }: { 
         <div ref={boxRef} className={`${styles.box} ${boxClassName}`}>
           {map}
 
-          <div className={styles.wave} aria-hidden="true"><div className={styles.waveTrack}><Wave /><Wave /></div></div>
-
-          <div className={styles.groupsCol}>
-            <span className={styles.colLabel}>{copy.groupsLabel} <small>{copy.sample}</small></span>
-            {GROUPS.map((group) => <NodeGroup key={group.id} group={group} copy={copy} />)}
+          <div className={styles.rails} aria-hidden="true">
+            {Array.from({ length: LANES }, (_, lane) => (
+              <span key={lane} className={styles.rail} style={{ top: `calc(50% + ${(lane - (LANES - 1) / 2) * LANE_PITCH}px)` }}>
+                <i className={styles.port}><span /></i>
+              </span>
+            ))}
           </div>
 
           <canvas ref={beamRef} className={styles.beams} aria-hidden="true" />
 
-          <div className={styles.flyLayer} aria-hidden="true">
-            {REQUESTS.map((request, index) => <RequestCard key={request.name} request={request} index={index} copy={copy} />)}
+          <div className={styles.reqLayer} aria-hidden="true">
+            {REQUESTS.map((request, index) => <RequestCard key={request.name} request={request} index={index} />)}
           </div>
-          <ul className={styles.srList} aria-label={copy.servicesLabel}>
-            {SERVICES.map((service) => <li key={service.name}>{service.name}</li>)}
+          <ul className={styles.srList} aria-label={copy.requestsLabel}>
+            {REQUESTS.map((request) => <li key={request.name}>{request.name}</li>)}
           </ul>
 
-          <div className={styles.status}>
-            <span className={styles.line} aria-hidden="true" />
-            <span className={styles.chip}>
-              <Check size={16} strokeWidth={2} aria-hidden="true" />
-              <span className={styles.roll}><span ref={chipRef}>{copy.chipIdle}</span></span>
-            </span>
+          <div className={styles.legend} aria-hidden="true">
+            <span data-tone="out"><i />{copy.legendRequest}</span>
+            <span data-tone="ok"><i />{copy.legendBack}</span>
           </div>
         </div>
         <BrandMarquee label={copy.marqueeLabel} />
@@ -425,6 +445,8 @@ export function FeatureUnlock({ locale }: { locale: HomeLocale }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const curlRef = useRef(0);
+  const link = useGlobeLink();
+  const motion = useMotion();
 
   // Scroll → curl and reveal.
   useEffect(() => {
@@ -443,7 +465,7 @@ export function FeatureUnlock({ locale }: { locale: HomeLocale }) {
       const p = progress * progress * (3 - 2 * progress);
       curlRef.current = p;
       stage.style.setProperty("--p", p.toFixed(4));
-      // The left columns come in once the globe has shrunk clear of them.
+      // The rails come in once the globe has shrunk clear of them.
       stage.style.setProperty("--q", Math.min(1, Math.max(0, (p - 0.78) / 0.22)).toFixed(4));
     };
     update();
@@ -462,9 +484,10 @@ export function FeatureUnlock({ locale }: { locale: HomeLocale }) {
       <div ref={stageRef} className={styles.stage}>
         <UnlockContent
           locale={locale}
+          link={link}
           map={(
             <div className={styles.map}>
-              <WorldMapCap curlRef={curlRef} graticule routes={false} label={featureCopy[locale].unlock.mapLabel} />
+              <WorldMapCap curlRef={curlRef} graticule routes={!motion} steerRef={link.steerRef} tripRef={link.tripRef} label={featureCopy[locale].unlock.mapLabel} />
             </div>
           )}
         />

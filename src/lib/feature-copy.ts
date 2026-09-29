@@ -5,8 +5,6 @@
 
 import type { HomeLocale } from "@/lib/home-copy";
 
-type GroupCopy = { name: string; nodes: string };
-
 export type FeatureCardCopy = { name: string; note: string; figure: string; unit: string; chips: string[]; cta: string; href: string };
 type PlanTab = { name: string; tiles: { value: string; label: string }[] };
 
@@ -16,17 +14,11 @@ type FeatureCopy = {
   unlock: {
     title: string;
     lead: string;
-    groupsLabel: string;
-    sample: string;
-    groups: { ai: GroupCopy; media: GroupCopy; auto: GroupCopy };
-    latency: string;
-    received: string;
-    unlocked: string;
-    accelerated: string;
-    // Request lines that carry words (the rest are plain HTTP lines).
-    calls: Record<string, string>;
-    chipIdle: string;
-    chip: (service: string, city: string) => string;
+    // The result line on a request that came back: "200 · via Tokyo · 52ms".
+    done: (city: string, ms: number) => string;
+    legendRequest: string;
+    legendBack: string;
+    requestsLabel: string;
     fine: string;
     marqueeLabel: string;
     servicesLabel: string;
@@ -114,25 +106,15 @@ export const featureCopy: Record<HomeLocale, FeatureCopy> = {
     },
     unlock: {
       title: "顶尖 AI 与国际流媒体，一个订阅全部解锁",
-      lead: "请求按类型进入专属节点组，再由最合适的海外节点直连，ChatGPT、Claude、Netflix、YouTube 等开箱即用。",
-      groupsLabel: "节点组",
-      sample: "示例数据",
-      groups: {
-        ai: { name: "AI 专线", nodes: "8 个节点" },
-        media: { name: "流媒体解锁", nodes: "6 个节点" },
-        auto: { name: "自动选择", nodes: "全部节点" },
-      },
-      latency: "延迟",
-      received: "已接入",
-      unlocked: "200 · 已解锁",
-      accelerated: "200 · 已加速",
-      calls: { Gemini: "POST /app · 流式响应", Spotify: "GET /track · 高音质" },
-      chipIdle: "请求按类型分组直连",
-      chip: (service, city) => `${service} · 经 ${city} 节点直连`,
-      fine: "节点可用性以实测为准，平台政策变动时会及时调整。",
+      lead: "请求从中国出发，经最合适的海外节点直连目标服务，成功后立即返回。ChatGPT、Claude、Netflix、YouTube 等开箱即用。",
+      done: (city, ms) => `200 · 经 ${city} · ${ms}ms`,
+      legendRequest: "请求",
+      legendBack: "200 返回",
+      requestsLabel: "正在解锁的平台请求",
+      fine: "示意画面：请求与延迟为示例数据；节点可用性以实测为准，平台政策变动时会及时调整。",
       marqueeLabel: "已实测解锁的平台",
       servicesLabel: "支持解锁的平台",
-      mapLabel: "点阵地图随滚动卷成地球，各平台请求经节点组分发到海外节点",
+      mapLabel: "点阵地图随滚动卷成地球，请求从中国经海外节点到达各平台，成功后绿色脉冲返回中国",
     },
     bento: {
       feed: { title: "一条订阅，所有客户端", body: "自动识别客户端：Clash、Mihomo、Stash 下发 Clash 配置，其余客户端下发 Base64，不用手动切换格式。" },
@@ -248,25 +230,15 @@ export const featureCopy: Record<HomeLocale, FeatureCopy> = {
     },
     unlock: {
       title: "Top AI tools and global streaming, all unlocked with one subscription",
-      lead: "Each request goes to a node group made for its kind, then straight out through the best node abroad. ChatGPT, Claude, Netflix, YouTube and more just work.",
-      groupsLabel: "Node groups",
-      sample: "Sample data",
-      groups: {
-        ai: { name: "AI routes", nodes: "8 nodes" },
-        media: { name: "Streaming", nodes: "6 nodes" },
-        auto: { name: "Auto select", nodes: "All nodes" },
-      },
-      latency: "latency",
-      received: "Received",
-      unlocked: "200 · Unlocked",
-      accelerated: "200 · Accelerated",
-      calls: { Gemini: "POST /app · streaming", Spotify: "GET /track · high quality" },
-      chipIdle: "Requests routed by type",
-      chip: (service, city) => `${service} · direct via ${city}`,
-      fine: "Availability reflects our own tests; we adjust when platforms change their rules.",
+      lead: "Requests leave China, reach each service through the best node abroad, and come straight back. ChatGPT, Claude, Netflix, YouTube and more just work.",
+      done: (city, ms) => `200 · via ${city} · ${ms}ms`,
+      legendRequest: "Request",
+      legendBack: "200 response",
+      requestsLabel: "Requests to the platforms being unlocked",
+      fine: "Illustrative: requests and latencies are sample data. Availability reflects our own tests; we adjust when platforms change their rules.",
       marqueeLabel: "Platforms tested and unlocked",
       servicesLabel: "Platforms we unlock",
-      mapLabel: "The dot map curls into a globe as you scroll; requests from each platform pass through node groups to nodes abroad",
+      mapLabel: "The dot map curls into a globe as you scroll; requests leave China through nodes abroad to each platform, and a green pulse returns to China on success",
     },
     bento: {
       feed: { title: "One subscription, every client", body: "Clients are detected for you: Clash, Mihomo and Stash get a Clash config, everything else gets Base64. No switching formats by hand." },

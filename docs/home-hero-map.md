@@ -194,6 +194,10 @@ git checkout 4706b13 -- src/lib/demo/cap-dots.ts src/components/world-map-cap.ts
   - 遮罩：Hero 地图的四边渐隐随 `--p` 收掉；
   - p 越过 0.05 时 `routes` 切成 false，中国枢纽彗星停，只剩节点组光束；滚回顶部恢复；
   - `--q` 低于 0.5 时，请求到达不计数也不发光束（模块还藏在 Hero 后面）。
+- **模块的动效：一次请求的往返**（`feature-unlock.tsx` 的 `UnlockContent`）。左侧 5 条固定的虚线轨道，请求小卡沿轨道滑到端口 → 一颗小光点飞进地球上的中国 → 橙色彗星从中国飞向目标城市并落地 → 绿色脉冲从城市沿原路飞回中国，落成绿色波纹 → 小卡变成「200 · 经 X · N ms」后淡出。约每 2.2 秒一个，同时约 3 个在飞。
+  - **往返由地图自己画**：`WorldMapCap` 的 `tripRef` 收到一个函数，调用 `tripRef.current({ city, onReturn })` 播放一次往返；中国或目标城市不在可见面时返回 `false`（城市层 `world-map-cap-city-layer.tsx` 的 `CapTrip`，用合成的 phase 复用 `drawComet` / `drawShockwave`，绿色样式是 `cap-comet.ts` 的 `GREEN`）。往返期间目标城市的标签边框 `data-hot`：出站橙色、返回绿色。
+  - **镜头**：`WorldMapCap` 的 `steerRef` 存"画面中心经度"，非空时地球缓慢转向 `经度 − 180` 这个 seam（最大 45°/s，指数缓动），为空则照旧匀速自转。模块分两场：亚太（中心 128°E，AI 服务，东京 / 新加坡 / 悉尼 / 孟买）和欧亚（中心 62°E，流媒体，伦敦 / 法兰克福 / 约翰内斯堡 / 孟买 / 新加坡），每场 5 个请求，再等 4 秒让最后的应答走完，然后转向下一场。地球只能绕轴转，所以一个画面只能容纳经度相差约 60° 以内的城市，美洲没法和中国同屏（想加要另做一场，贴着地平线）。
+  - 两个调用方（`FeatureUnlock` 与 `home-relay.tsx`）用 `useGlobeLink()` 拿到这对 ref，同时传给地图和 `UnlockContent`。
 - **手机端和减少动态效果**：不接力。Hero 保持原来的平面地图，下面放独立的 `FeatureUnlock`（自带一张地球，走手机布局）。
 - **双语**：特性模块文案都在 `src/lib/feature-copy.ts`，写法同 `home-copy.ts`；组件都接收 `locale`，`/demo/features` 也读同一个 cookie。
 

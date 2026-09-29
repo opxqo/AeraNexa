@@ -30,11 +30,18 @@ export const COMET: CometStyle = {
   glow: 9,
 };
 
+// The "request succeeded" pulse that flies back from a destination: same
+// streak, green, a shorter and lighter tail.
+export const GREEN: CometStyle = { ...COMET, accent: "34, 197, 94", hot: "220, 255, 232", tailLength: 420, glow: 8 };
+
+// A small packet (a request on its way in): slimmer and shorter than a comet.
+export const PACKET: CometStyle = { ...COMET, width: 3, nose: 5, tailLength: 140, glow: 6 };
+
 // Phase within one route cycle (0–1). The comet flies over TRAVEL, speeding
 // up as it falls in, hits the destination at TRAVEL (where drawShockwave takes
 // over), then its tail runs into the impact point over IMPACT.
 export const TRAVEL = 0.4;
-const IMPACT = 0.07;
+export const IMPACT = 0.07;
 const EASE = 1.6;
 
 type Sample = { x: number; y: number; dx: number; dy: number };

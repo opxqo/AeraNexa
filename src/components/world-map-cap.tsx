@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { WorldMapCapCityLayer } from "@/components/world-map-cap-city-layer";
+import { WorldMapCapCityLayer, type CapTrip } from "@/components/world-map-cap-city-layer";
 import { CAP_DOTS_DESKTOP, CAP_DOTS_MOBILE, createCapDots, type CapLandData } from "@/lib/demo/cap-dots";
 import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capSilhouette, getCapCurl, setCapCurl, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap.module.css";
 
 // One full turn every 60 seconds, eastward.
 const DEGREES_PER_SECOND = 360 / 60;
+// When steered (`steerRef`), the globe turns toward its target with an
+// exponential ease of this time constant (seconds), at most this fast.
+const STEER_SECONDS = 0.6;
+const STEER_MAX_DEGREES_PER_SECOND = 45;
 // Matches the @container cap (max-width: 600px) switch in the CSS.
 const MOBILE_WIDTH = 600;
 const COLOR = "#2662FF";
@@ -63,8 +67,11 @@ function drawGraticule(context: CanvasRenderingContext2D, seam: number) {
 // never re-renders React. Without it the map stays a cap. `globe` shows the
 // map fully curled from the first frame (the cap's static SVG is skipped),
 // `graticule` adds latitude/longitude lines, and `routes={false}` drops the
-// hub's comets. The curl lives in cap-projection.ts's module state; each
-// map sets its own before drawing, so several maps can share a page.
+// hub's comets. `steerRef` holds the longitude to keep at the middle of a
+// curled globe (null: turn steadily as usual), and `tripRef` receives a
+// function that plays one round trip (request in, comet out, green pulse
+// back; see CapTrip). The curl lives in cap-projection.ts's module state;
+// each map sets its own before drawing, so several maps can share a page.
 export function WorldMapCap({
   className = "",
   label = DEFAULT_LABEL,
@@ -72,6 +79,8 @@ export function WorldMapCap({
   globe = false,
   graticule = false,
   routes = true,
+  steerRef,
+  tripRef,
 }: {
   className?: string;
   label?: string;
@@ -79,6 +88,8 @@ export function WorldMapCap({
   globe?: boolean;
   graticule?: boolean;
   routes?: boolean;
+  steerRef?: RefObject<number | null>;
+  tripRef?: RefObject<((trip: CapTrip) => boolean) | null>;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -180,7 +191,18 @@ export function WorldMapCap({
             last = 0;
             return;
           }
-          if (last) seam = ((seam + ((now - last) / 1000) * DEGREES_PER_SECOND + 180) % 360) - 180;
+          if (last) {
+            const dt = (now - last) / 1000;
+            const target = steerRef?.current;
+            let step = dt * DEGREES_PER_SECOND;
+            if (target != null) {
+              // Shortest way round to the seam that puts `target` in the middle.
+              const difference = ((((target - 180 - seam) % 360) + 540) % 360) - 180;
+              const limit = STEER_MAX_DEGREES_PER_SECOND * dt;
+              step = Math.max(-limit, Math.min(limit, difference * (1 - Math.exp(-dt / STEER_SECONDS))));
+            }
+            seam = ((seam + step + 540) % 360) - 180;
+          }
           last = now;
           // The dots are fixed to the globe and move with it, so the map is
           // redrawn every frame, in step with the markers and routes.
@@ -218,7 +240,7 @@ export function WorldMapCap({
       controller.abort();
       cleanup();
     };
-  }, [curlRef, globe, graticule]);
+  }, [curlRef, globe, graticule, steerRef]);
 
   return (
     <div ref={frameRef} className={`${styles.frame} ${className}`}>
@@ -233,7 +255,7 @@ export function WorldMapCap({
         <image className={styles.mobileDots} href="/demo/world-map-cap-mobile.svg" width={CAP_VIEW_WIDTH} height={CAP_VIEW_HEIGHT} />
       </svg>
       <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-      <WorldMapCapCityLayer updateRef={updateCitiesRef} routes={routes} />
+      <WorldMapCapCityLayer updateRef={updateCitiesRef} routes={routes} tripRef={tripRef} />
     </div>
   );
 }
