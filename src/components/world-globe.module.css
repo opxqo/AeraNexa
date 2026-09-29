@@ -1,0 +1,9 @@
+/* The home page's 3D globe (world-globe.tsx): the WebGL canvas, the comets'
+   canvas and the city tags stacked in a box the size of the map frame it
+   replaces. It shows through --g (0–1), which the page sets as the flat map
+   curls into a globe and hands over to this one. City tags and pins use
+   world-map-cap-city-layer.module.css. */
+.host { position: absolute; inset: 0; container: cap / inline-size; pointer-events: none; opacity: 0; }
+.host[data-ready] { opacity: var(--g, 1); }
+.gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.comets { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }

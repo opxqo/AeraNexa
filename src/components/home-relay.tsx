@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowRight } from "lucide-react";
 import { FeatureUnlock, UnlockContent, useGlobeLink } from "@/components/feature-unlock";
+import { WorldGlobe } from "@/components/world-globe";
 import { WorldMapCap } from "@/components/world-map-cap";
 import { featureCopy } from "@/lib/feature-copy";
 import { homeCopy, type HomeLocale } from "@/lib/home-copy";
@@ -23,6 +24,11 @@ import styles from "./home-relay.module.css";
 // the block's inner parts as on its own, --h for the hero fading out, --u
 // for the block's frame fading in). React only re-renders once, when the
 // hub's comets switch off as the curl starts (routes).
+//
+// The curled map is only a stand-in: as it lands (--g, from p = .78) it fades
+// out and the 3D globe of /demo/world-map/globe (WorldGlobe) fades in over the
+// same spot, facing the same way (the map's seam, `seamRef`), and takes over
+// the requests. Once it has, the map stops drawing.
 //
 // Below 921px (where the hero's map overflows its viewport) and with reduced
 // motion, the two stay apart: the hero keeps its flat map and the block
@@ -53,7 +59,7 @@ function Intro({ locale }: { locale: HomeLocale }) {
       <p className={heroStyles.description}>{hero.description}</p>
       <div className={heroStyles.ctaRow}>
         <Link className={heroStyles.primaryCta} href="/register">{hero.primary} <ArrowRight size={18} strokeWidth={1.8} aria-hidden="true" /></Link>
-        <Link className={heroStyles.secondaryCta} href="/plan">{hero.secondary}</Link>
+        <Link className={heroStyles.secondaryCta} href="/pricing">{hero.secondary}</Link>
       </div>
     </section>
   );
@@ -68,8 +74,13 @@ function Relay({ locale }: { locale: HomeLocale }) {
   const boxSlotRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const curlRef = useRef(0);
+  const seamRef = useRef(0);
+  const pausedRef = useRef(false);
+  const activeRef = useRef(false);
   const link = useGlobeLink();
   const [routes, setRoutes] = useState(true);
+  // The 3D globe is up (its fade-in may begin; without WebGL the map stays).
+  const globeReady = useCallback(() => stageRef.current?.setAttribute("data-globe", "ready"), []);
 
   useEffect(() => {
     const track = trackRef.current;
@@ -101,6 +112,10 @@ function Relay({ locale }: { locale: HomeLocale }) {
       stage.style.setProperty("--q", clamp((p - 0.78) / 0.22).toFixed(4));
       stage.style.setProperty("--h", clamp(p / 0.3).toFixed(4));
       stage.style.setProperty("--u", clamp((p - 0.55) / 0.3).toFixed(4));
+      const g = clamp((p - 0.78) / 0.14);
+      stage.style.setProperty("--g", g.toFixed(4));
+      activeRef.current = g > 0.001;
+      pausedRef.current = g >= 0.999 && stage.dataset.globe === "ready";
       stage.toggleAttribute("data-unlocked", p > 0.9);
       if (p < 0.05 !== hubRoutes) {
         hubRoutes = p < 0.05;
@@ -148,16 +163,20 @@ function Relay({ locale }: { locale: HomeLocale }) {
         </div>
 
         <div ref={mapRef} className={styles.mapLayer} aria-label={hero.mapLabel}>
-          <WorldMapCap curlRef={curlRef} graticule routes={routes} steerRef={link.steerRef} tripRef={link.tripRef} label={featureCopy[locale].unlock.mapLabel} />
+          <WorldMapCap curlRef={curlRef} seamRef={seamRef} pausedRef={pausedRef} graticule routes={routes} steerRef={link.steerRef} label={featureCopy[locale].unlock.mapLabel} />
         </div>
 
         <div className={`${unlockStyles.scope} ${styles.unlockLayer}`}>
           <UnlockContent
             locale={locale}
             link={link}
-            mapHostRef={mapRef}
+            mapHostRef={boxSlotRef}
             boxClassName={unlockStyles.clearBox}
-            map={<div ref={boxSlotRef} className={unlockStyles.mapSlot} aria-hidden="true" />}
+            map={(
+              <div ref={boxSlotRef} className={unlockStyles.globeSlot}>
+                <WorldGlobe seamRef={seamRef} activeRef={activeRef} tripRef={link.tripRef} onReady={globeReady} label={featureCopy[locale].unlock.mapLabel} />
+              </div>
+            )}
           />
         </div>
       </div>

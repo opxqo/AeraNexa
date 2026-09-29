@@ -2,7 +2,7 @@
    track's and stage's heights and the stage's sticky top are set from JS;
    --p, --q, --h and --u (0–1) come from the scroll. */
 .track { position: relative; }
-.stage { --p: 0; --q: 0; --h: 0; --u: 0; position: sticky; top: 0; height: 100vh; min-height: 840px; }
+.stage { --p: 0; --q: 0; --h: 0; --u: 0; --g: 0; position: sticky; top: 0; height: 100vh; min-height: 840px; }
 
 /* The hero as it was: headline and CTAs, then the (empty) map viewport the
    map starts from. The headline lifts and fades as the map curls. */
@@ -14,6 +14,7 @@
 /* The one map. Left, top and width come from the hero's slot; the transform
    carries it to the box's slot. The hero's soft edges fade away as it curls. */
 .mapLayer {
+  opacity: calc(1 - var(--g));
   position: absolute;
   z-index: 2;
   transform-origin: 0 0;
@@ -24,6 +25,12 @@
   mask-image: linear-gradient(to bottom, transparent, #000 calc(20% * (1 - var(--p))), #000 calc(100% - 22% * (1 - var(--p))), transparent), linear-gradient(to right, transparent, #000 calc(16% * (1 - var(--p))), #000 calc(100% - 16% * (1 - var(--p))), transparent);
   mask-composite: intersect;
 }
+
+/* Without WebGL (the 3D globe never comes up) the curled map stays. */
+.stage:not([data-globe]) .mapLayer { opacity: 1; }
+/* The flat map's city tags go first, so they don't ghost beside the globe's own. */
+.mapLayer ul[aria-label="Cities"] { opacity: clamp(0, calc(1 - var(--g) * 3), 1); }
+.stage:not([data-globe]) .mapLayer ul[aria-label="Cities"] { opacity: 1; }
 
 /* The block, over the map, in the bottom viewport's worth of the stage. Its
    heading, frame and brand strip fade in with --u; the requests, groups and

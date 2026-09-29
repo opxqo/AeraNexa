@@ -45,8 +45,15 @@
 .ticks i:nth-child(4) { bottom: -7px; right: -7px; }
 
 .map { position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 1600 / 640; transform: translate(calc(28.75% * var(--p)), -50%); will-change: transform; }
+/* The curled map fades out as the 3D globe (in a .map of its own) fades in; without WebGL it stays. */
+.capMap { opacity: calc(1 - var(--g, 0)); }
+.stage:not([data-globe]) .capMap { opacity: 1; }
+.capMap ul[aria-label="Cities"] { opacity: clamp(0, calc(1 - var(--g, 0) * 3), 1); }
+.stage:not([data-globe]) .capMap ul[aria-label="Cities"] { opacity: 1; }
 /* On the home page the hero's map lands here: where .map ends up at --p 1. */
 .mapSlot { position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 1600 / 640; transform: translate(28.75%, -50%); visibility: hidden; pointer-events: none; }
+/* The 3D globe (WorldGlobe), in the same spot; it fades in as --g rises. */
+.globeSlot { position: absolute; left: 0; right: 0; top: 50%; z-index: 0; aspect-ratio: 1600 / 640; transform: translate(28.75%, -50%); pointer-events: none; }
 /* …and the box lets it show through (it sits under the box's contents). */
 .clearBox { background: transparent; }
 
@@ -109,8 +116,8 @@
 .port[data-tone="ok"] { border-color: var(--ok); }
 .port[data-tone="ok"] span { border-color: var(--ok); }
 
-/* What the two colours mean, under the globe. */
-.legend { position: absolute; right: 24px; bottom: 12px; z-index: 6; display: flex; justify-content: flex-end; gap: 24px; color: var(--muted); font: 12px/1.5 var(--mono); letter-spacing: -.02em; opacity: var(--q); }
+/* What the two colours mean, in the bottom-left corner (the ring around the globe takes the rest). */
+.legend { position: absolute; left: 24px; bottom: 12px; z-index: 6; display: flex; justify-content: flex-start; gap: 24px; color: var(--muted); font: 12px/1.5 var(--mono); letter-spacing: -.02em; opacity: var(--q); }
 .legend span { display: inline-flex; align-items: center; gap: 8px; }
 .legend i { width: 24px; height: 2px; border-radius: 2px; background: linear-gradient(to right, rgba(var(--accent-rgb), 0), var(--accent)); }
 .legend [data-tone="ok"] i { background: linear-gradient(to right, rgba(34, 197, 94, 0), #22c55e); }

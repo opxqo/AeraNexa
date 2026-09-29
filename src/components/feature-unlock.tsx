@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Check } from "lucide-react";
 import { siClaude, siGithubcopilot, siGooglegemini, siHbomax, siNetflix, siPerplexity, siSpotify, siTiktok, siYoutube } from "simple-icons";
+import { WorldGlobe } from "@/components/world-globe";
 import { WorldMapCap } from "@/components/world-map-cap";
 import type { CapTrip } from "@/components/world-map-cap-city-layer";
 import { GREEN_PACKET, PACKET, TRAVEL, drawComet, type CometStyle } from "@/lib/demo/cap-comet";
@@ -715,10 +716,14 @@ export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = ""
 export function FeatureUnlock({ locale }: { locale: HomeLocale }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<HTMLDivElement>(null);
+  const globeRef = useRef<HTMLDivElement>(null);
   const curlRef = useRef(0);
+  const seamRef = useRef(0);
+  const pausedRef = useRef(false);
+  const activeRef = useRef(false);
   const link = useGlobeLink();
   const motion = useMotion();
+  const globeReady = useCallback(() => stageRef.current?.setAttribute("data-globe", "ready"), []);
 
   // Scroll → curl and reveal.
   useEffect(() => {
@@ -739,6 +744,11 @@ export function FeatureUnlock({ locale }: { locale: HomeLocale }) {
       stage.style.setProperty("--p", p.toFixed(4));
       // The graph comes in once the globe has shrunk clear of it.
       stage.style.setProperty("--q", Math.min(1, Math.max(0, (p - 0.78) / 0.22)).toFixed(4));
+      // The curled map hands over to the 3D globe (see home-relay.tsx).
+      const g = Math.min(1, Math.max(0, (p - 0.78) / 0.14));
+      stage.style.setProperty("--g", g.toFixed(4));
+      activeRef.current = g > 0.001;
+      pausedRef.current = g >= 0.999 && stage.dataset.globe === "ready";
     };
     update();
     window.addEventListener("scroll", update, { passive: true });
@@ -757,11 +767,16 @@ export function FeatureUnlock({ locale }: { locale: HomeLocale }) {
         <UnlockContent
           locale={locale}
           link={link}
-          mapHostRef={mapRef}
+          mapHostRef={globeRef}
           map={(
-            <div ref={mapRef} className={styles.map}>
-              <WorldMapCap curlRef={curlRef} graticule routes={!motion} steerRef={link.steerRef} tripRef={link.tripRef} label={featureCopy[locale].unlock.mapLabel} />
-            </div>
+            <>
+              <div className={`${styles.map} ${styles.capMap}`}>
+                <WorldMapCap curlRef={curlRef} seamRef={seamRef} pausedRef={pausedRef} graticule routes={!motion} steerRef={link.steerRef} label={featureCopy[locale].unlock.mapLabel} />
+              </div>
+              <div ref={globeRef} className={styles.map}>
+                <WorldGlobe seamRef={seamRef} activeRef={activeRef} tripRef={link.tripRef} onReady={globeReady} label={featureCopy[locale].unlock.mapLabel} />
+              </div>
+            </>
           )}
         />
       </div>

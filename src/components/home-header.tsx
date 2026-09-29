@@ -164,7 +164,7 @@ export function HomeHeader({ locale }: { locale: HomeLocale }) {
                 <NavigationMenu.Link render={<Link href="/node" />} className={styles.navDirectLink}>{copy.nodes}</NavigationMenu.Link>
               </NavigationMenu.Item>
               <NavigationMenu.Item>
-                <NavigationMenu.Link render={<Link href="/plan" />} className={styles.navDirectLink}>{copy.pricing}</NavigationMenu.Link>
+                <NavigationMenu.Link render={<Link href="/pricing" />} className={styles.navDirectLink}>{copy.pricing}</NavigationMenu.Link>
               </NavigationMenu.Item>
               <NavigationMenu.Item value="help">
                 <NavigationMenu.Trigger className={styles.navTrigger}>
@@ -223,7 +223,7 @@ export function HomeHeader({ locale }: { locale: HomeLocale }) {
             <MobileMenuSection title={copy.product} sections={copy.menus.product} open={mobileGroup === "product"}
               onOpenChange={(open) => setMobileGroup(open ? "product" : null)} onNavigate={closeMobile} />
             <Link href="/node" onClick={closeMobile} className={styles.mobileDirectLink}>{copy.nodes}</Link>
-            <Link href="/plan" onClick={closeMobile} className={styles.mobileDirectLink}>{copy.pricing}</Link>
+            <Link href="/pricing" onClick={closeMobile} className={styles.mobileDirectLink}>{copy.pricing}</Link>
             <MobileMenuSection title={copy.help} sections={copy.menus.help} open={mobileGroup === "help"}
               onOpenChange={(open) => setMobileGroup(open ? "help" : null)} onNavigate={closeMobile} />
             <div className={styles.mobileMenuActions}>

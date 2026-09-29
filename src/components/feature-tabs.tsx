@@ -269,7 +269,7 @@ export function FeatureTabs({ locale }: { locale: HomeLocale }) {
                 <div className={styles.plan}>
                   <div className={styles.planHead}>
                     <div><h4>{copy.traffic.planTitle}</h4><p>{copy.traffic.planLead} · <span className={styles.sample}>{copy.traffic.samplePlan}</span></p></div>
-                    <Link className={styles.cta} href="/plan">{copy.traffic.planCta}</Link>
+                    <Link className={styles.cta} href="/pricing">{copy.traffic.planCta}</Link>
                   </div>
                   <PlanBox tabs={copy.traffic.planTabs} />
                 </div>

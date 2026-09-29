@@ -10,7 +10,7 @@ type City = CapCity;
 
 const cityByName = new Map(cities.map((city) => [city.name, city]));
 // Matches the @container cap (max-width: 600px) rule that hides secondary cities.
-const SMALL_MAP_WIDTH = 600;
+export const SMALL_MAP_WIDTH = 600;
 
 // Launch rhythm: every BEAT seconds one comet leaves the China hub, which
 // works through its destinations in order.
@@ -23,13 +23,13 @@ const BEAT = 1.6;
 const CYCLE_SECONDS = 14;
 const LIFE = TRAVEL + SHOCKWAVE.duration;
 // At least one end must be this visible for a launch.
-const LAUNCH_FADE = 0.6;
+export const LAUNCH_FADE = 0.6;
 // Comets fade out over the outer edges of the map (shares of its width),
 // about where the city tags fade.
 const EDGE_CLEAR = 0.01;
 const EDGE_SOLID = 0.07;
 // Shockwave size: 38px on a full map, smaller on narrow ones.
-const shockwaveRadius = (width: number) => Math.min(38, width * 0.03);
+export const shockwaveRadius = (width: number) => Math.min(38, width * 0.03);
 
 // A round trip for pages that tell the story of one request (the home page's
 // "unlock" block): the request reaches China (a small orange ring), a comet
@@ -41,15 +41,15 @@ const shockwaveRadius = (width: number) => Math.min(38, width * 0.03);
 // phases are mapped onto cap-comet.ts's own (a synthetic `phase`), so neither
 // drawComet nor drawShockwave needs to know about trips.
 export type CapTrip = { city: string; delay?: number; onArrive?: () => void; onReturn?: () => void };
-const TRIP = { receive: 0.5, out: 1.5, land: 1.3, gap: 0.3, back: 1.3, home: 1.0, launch: 0.15, tail: 0.25 };
-const TRIP_ARRIVE = TRIP.launch + TRIP.out;
-const TRIP_BACK = TRIP_ARRIVE + TRIP.gap;
-const TRIP_HOME = TRIP_BACK + TRIP.back;
-const TRIP_END = TRIP_HOME + TRIP.home;
+export const TRIP = { receive: 0.5, out: 1.5, land: 1.3, gap: 0.3, back: 1.3, home: 1.0, launch: 0.15, tail: 0.25 };
+export const TRIP_ARRIVE = TRIP.launch + TRIP.out;
+export const TRIP_BACK = TRIP_ARRIVE + TRIP.gap;
+export const TRIP_HOME = TRIP_BACK + TRIP.back;
+export const TRIP_END = TRIP_HOME + TRIP.home;
 
 // Phase for a comet that left at `at` and flies for `travel` seconds, then
 // runs its tail into the impact point.
-function tripPhase(time: number, at: number, travel: number) {
+export function tripPhase(time: number, at: number, travel: number) {
   const elapsed = time - at;
   if (elapsed < 0) return -1;
   if (elapsed < travel) return TRAVEL * (elapsed / travel);
@@ -57,11 +57,11 @@ function tripPhase(time: number, at: number, travel: number) {
 }
 
 // Phase for a shockwave that began at `at` and plays over `length` seconds.
-const wavePhase = (time: number, at: number, length: number) => TRAVEL + SHOCKWAVE.duration * ((time - at) / length);
+export const wavePhase = (time: number, at: number, length: number) => TRAVEL + SHOCKWAVE.duration * ((time - at) / length);
 
 // Tags are centred above their marker. Where two markers are close enough for
 // tags to collide, one tag drops below instead.
-const below = new Set<string>(["Singapore", "Frankfurt"]);
+export const below = new Set<string>(["Singapore", "Frankfurt"]);
 // Shift tags gradually toward the inside of the map near either edge.
 const EDGE_ZONE = CAP_VIEW_WIDTH * 0.12;
 function tagAnchor(x: number) {

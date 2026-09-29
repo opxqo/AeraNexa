@@ -203,6 +203,17 @@ git checkout 4706b13 -- src/lib/demo/cap-dots.ts src/components/world-map-cap.ts
 - **手机端和减少动态效果**：不接力。Hero 保持原来的平面地图，下面放独立的 `FeatureUnlock`（自带一张地球，走手机布局）。
 - **双语**：特性模块文案都在 `src/lib/feature-copy.ts`，写法同 `home-copy.ts`；组件都接收 `locale`，`/demo/features` 也读同一个 cookie。
 
+## 9.2 模块里的地球：卷完后换成 3D 球（2026-09-29）
+
+Hero 的地图照旧卷曲、缩小、落进「AI 与流媒体解锁」模块；卷完后**淡出，同位置淡入 `/demo/world-map/globe` 那种真 3D 球**（`src/components/world-globe.tsx`），请求往返改在这颗球上演。Hero 本身不变（试过给 Hero 地图垫一个球体，效果不好，已撤掉）。
+
+- **接力**：`--g = clamp((p − .78) / .14)`（与节点图的 `--q` 同起点），写在 stage 上；平面地图层 `opacity: calc(1 − var(--g))`，3D 球 `opacity: var(--g)`；平面地图自带的城市标签淡得更快（`--g × 3`），避免和 3D 球的标签重影。3D 球起来之前（或没有 WebGL）stage 没有 `data-globe`，平面地图保持可见。`g ≥ .999` 且 3D 球就绪后 `pausedRef` 让平面地图停止绘制（seam 照常推进）。
+- **朝向**：3D 球自己不转，读 `WorldMapCap` 的 `seamRef`（中心经度 = seam + 180），所以淡入时两颗球是同一面；镜头转向（`steerRef`，45°/s）仍由平面地图负责。倾角 18°（北方朝向观众），和卷曲地球一致。
+- **投影**：`src/lib/demo/globe-projection.ts` 手写了 three.js 相机（竖直 fov 42°，先绕 y 转、再绕 x 倾），点阵壳（r = 1.074）的轮廓占宿主高度的 `CAP_GLOBE_FILL`（88%），所以环线半径公式不用改。城市标签、冲击波的地面椭圆、彗星路径（大圆弧，长途更高，被海洋球挡住的部分截掉）都用它算。
+- **往返**：`WorldGlobe` 实现 `tripRef`（和 `WorldMapCapCityLayer` 同一套时序常量、暂停平移、回调补发、`data-hot`；常量和 `tripPhase` / `wavePhase` 从城市层文件 `export` 出来共用），彗星和冲击波复用 `cap-comet.ts` 的 `drawComet` / `drawShockwave`（单位 = CSS 像素）。平面地图不再接 `tripRef`；Hero 阶段的中国枢纽循环发彗星（`routes`）仍属于平面地图。
+- **中国**：`scripts/generate-demo-globe-points.py` 现在复用 `generate-demo-cap-map.py` 的 `china()`，给 `world-globe-points.json` 加了 `chinaPoints`、`chinaEdgePoints`（下标）和 `borderPoints`（边界与九段线，经纬度），原字段不变，`/demo/world-map/globe` 不受影响。3D 球里陆地点黑（`#262626`）、中国橙（`#f45300`）、大气橙。
+- **落点**：模块盒里的 `.globeSlot`（`feature-unlock.module.css`）取代了原来的空槽位，同时是接力的落点和 `mapHostRef`（环线、枢纽 "China" 都在它里面找）。独立的 `FeatureUnlock`（窄屏、`/demo/features`）同样接线；窄屏 `--g` 恒为 1。
+
 ## 10. 验证方法（下次沿用）
 
 - **生成产物可复现**：`python3 scripts/generate-demo-cap-map.py --check`。

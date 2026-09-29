@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { WorldMapCapCityLayer, type CapTrip } from "@/components/world-map-cap-city-layer";
 import { CAP_DOTS_DESKTOP, CAP_DOTS_MOBILE, createCapDots, type CapLandData } from "@/lib/demo/cap-dots";
-import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capSilhouette, getCapCurl, setCapCurl, sphereAngles, toView } from "@/lib/demo/cap-projection";
+import { CAP_SEAM_LONGITUDE, CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capHalfTheta, capLatRange, capSilhouette, getCapCurl, setCapCurl, sphereAngles, toView } from "@/lib/demo/cap-projection";
 import styles from "./world-map-cap.module.css";
 
 // One full turn every 60 seconds, eastward.
@@ -14,7 +14,7 @@ const STEER_SECONDS = 0.6;
 const STEER_MAX_DEGREES_PER_SECOND = 45;
 // Matches the @container cap (max-width: 600px) switch in the CSS.
 const MOBILE_WIDTH = 600;
-const COLOR = "#2662FF";
+const COLOR = "#262626";
 // China in the accent orange (keep in step with --accent in the city layer CSS).
 const CHINA_COLOR = "#f45300";
 
@@ -62,7 +62,39 @@ function drawGraticule(context: CanvasRenderingContext2D, seam: number) {
   context.stroke();
 }
 
-// `curlRef` (optional, the /demo/world-map/cap scroll effect) holds how far
+// The cap is cut off at its northern edge, where the land dots run out in
+// places (the Arctic Ocean), leaving gaps in the rim. This closes it with a
+// dotted line along that edge, in the coast dots' colour and size, fading out
+// as the map curls into a globe (whose outline takes over).
+const RIM_STEP = 1.5;
+function drawRim(context: CanvasRenderingContext2D, seam: number, radius: number, alpha: number) {
+  const { north } = capLatRange();
+  const half = capHalfTheta();
+  context.fillStyle = COLOR;
+  context.globalAlpha = alpha;
+  context.beginPath();
+  let last: { x: number; y: number } | null = null;
+  let lastTheta = 0;
+  for (let longitude = -180; longitude <= 180; longitude += RIM_STEP) {
+    const angles = sphereAngles(longitude, Math.min(north, 89.5), seam);
+    // Not across the seam, where the map wraps, and not round the back.
+    const wrapped = Math.abs(angles.theta - lastTheta) > half;
+    lastTheta = angles.theta;
+    if (getCapCurl() > 0 && capFacing(angles) <= 0) continue;
+    const point = toView(angles);
+    // Dots about a coast-dot spacing apart along the arc.
+    if (!wrapped && last && Math.hypot(point.x - last.x, point.y - last.y) < radius * 4.5) continue;
+    context.moveTo(point.x + radius, point.y);
+    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    last = point;
+  }
+  context.fill();
+}
+
+// `seamRef` receives the seam longitude every frame (the 3D globe that takes
+// over from a curled map faces the same way), and `pausedRef` stops the
+// drawing while true (the seam still turns). `curlRef` (optional, the
+// /demo/world-map/cap scroll effect) holds how far
 // the cap has curled into a globe, 0–1; it is read every frame, so scrolling
 // never re-renders React. Without it the map stays a cap. `globe` shows the
 // map fully curled from the first frame (the cap's static SVG is skipped),
@@ -79,6 +111,8 @@ export function WorldMapCap({
   globe = false,
   graticule = false,
   routes = true,
+  seamRef,
+  pausedRef,
   steerRef,
   tripRef,
 }: {
@@ -88,6 +122,8 @@ export function WorldMapCap({
   globe?: boolean;
   graticule?: boolean;
   routes?: boolean;
+  seamRef?: RefObject<number>;
+  pausedRef?: RefObject<boolean>;
   steerRef?: RefObject<number | null>;
   tripRef?: RefObject<((trip: CapTrip) => boolean) | null>;
 }) {
@@ -148,13 +184,14 @@ export function WorldMapCap({
             context.globalAlpha = curl;
             context.beginPath();
             context.arc(x, y, radius, 0, Math.PI * 2);
-            context.fillStyle = "rgba(38, 98, 255, 0.035)";
+            context.fillStyle = "rgba(38, 38, 38, 0.035)";
             context.fill();
-            context.strokeStyle = "rgba(38, 98, 255, 0.28)";
+            context.strokeStyle = "rgba(38, 38, 38, 0.28)";
             context.lineWidth = 1.2;
             context.stroke();
           }
           if (graticule && curl > 0) drawGraticule(context, seam);
+          if (curl < 1) drawRim(context, seam, params.coastRadius, 0.55 * (1 - curl));
           const layers = [
             [COLOR, land, params.landRadius, 0.72],
             [COLOR, coast, params.coastRadius, 0.95],
@@ -181,6 +218,9 @@ export function WorldMapCap({
         // map on the page, so each map sets its own right before it projects
         // anything (markers, then dots, all in the same synchronous pass).
         const render = () => {
+          if (seamRef) seamRef.current = seam;
+          // Once the 3D globe has taken over, only the seam keeps moving.
+          if (pausedRef?.current) return;
           setCapCurl(globe ? 1 : curlRef?.current ?? 0);
           updateCitiesRef.current?.(seam, width, height);
           draw(seam);
@@ -240,7 +280,7 @@ export function WorldMapCap({
       controller.abort();
       cleanup();
     };
-  }, [curlRef, globe, graticule, steerRef]);
+  }, [curlRef, globe, graticule, pausedRef, seamRef, steerRef]);
 
   return (
     <div ref={frameRef} className={`${styles.frame} ${className}`}>

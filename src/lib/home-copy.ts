@@ -61,7 +61,7 @@ export const homeCopy: Record<HomeLocale, HomeCopy> = {
       menus: {
         product: [
           { heading: "探索产品", entries: [{ label: "产品概览", href: "/" }, { label: "全球节点", href: "/node" }] },
-          { heading: "开始使用", entries: [{ label: "套餐价格", href: "/plan" }, { label: "创建账户", href: "/register" }] },
+          { heading: "开始使用", entries: [{ label: "套餐价格", href: "/pricing" }, { label: "创建账户", href: "/register" }] },
         ],
         help: [
           { heading: "支持资源", entries: [{ label: "使用文档", href: "/knowledge" }] },
@@ -101,7 +101,7 @@ export const homeCopy: Record<HomeLocale, HomeCopy> = {
       menus: {
         product: [
           { heading: "Explore", entries: [{ label: "Overview", href: "/" }, { label: "Global nodes", href: "/node" }] },
-          { heading: "Get started", entries: [{ label: "Pricing", href: "/plan" }, { label: "Create account", href: "/register" }] },
+          { heading: "Get started", entries: [{ label: "Pricing", href: "/pricing" }, { label: "Create account", href: "/register" }] },
         ],
         help: [
           { heading: "Support", entries: [{ label: "Documentation", href: "/knowledge" }] },

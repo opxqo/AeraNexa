@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Generate reproducible land points for the standalone Three.js globe demo.
 
-Source: world-atlas@2 land-110m.json (Natural Earth 1:110m).
+Source: world-atlas@2 land-110m.json (Natural Earth 1:110m). China (the
+cap map's definition: China, Taiwan and South Tibet, with its borders and the
+ten-dash line) is flagged too, so the home page's globe can show it in the
+accent colour: `chinaPoints` / `chinaEdgePoints` are indices into `points` /
+`edgePoints`, and `borderPoints` are extra lon/lat dots along China's borders.
 Run with --check to verify the committed browser asset.
 """
 
@@ -14,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "scripts" / "data" / "land-110m.json"
+COUNTRIES = ROOT / "scripts" / "data" / "countries-110m.json"
 OUTPUT = ROOT / "public" / "demo" / "world-globe-points.json"
 STEP_DEGREES = 1.2
 
@@ -24,6 +29,10 @@ def generate():
     source = SOURCE.read_bytes()
     polygons = geometry["decode_topology"](json.loads(source))
     is_land = geometry["is_land"]
+    cap = runpy.run_path(str(ROOT / "scripts" / "generate-demo-cap-map.py"))
+    china_bits, borders = cap["china"](json.loads(COUNTRIES.read_bytes()), geometry["decode_topology"], geometry["in_ring"], is_land)
+    in_china = cap["mask_lookup"](china_bits)
+    near_china = cap["mask_lookup"](china_bits, reach=1)
     points = []
     edge_points = set()
 
@@ -50,6 +59,21 @@ def generate():
 
     assert len(points) > 20000 and len(points) % 2 == 0
     edges = [coordinate for point in sorted(edge_points) for coordinate in point]
+    china_points = [index for index in range(len(points) // 2) if in_china(points[index * 2], points[index * 2 + 1])]
+    china_edges = [index for index in range(len(edges) // 2) if near_china(edges[index * 2], edges[index * 2 + 1])]
+    # Dots along the borders, about 0.9 degrees apart like the coastline's.
+    border_points = []
+    seen = set()
+    for line in borders:
+        for start, end in zip(line, line[1:]):
+            distance = max(abs(end[0] - start[0]) * math.cos(math.radians((start[1] + end[1]) / 2)), abs(end[1] - start[1]))
+            steps = max(1, math.ceil(distance / 0.9))
+            for index in range(steps + 1):
+                t = index / steps
+                dot = (round(start[0] + (end[0] - start[0]) * t, 3), round(start[1] + (end[1] - start[1]) * t, 3))
+                if dot not in seen:
+                    seen.add(dot)
+                    border_points.extend(dot)
     return json.dumps({
         "source": "Natural Earth 1:110m via world-atlas@2",
         "sourceSha256": hashlib.sha256(source).hexdigest(),
@@ -58,6 +82,9 @@ def generate():
         "points": points,
         "edgePointCount": len(edge_points),
         "edgePoints": edges,
+        "chinaPoints": china_points,
+        "chinaEdgePoints": china_edges,
+        "borderPoints": border_points,
     }, separators=(",", ":")) + "\n"
 
 

@@ -1,0 +1,132 @@
+/* /demo/pricing, after lightdash.com/pricing (a Framer site; every value
+   measured at 1238px: a 1238px column with 64px side padding, so 1110px of
+   content, tables inset 80px). Flat and square-cornered: dashed hairlines,
+   a #f6f8fa band behind the cards and tables, a dark middle card. Their
+   purple is this site's orange; their fonts (Britti Sans, Inter) are the
+   site's own. */
+.page {
+  --ink: #272835;
+  --text: #36394a;
+  --muted: #666d80;
+  --label: #818898;
+  --band: #f6f8fa;
+  --button: #f8fafb;
+  --accent: #f45300;
+  --accent-rgb: 244, 83, 0;
+  --rule: #e5e7eb;
+  --edge: #dfe1e7;
+  --ease: cubic-bezier(.32, .72, 0, 1);
+  min-height: 100vh;
+  overflow-x: clip;
+  color: var(--text);
+  background: #fff;
+  font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.column { position: relative; max-width: 1238px; margin: 0 auto; }
+/* Framer draws borders as overlays that take no layout width; so do these. */
+.column::after, .plan::after { content: ""; position: absolute; inset: 0; z-index: 4; border: 1px solid var(--rule); pointer-events: none; }
+.column::after { border-block: 0; }
+/* Under the site header (60px, fixed) on the pricing page. */
+.underHeader { padding-top: 60px; }
+
+/* ---- Buttons: 40px, 6px radius, a 1px #dfe1e7 edge, 15px / 500 ---- */
+.button { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 40px; padding: 0 20px; color: var(--ink); background: var(--button); border: 1px solid var(--edge); border-radius: 6px; font-size: 15px; font-weight: 500; line-height: 18px; text-decoration: none; white-space: nowrap; transition: background-color .2s; }
+.button:hover { background: #eef1f4; }
+.button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- Hero: 209px with a dashed line under it; the headline's last line
+   sits 3px above that line ---- */
+.hero { position: relative; box-sizing: border-box; display: flex; align-items: flex-end; height: 209px; padding: 0 64px 2px; border-bottom: 1px dashed var(--rule); }
+.hero h1 { position: relative; z-index: 1; margin: 0; color: #000; font-size: 56px; font-weight: 800; line-height: 50.4px; letter-spacing: -1.12px; }
+.heroArt { position: absolute; top: 0; right: 0; width: 223px; height: 209px; }
+.spacer { height: 88px; }
+
+/* ---- Plans ---- */
+.band { padding: 24px 64px; background: var(--band); }
+/* The cards on their own inside another page (the home page): no page height,
+   no grey band, the host page's own margins. */
+.page[data-embed] { position: relative; max-width: 1200px; min-height: 0; margin: 0 auto; background: transparent; }
+.page[data-embed] .band { padding: 0; background: transparent; }
+.homeMore { margin: 32px 0 0; text-align: center; }
+.homeMore a { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 15px; font-weight: 500; text-decoration: none; }
+.homeMore a:hover { color: var(--accent); }
+.plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.plan { position: relative; display: flex; flex-direction: column; background: #fff; }
+.plan::after { z-index: 1; border-color: var(--edge); }
+.plan:is([data-featured], [data-night]) { color: #f8fafb; background: var(--ink); }
+/* The Galaxy card: deep midnight indigo with a faint nebula glow at the top right. */
+.plan[data-night] { background: radial-gradient(120% 70% at 100% 0, rgba(140, 110, 255, .16), transparent 60%), #1b1836; }
+/* 20px cells, 1px in from the top and right edges. */
+.scene { position: absolute; top: 1px; right: 1px; z-index: 0; pointer-events: none; }
+/* From the card's outer top: label at 43, title 75, description 114 (two
+   lines reserved), button 194–234, this block ends at 257. */
+.planTop { position: relative; z-index: 1; padding: 43px 32px 23px; }
+.planLabel { color: var(--label); font-size: 18px; font-weight: 500; line-height: 16.2px; letter-spacing: -.36px; }
+.plan:is([data-featured], [data-night]) .planLabel { color: #ff8a3d; }
+.planTitle { display: flex; align-items: baseline; gap: 4px; height: 19.2px; margin-top: 16px; }
+.planHeadline { color: #000; font-size: 32px; font-weight: 700; line-height: 19.2px; letter-spacing: -1.12px; }
+.plan:is([data-featured], [data-night]) .planHeadline { color: #f8fafb; }
+.planUnit { color: var(--muted); font-size: 14px; line-height: 14px; letter-spacing: -.14px; }
+.plan:is([data-featured], [data-night]) .planUnit { color: #f8fafb; }
+.planBlurb { margin: 20px 0 0; min-height: 40px; color: var(--muted); font-size: 14px; line-height: 20px; letter-spacing: -.28px; }
+.plan:is([data-featured], [data-night]) .planBlurb { color: #f8fafb; }
+.planBlurb b { color: inherit; font-weight: 700; }
+.plan:is([data-featured], [data-night]) .planBlurb b { color: #fff; }
+.planTop .button { width: 100%; margin-top: 40px; }
+/* 257–307: the eyebrow (text at 277) over a dashed rule, on every card. */
+.planEyebrow { box-sizing: border-box; height: 50px; padding: 20px 32px 0; color: var(--label); font-size: 14px; line-height: 20px; letter-spacing: .02em; text-transform: uppercase; border-bottom: 1px dashed var(--rule); }
+.plan:is([data-featured], [data-night]) .planEyebrow { color: rgba(248, 250, 251, .6); border-bottom-color: #fff; }
+/* Features from 323; icon at x 36 (9×7), text at x 55, 10px apart. */
+.features { flex: 1; display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 16px 32px 32px; list-style: none; }
+.feature { display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 10px; font-size: 14px; line-height: 20px; }
+.tick { width: 9px; height: 7px; margin: 8px 0 0 4px; color: var(--muted); overflow: visible; }
+.plan:is([data-featured], [data-night]) .tick { color: var(--accent); }
+
+/* ---- Comparison tables ---- */
+/* 212px of white, then a 150px block with a dashed line under it: the title
+   (48px) ends 3px above the line. */
+.compareHead { position: relative; box-sizing: border-box; display: flex; align-items: flex-end; height: 150px; margin-top: 212px; padding: 0 64px 2px; border-bottom: 1px dashed var(--rule); }
+.compareTitle { margin: 0; color: var(--ink); font-size: 48px; font-weight: 500; line-height: 43.2px; letter-spacing: -.48px; }
+.tables { padding-top: 40px; }
+.table { padding: 20px 80px; background: var(--band); }
+.panel { background: #fff; }
+.tableScroll { overflow-x: auto; }
+/* Dashed everywhere: the header has an edge all round, rows have left, right
+   and bottom edges, and each value column a rule on its left. */
+.row { box-sizing: border-box; display: grid; grid-template-columns: calc((100% + 2px) * .4) repeat(3, minmax(0, 1fr)); min-height: 44px; border: 1px dashed var(--rule); border-top: 0; }
+.rowHead { position: sticky; top: 0; z-index: 3; height: 60px; background: #fff; border-top: 1px dashed var(--rule); }
+.cellName { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 15px; color: var(--muted); font-size: 15px; font-weight: 500; line-height: 20px; letter-spacing: -.28px; background: #fff; }
+.rowHead .cellName { color: var(--ink); font-size: 20px; letter-spacing: -.4px; }
+.cell { display: flex; align-items: center; justify-content: center; padding: 10px 12px; color: var(--text); font-size: 14px; font-weight: 500; line-height: 15px; letter-spacing: -.28px; text-align: center; border-left: 1px dashed var(--rule); }
+.rowHead .cell { color: var(--ink); font-size: 16px; letter-spacing: -.4px; }
+.titleIcon { flex: none; width: 22px; height: 22px; color: var(--accent); }
+.check { width: 19px; height: 18px; }
+.cross { width: 19px; height: 18px; padding: 3.5px 4.5px; box-sizing: border-box; color: #9ba1af; }
+.rich { display: block; color: #818898; font-size: 12px; font-weight: 400; line-height: 18px; letter-spacing: 0; white-space: pre-line; }
+.rich b { color: var(--ink); font-weight: 700; }
+/* Rows with a note: dotted underline, and the note on hover. */
+.tip { position: relative; text-decoration: underline dotted rgba(var(--accent-rgb), .6); text-underline-offset: 5px; cursor: help; }
+/* 220px, 114px right of the name and 22px above it, over the row above. */
+.tip::after { content: attr(data-tip); position: absolute; left: 114px; top: -22px; z-index: 5; box-sizing: border-box; width: 220px; padding: 12px 16px; color: #f8fafb; background: rgba(39, 40, 53, .8); border-radius: 10px; box-shadow: 0 10px 20px rgba(0, 0, 0, .05); font-size: 12px; font-weight: 400; line-height: 20px; letter-spacing: 0; text-decoration: none; white-space: normal; opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity .15s, transform .15s; }
+.tip:hover::after, .tip:focus-visible::after { opacity: 1; transform: none; }
+.tip:focus-visible { outline: none; }
+
+@media (max-width: 960px) {
+  .hero { height: 180px; padding: 0 20px 2px; }
+  .hero h1 { font-size: 40px; line-height: 40px; letter-spacing: -.8px; }
+  .heroArt { width: 150px; height: 140px; }
+  .spacer { height: 40px; }
+  .band { padding: 16px 16px; }
+  .plans { grid-template-columns: 1fr; }
+  .compareHead { height: 120px; margin-top: 64px; padding: 0 20px 2px; }
+  .compareTitle { font-size: 34px; line-height: 36px; }
+    .tables { padding-top: 24px; }
+  .table { padding: 12px 16px; }
+  .row { min-width: 640px; }
+  .rowHead { position: static; }
+  .cellName { position: sticky; left: 0; z-index: 1; padding: 8px 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tip::after { transition: none; }
+}

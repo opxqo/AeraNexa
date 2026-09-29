@@ -2,6 +2,7 @@ import { HomeHeader } from "@/components/home-header";
 import { FeatureBento } from "@/components/feature-bento";
 import { FeatureClients } from "@/components/feature-clients";
 import { FeatureTabs } from "@/components/feature-tabs";
+import { HomePricing } from "@/components/home-pricing";
 import { HomeRelay } from "@/components/home-relay";
 import { featureCopy } from "@/lib/feature-copy";
 import { homeCopy, type HomeLocale } from "@/lib/home-copy";
@@ -39,6 +40,8 @@ export function HomeHero({ locale }: { locale: HomeLocale }) {
           <FeatureTabs locale={locale} />
 
           <div className={featureStyles.block}><FeatureClients locale={locale} /></div>
+
+          <HomePricing locale={locale} />
         </section>
       </main>
     </div>

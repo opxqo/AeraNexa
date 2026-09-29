@@ -1,0 +1,14 @@
+/* Site-wide loading placeholder: the same pulsing block as shadcn's Skeleton
+   (2s ease-in-out, opacity 1 → .5, 6px radius), in this site's own tokens
+   instead of Tailwind, so it works outside the admin area. Size it with
+   width / height (className or style). */
+.skeleton {
+  display: block;
+  background: #f0f0f0;
+  border-radius: 6px;
+  animation: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;
+}
+@keyframes pulse { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
