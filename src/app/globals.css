@@ -2379,3 +2379,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .v2-table[data-stack] td small { margin-top: 2px; }
   .v2-table[data-stack] td:not([data-full]) > div { justify-content: flex-end; flex-wrap: wrap; }
 }
+
+/* Opening splash (components/home-splash.tsx): until it mounts, a page-coloured cover hides the
+   home page, so there is no flash of content before hydration. The layout's inline script sets
+   data-splash="on" only when a splash is due; without JS nothing is covered. If hydration never
+   comes, the cover lifts by itself after 8s. */
+html[data-splash="on"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: #fcfcfd;
+  pointer-events: none;
+  animation: splash-cover-out .3s ease 8s forwards;
+}
+@keyframes splash-cover-out { to { opacity: 0; visibility: hidden; } }

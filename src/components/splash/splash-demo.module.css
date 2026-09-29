@@ -1,0 +1,135 @@
+/* The stand-in hero under the splash: page colour and blueprint grid as home-hero.module.css,
+   the intro block, then the map slot with the hero's soft-edge mask. */
+.page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  overflow: clip;
+  color: #071329;
+  background: #fcfcfd;
+  font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(30, 70, 130, .02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 70, 130, .02) 1px, transparent 1px),
+    linear-gradient(rgba(30, 70, 130, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 70, 130, .035) 1px, transparent 1px);
+  background-size: 6px 6px, 6px 6px, 48px 48px, 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+}
+
+.intro {
+  padding: 102px 20px 0;
+  text-align: center;
+}
+.eyebrow {
+  margin: 0 0 14px;
+  color: #8096c4;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+.title {
+  margin: 0;
+  font-size: clamp(36px, 6vw, 64px);
+  font-weight: 700;
+  letter-spacing: -.035em;
+  line-height: 1.06;
+}
+.title em { color: #f45300; font-style: normal; }
+.lead {
+  margin: 18px auto 0;
+  max-width: 420px;
+  color: #5a6b85;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.mapViewport {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1600px);
+  aspect-ratio: 1600 / 640;
+  margin: -20px auto 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20%, #000 78%, transparent), linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to bottom, transparent, #000 20%, #000 78%, transparent), linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
+  mask-composite: intersect;
+}
+
+/* Sits above the splash so variants and modes can be switched while it is on screen. */
+.controls {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  background: rgba(255, 255, 255, .88);
+  border: 1px solid rgba(16, 16, 16, .12);
+  border-radius: 18px;
+  backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+}
+.row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; }
+.group { display: flex; gap: 2px; }
+
+.btn {
+  height: 30px;
+  padding: 0 12px;
+  color: #101010;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.btn:hover:not(:disabled) { background: rgba(16, 16, 16, .06); }
+.btn[data-on="true"] { color: #fff; background: #101010; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+.fps {
+  padding: 0 6px;
+  color: #5a6b85;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.diff {
+  max-width: 560px;
+  padding: 0 8px 2px;
+  color: #101010;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.scrub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  color: #101010;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.scrub input { width: 140px; accent-color: #f45300; }

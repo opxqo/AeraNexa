@@ -7,6 +7,7 @@ import { FeatureUnlock, UnlockContent, useGlobeLink } from "@/components/feature
 import { WorldGlobe } from "@/components/world-globe";
 import { WorldMapCap } from "@/components/world-map-cap";
 import { featureCopy } from "@/lib/feature-copy";
+import { useHomeMapReady } from "@/lib/splash-state";
 import { homeCopy, type HomeLocale } from "@/lib/home-copy";
 import heroStyles from "@/app/home-hero.module.css";
 import unlockStyles from "./feature-unlock.module.css";
@@ -79,6 +80,8 @@ function Relay({ locale }: { locale: HomeLocale }) {
   const activeRef = useRef(false);
   const link = useGlobeLink();
   const [routes, setRoutes] = useState(true);
+  // On the first visit the opening splash lands its dots on this map; the map itself starts as it hands over.
+  const mapReady = useHomeMapReady();
   // The 3D globe is up (its fade-in may begin; without WebGL the map stays).
   const globeReady = useCallback(() => stageRef.current?.setAttribute("data-globe", "ready"), []);
 
@@ -159,11 +162,11 @@ function Relay({ locale }: { locale: HomeLocale }) {
       <div ref={stageRef} className={styles.stage}>
         <div ref={heroRef} className={styles.heroLayer}>
           <div className={styles.heroIntro}><Intro locale={locale} /></div>
-          <div ref={heroSlotRef} className={`${heroStyles.mapViewport} ${styles.heroSlot}`} aria-hidden="true" />
+          <div ref={heroSlotRef} className={`${heroStyles.mapViewport} ${styles.heroSlot}`} aria-hidden="true" data-splash-target="" />
         </div>
 
         <div ref={mapRef} className={styles.mapLayer} aria-label={hero.mapLabel}>
-          <WorldMapCap curlRef={curlRef} seamRef={seamRef} pausedRef={pausedRef} graticule routes={routes} steerRef={link.steerRef} label={featureCopy[locale].unlock.mapLabel} />
+          {mapReady && <WorldMapCap curlRef={curlRef} seamRef={seamRef} pausedRef={pausedRef} graticule routes={routes} steerRef={link.steerRef} label={featureCopy[locale].unlock.mapLabel} />}
         </div>
 
         <div className={`${unlockStyles.scope} ${styles.unlockLayer}`}>
@@ -189,13 +192,14 @@ export function HomeRelay({ locale }: { locale: HomeLocale }) {
   // hydration.
   const relay = useSyncExternalStore(subscribeRelay, () => window.matchMedia(RELAY).matches, () => true);
   const { hero } = homeCopy[locale];
+  const mapReady = useHomeMapReady();
 
   if (relay) return <Relay locale={locale} />;
   return (
     <>
       <Intro locale={locale} />
       <div className={heroStyles.mapViewport} aria-label={hero.mapLabel}>
-        <WorldMapCap className={heroStyles.mapCanvas} label={hero.mapImageLabel} />
+        {mapReady && <WorldMapCap className={heroStyles.mapCanvas} label={hero.mapImageLabel} />}
       </div>
       <div className={styles.apart}>
         <FeatureUnlock locale={locale} />

@@ -1,0 +1,162 @@
+/* Shared by the staged splash variants (map / network / cosmos): the full-screen shell, its
+   readout, and each stage's canvas. Colours come from per-variant custom properties. */
+.root {
+  --sp-bg: #fcfcfd;
+  --sp-ink: #262626;
+  --sp-dim: rgba(38, 38, 38, .5);
+  --sp-track: rgba(38, 38, 38, .12);
+  --sp-accent: #f45300;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  color: var(--sp-ink);
+  background: var(--sp-bg);
+  clip-path: inset(0 0 0 0);
+  font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+.root[data-variant="cosmos"] {
+  --sp-bg: #1e132a;
+  --sp-ink: #f8fafb;
+  --sp-dim: rgba(248, 250, 251, .55);
+  --sp-track: rgba(248, 250, 251, .16);
+  background:
+    radial-gradient(73.39% 80.7% at 7.24% .44%, rgba(133, 59, 206, .16) 0%, rgba(133, 59, 206, 0) 100%),
+    radial-gradient(60% 60% at 50% 55%, rgba(244, 83, 0, .07) 0%, rgba(244, 83, 0, 0) 100%),
+    var(--sp-bg);
+}
+
+/* The hero's blueprint grid (home-hero.module.css .page::before), so the hand-off to it has no seam. */
+.grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(30, 70, 130, .02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 70, 130, .02) 1px, transparent 1px),
+    linear-gradient(rgba(30, 70, 130, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 70, 130, .035) 1px, transparent 1px);
+  background-size: 6px 6px, 6px 6px, 48px 48px, 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+}
+.root[data-variant="cosmos"] .grid { display: none; }
+
+/* Pixel-art texture, as on the plan cards: 45° hairlines over the picture. */
+.root[data-variant="cosmos"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, .035) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 100% at 50% 50%, transparent 55%, rgba(8, 4, 14, .42) 100%);
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.pixelated { image-rendering: pixelated; }
+
+.readout {
+  position: absolute;
+  left: 50%;
+  bottom: max(36px, 8vh);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transform: translateX(-50%);
+  animation: rise .6s cubic-bezier(.22, 1, .36, 1) .1s both;
+}
+
+.pct {
+  color: var(--sp-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .12em;
+  line-height: 1;
+}
+
+.track {
+  display: block;
+  width: 180px;
+  height: 1px;
+  overflow: hidden;
+  background: var(--sp-track);
+}
+.bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--sp-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+/* Cosmos: the scale ruler above the readout. */
+.ruler {
+  position: absolute;
+  left: 50%;
+  bottom: calc(max(36px, 8vh) + 54px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--sp-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.rulerBar {
+  width: 56px;
+  height: 5px;
+  border-right: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  opacity: .8;
+}
+.rulerName { color: var(--sp-ink); }
+
+/* Exit. Curtain: the readout goes first, then the field lifts away. Dissolve: the whole
+   layer fades, to what is already underneath (the hero's own map). */
+.root[data-exit="curtain"][data-phase="exit"] {
+  clip-path: inset(0 0 100% 0);
+  transition: clip-path .7s cubic-bezier(.76, 0, .24, 1) .15s;
+  pointer-events: none;
+}
+.root[data-exit="dissolve"][data-phase="exit"] {
+  opacity: 0;
+  transition: opacity .7s ease;
+  pointer-events: none;
+}
+.root[data-phase="exit"] .readout,
+.root[data-phase="exit"] .ruler {
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .readout { animation: none; }
+  .root[data-exit="curtain"][data-phase="exit"] {
+    clip-path: none;
+    opacity: 0;
+    transition: opacity .4s ease;
+  }
+}

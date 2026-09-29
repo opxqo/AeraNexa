@@ -5,6 +5,7 @@ import { FeatureClients } from "@/components/feature-clients";
 import { FeatureTabs } from "@/components/feature-tabs";
 import { HomePricing } from "@/components/home-pricing";
 import { HomeRelay } from "@/components/home-relay";
+import { HomeSplash } from "@/components/home-splash";
 import { featureCopy } from "@/lib/feature-copy";
 import { homeCopy, type HomeLocale } from "@/lib/home-copy";
 import styles from "@/app/home-hero.module.css";
@@ -19,6 +20,7 @@ export function HomeHero({ locale }: { locale: HomeLocale }) {
 
   return (
     <div className={styles.page} lang={copy.lang}>
+      <HomeSplash />
       <HomeHeader locale={locale} />
 
       <main>
