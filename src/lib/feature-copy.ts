@@ -14,8 +14,19 @@ type FeatureCopy = {
   unlock: {
     title: string;
     lead: string;
-    // The result line on a request that came back: "200 · via Tokyo · 52ms".
+    // The result line on a request that came back: "200 · Tokyo · 52ms".
     done: (city: string, ms: number) => string;
+    // Tag on a service node, by scene.
+    tags: { ai: string; media: string };
+    // The routing node between the services and the globe.
+    gateway: {
+      name: string;
+      tag: string;
+      idle: string;
+      rule: { ai: string; media: string };
+      exit: (city: string) => string;
+      ok: (ms: number) => string;
+    };
     legendRequest: string;
     legendBack: string;
     requestsLabel: string;
@@ -107,7 +118,16 @@ export const featureCopy: Record<HomeLocale, FeatureCopy> = {
     unlock: {
       title: "顶尖 AI 与国际流媒体，一个订阅全部解锁",
       lead: "请求从中国出发，经最合适的海外节点直连目标服务，成功后立即返回。ChatGPT、Claude、Netflix、YouTube 等开箱即用。",
-      done: (city, ms) => `200 · 经 ${city} · ${ms}ms`,
+      done: (city, ms) => `200 · ${city} · ${ms}ms`,
+      tags: { ai: "AI", media: "流媒体" },
+      gateway: {
+        name: "AeraNexa",
+        tag: "智能路由",
+        idle: "待命",
+        rule: { ai: "规则 · AI 服务", media: "规则 · 流媒体" },
+        exit: (city) => `出口 · ${city}`,
+        ok: (ms) => `200 · ${ms}ms`,
+      },
       legendRequest: "请求",
       legendBack: "200 返回",
       requestsLabel: "正在解锁的平台请求",
@@ -231,7 +251,16 @@ export const featureCopy: Record<HomeLocale, FeatureCopy> = {
     unlock: {
       title: "Top AI tools and global streaming, all unlocked with one subscription",
       lead: "Requests leave China, reach each service through the best node abroad, and come straight back. ChatGPT, Claude, Netflix, YouTube and more just work.",
-      done: (city, ms) => `200 · via ${city} · ${ms}ms`,
+      done: (city, ms) => `200 · ${city} · ${ms}ms`,
+      tags: { ai: "AI", media: "Streaming" },
+      gateway: {
+        name: "AeraNexa",
+        tag: "Routing",
+        idle: "Standing by",
+        rule: { ai: "Rule · AI", media: "Rule · Streaming" },
+        exit: (city) => `Exit · ${city}`,
+        ok: (ms) => `200 · ${ms}ms`,
+      },
       legendRequest: "Request",
       legendBack: "200 response",
       requestsLabel: "Requests to the platforms being unlocked",

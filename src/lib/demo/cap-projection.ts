@@ -43,6 +43,8 @@ const CAP = { spanLon: 0.28, spanLat: 0.18, latCenter: (CAP_NORTH + CAP_SOUTH) /
 const GLOBE = { spanLon: 1, spanLat: 1, latCenter: 0, tilt: -18, camera: 4.2, north: 90, south: -90 };
 // Globe diameter as a share of the view height, and where its top sits.
 const GLOBE_FILL = 0.88;
+/** The whole globe's diameter as a share of the view height (curl 1). */
+export const CAP_GLOBE_FILL = GLOBE_FILL;
 
 export const CAP_SPAN_LON = CAP.spanLon;
 /** Half the visible longitude sweep of the cap in sphere degrees (θ runs ±this). */

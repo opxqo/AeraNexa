@@ -35,10 +35,12 @@ const shockwaveRadius = (width: number) => Math.min(38, width * 0.03);
 // "unlock" block): the request reaches China (a small orange ring), a comet
 // flies to `city` and lands with a shockwave, then a green pulse flies back
 // to China and ends in a green ring. `onArrive` fires when the comet lands,
-// `onReturn` when the pulse is home. Stage lengths in seconds; the comet
+// `onReturn` when the pulse is home. `delay` (seconds) holds the trip back
+// after it is accepted, so a page can pick the city now and have the request
+// reach China later. Stage lengths in seconds; the comet
 // phases are mapped onto cap-comet.ts's own (a synthetic `phase`), so neither
 // drawComet nor drawShockwave needs to know about trips.
-export type CapTrip = { city: string; onArrive?: () => void; onReturn?: () => void };
+export type CapTrip = { city: string; delay?: number; onArrive?: () => void; onReturn?: () => void };
 const TRIP = { receive: 0.5, out: 1.5, land: 1.3, gap: 0.3, back: 1.3, home: 1.0, launch: 0.15, tail: 0.25 };
 const TRIP_ARRIVE = TRIP.launch + TRIP.out;
 const TRIP_BACK = TRIP_ARRIVE + TRIP.gap;
@@ -132,11 +134,13 @@ export function WorldMapCapCityLayer({ updateRef, routes = true, tripRef }: { up
     const cursors = capLaunchers.map(() => 0);
     let turn = 0;
     let lastBeat: number | null = null;
-    // Round trips in progress (`born` is stamped by the first frame that draws it).
+    // Round trips in progress (`born`, the moment one starts, is stamped by the
+    // first frame after it is accepted, plus its delay).
     type Trip = { end: City; seed: number; born: number | null; trip: CapTrip; arrived: boolean; returned: boolean; hot: string };
     let trips: Trip[] = [];
     let seamNow = 0;
     let widthNow = 0;
+    let lastFrame: number | null = null;
     const hub = cityByName.get(CAP_HUB)!;
     const visible = (city: City) => fade(sphereAngles(city.longitude, city.latitude, seamNow)) >= LAUNCH_FADE;
 
@@ -209,6 +213,15 @@ export function WorldMapCapCityLayer({ updateRef, routes = true, tripRef }: { up
       if (!context) return;
       const now = performance.now() / 1000;
       const unitsPerPixel = CAP_VIEW_WIDTH / width;
+      // After a pause (tab hidden, main thread stalled) the trips carry on
+      // where they left off instead of jumping ahead.
+      if (lastFrame !== null && now - lastFrame > 0.25) {
+        const gap = now - lastFrame;
+        trips.forEach((entry) => {
+          if (entry.born !== null) entry.born += gap;
+        });
+      }
+      lastFrame = now;
       if (routes) {
         flights = flights.filter((flight) => (now - flight.launched) / CYCLE_SECONDS < LIFE);
         // After a pause (tab hidden, map off screen) start the rhythm afresh
@@ -237,9 +250,14 @@ export function WorldMapCapCityLayer({ updateRef, routes = true, tripRef }: { up
       // Round trips (see CapTrip).
       const radius = shockwaveRadius(width);
       trips = trips.filter((entry) => {
-        if (entry.born === null) entry.born = now;
+        if (entry.born === null) entry.born = now + (entry.trip.delay ?? 0);
         const time = now - entry.born;
+        // Still waiting for its start.
+        if (time < 0) return true;
         if (time >= TRIP_END) {
+          // Never leave a page waiting on a callback that was skipped.
+          if (!entry.arrived) entry.trip.onArrive?.();
+          if (!entry.returned) entry.trip.onReturn?.();
           if (entry.hot) setHot(entry.end, "");
           return false;
         }

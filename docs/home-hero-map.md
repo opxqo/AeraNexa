@@ -198,6 +198,8 @@ git checkout 4706b13 -- src/lib/demo/cap-dots.ts src/components/world-map-cap.ts
   - **往返由地图自己画**：`WorldMapCap` 的 `tripRef` 收到一个函数，调用 `tripRef.current({ city, onReturn })` 播放一次往返；中国或目标城市不在可见面时返回 `false`（城市层 `world-map-cap-city-layer.tsx` 的 `CapTrip`，用合成的 phase 复用 `drawComet` / `drawShockwave`，绿色样式是 `cap-comet.ts` 的 `GREEN`）。往返期间目标城市的标签边框 `data-hot`：出站橙色、返回绿色。
   - **镜头**：`WorldMapCap` 的 `steerRef` 存"画面中心经度"，非空时地球缓慢转向 `经度 − 180` 这个 seam（最大 45°/s，指数缓动），为空则照旧匀速自转。模块分两场：亚太（中心 128°E，AI 服务，东京 / 新加坡 / 悉尼 / 孟买）和欧亚（中心 62°E，流媒体，伦敦 / 法兰克福 / 约翰内斯堡 / 孟买 / 新加坡），每场 5 个请求，再等 4 秒让最后的应答走完，然后转向下一场。地球只能绕轴转，所以一个画面只能容纳经度相差约 60° 以内的城市，美洲没法和中国同屏（想加要另做一场，贴着地平线）。
   - 两个调用方（`FeatureUnlock` 与 `home-relay.tsx`）用 `useGlobeLink()` 拿到这对 ref，同时传给地图和 `UnlockContent`。
+  - **节点图（2026-09-29 改）**：左侧是 Flora 风格的节点图（连线画法见 `src/lib/demo/flow-line.ts`）：4 个服务节点 → 「AeraNexa 智能路由」节点 → 地球外圈的圆环（圆心与地球重合，半径 + 14px）。路由节点到圆环有两条线：请求线进左上端口，应答线从左下端口出；橙色脉冲走请求线，绿色脉冲沿应答线反向跑回。服务节点和路由节点可以拖拽（连线实时跟随，位置记在槽位上），地球和圆环不可拖。
+  - 往返的 `CapTrip` 有可选的 `delay`（秒），页面可以先挑好城市、之后再开始往返；页面隐藏或主线程卡顿后，往返从暂停处继续，不会被丢掉。
 - **手机端和减少动态效果**：不接力。Hero 保持原来的平面地图，下面放独立的 `FeatureUnlock`（自带一张地球，走手机布局）。
 - **双语**：特性模块文案都在 `src/lib/feature-copy.ts`，写法同 `home-copy.ts`；组件都接收 `locale`，`/demo/features` 也读同一个 cookie。
 
