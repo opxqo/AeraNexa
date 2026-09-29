@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { PricingCopy } from "@/lib/pricing-copy";
+import { PlanGround } from "./pricing-ground";
 import { PlanScene } from "./pricing-scenes";
 import styles from "./pricing-page.module.css";
 
@@ -77,6 +78,7 @@ export function PricingCards({ copy }: { copy: PricingCopy }) {
           {copy.plans.map((plan) => (
             <article key={plan.label} className={styles.plan} data-featured={plan.featured ? "" : undefined} data-night={plan.tone ? "" : undefined}>
               <PlanScene scene={plan.scene} dark={Boolean(plan.featured || plan.tone)} className={styles.scene} />
+              <PlanGround scene={plan.scene} className={styles.ground} />
               <div className={styles.planTop}>
                 <div className={styles.planLabel}>{plan.label}</div>
                 <div className={styles.planTitle}>

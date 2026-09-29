@@ -1,25 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="an-g" x1="14" y1="16" x2="54" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#22D3EE"/>
-      <stop offset=".5" stop-color="#38BDF8"/>
-      <stop offset="1" stop-color="#6366F1"/>
-    </linearGradient>
-    <filter id="an-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="1" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-  <rect width="64" height="64" rx="14" fill="#0B1220"/>
+  <rect width="64" height="64" rx="14" fill="#F45300"/>
   <g transform="translate(32 32.5) scale(.74) translate(-32 -32.25)">
-    <g fill="none" stroke="url(#an-g)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round">
+    <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M8.5 53.5 32 11 55.5 53.5"/>
       <path d="M8.5 53.5C18 40 25 38.3 32 38.3S46 40 55.5 53.5"/>
     </g>
-    <g fill="url(#an-g)" filter="url(#an-glow)">
-      <circle cx="32" cy="11" r="5.4"/>
-      <circle cx="8.5" cy="53.5" r="5.4" fill="#22D3EE"/>
-      <circle cx="55.5" cy="53.5" r="5.4"/>
+    <g fill="#fff">
+      <circle cx="32" cy="11" r="6"/>
+      <circle cx="8.5" cy="53.5" r="6"/>
+      <circle cx="55.5" cy="53.5" r="6"/>
     </g>
   </g>
 </svg>
