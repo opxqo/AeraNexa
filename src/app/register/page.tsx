@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AuthCard } from "@/components/auth-card";
+import { HOME_LOCALE_COOKIE, toHomeLocale } from "@/lib/home-copy";
 import { getCurrentUser } from "@/lib/server/users";
 
 export default async function RegisterPage({
@@ -11,5 +13,5 @@ export default async function RegisterPage({
   if (await getCurrentUser()) redirect("/dashboard");
   const resolved = await searchParams;
   const code = Array.isArray(resolved.code) ? resolved.code[0] : resolved.code;
-  return <AuthCard mode="register" initialInviteCode={code?.trim().slice(0, 64) ?? ""} />;
+  return <AuthCard mode="register" initialInviteCode={code?.trim().slice(0, 64) ?? ""} initialLocale={toHomeLocale((await cookies()).get(HOME_LOCALE_COOKIE)?.value)} />;
 }
