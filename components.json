@@ -5,7 +5,7 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "src/app/admin/shadcn.css",
+    "css": "src/styles/aera.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""

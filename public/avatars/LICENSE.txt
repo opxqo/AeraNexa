@@ -1,0 +1,4 @@
+Notionists Neutral avatars, generated with DiceBear (https://www.dicebear.com/styles/notionists-neutral/).
+Design by Zoish (https://zoish.com), CC0 1.0 Universal (public domain): no attribution required.
+Seeds: ash, bay, cedar, dune, ember, fern, glen, haze. Background colours were set to match the app's tokens.
+Each SVG's viewBox was tightened to 50 30 460 460 so the face fills the round crop.
