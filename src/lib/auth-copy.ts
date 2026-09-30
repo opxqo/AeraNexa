@@ -27,6 +27,8 @@ export type AuthText = {
   errors: { email: string; password: string; code: string; mismatch: string; network: string; sendFailed: string; resetDone: string };
   invite: { valid: string; invalid: string; unverified: string };
   social: (provider: "Google" | "GitHub") => string;
+  /** Read out while a button is busy. */
+  loading: string;
   language: string;
 };
 
@@ -56,6 +58,7 @@ export const authCopy: Record<"en" | "zh", AuthText> = {
     errors: { email: "Please enter a valid email address.", password: "Please enter your password.", code: "Please enter the verification code.", mismatch: "The two passwords do not match.", network: "Something went wrong. Please try again.", sendFailed: "Could not send the code. Please try again.", resetDone: "Password reset. Log in with your new password." },
     invite: { valid: "Invitation link is valid.", invalid: "This invite code is invalid.", unverified: "Could not verify the invite code; it will be checked again on sign-up." },
     social: (provider) => `${provider} sign-in is ready for credentials.`,
+    loading: "Working…",
     language: "Language",
   },
   zh: {
@@ -83,6 +86,7 @@ export const authCopy: Record<"en" | "zh", AuthText> = {
     errors: { email: "请输入有效的邮箱地址。", password: "请输入密码。", code: "请输入邮箱验证码。", mismatch: "两次输入的密码不一致。", network: "请求失败，请检查网络后重试。", sendFailed: "验证码发送失败，请稍后重试。", resetDone: "密码已重置，请使用新密码登录。" },
     invite: { valid: "邀请链接有效，注册后将自动绑定邀请关系。", invalid: "邀请链接无效或已失效。", unverified: "暂时无法校验邀请码，提交注册时将再次验证。" },
     social: (provider) => `${provider} 登录已接入界面，等待填入凭证。`,
+    loading: "处理中…",
     language: "语言",
   },
 };

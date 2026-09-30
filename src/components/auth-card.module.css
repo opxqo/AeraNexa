@@ -74,6 +74,8 @@
   transition: border .15s, background-color .15s, color .15s, opacity .15s;
 }
 .button:disabled { opacity: .6; cursor: default; }
+/* The button that is busy stays at full strength, its loader is the thing to look at. */
+.button:disabled[data-loading] { opacity: 1; cursor: progress; }
 .primary { color: var(--on-accent); background: var(--accent); box-shadow: var(--shadow); }
 .primary:hover { background: var(--accent-hover); }
 .secondary { color: var(--ink); background: var(--raised); }
@@ -113,9 +115,6 @@
 .link:hover:not(:disabled) { color: var(--strong); }
 .link:disabled { color: var(--muted); cursor: default; }
 .mutedLink { margin-top: -4px; color: var(--muted); }
-
-.spinner { animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 

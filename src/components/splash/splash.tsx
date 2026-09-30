@@ -5,7 +5,7 @@ import { BrandMark } from "@/components/brand-mark";
 import styles from "./splash.module.css";
 import { useSplashProgress, type SplashProgressOptions } from "./use-splash-progress";
 
-/** The minimal variant: the mark over a hairline progress bar on warm grey (after Relume's loading screen). */
+/** The minimal variant: the mark over a thin progress bar on warm grey (after Relume's loading screen). */
 export function MinimalSplash(options: SplashProgressOptions) {
   const { phase, progressRef } = useSplashProgress({ minMs: 700, maxMs: 3000, ...options });
   const barRef = useRef<HTMLSpanElement>(null);
@@ -34,7 +34,7 @@ export function MinimalSplash(options: SplashProgressOptions) {
     <div className={styles.root} data-phase={phase}>
       <div className={styles.center}>
         <span className={styles.logo}>
-          <BrandMark size={30} />
+          <BrandMark size={24} />
         </span>
         <span
           ref={trackRef}

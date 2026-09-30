@@ -1,0 +1,62 @@
+/* The hand-over to the panel (enter-splash.tsx). The backdrop is the auth page's own colour
+   (#f8f8f9, auth-card.module.css), so it is invisible against it and only hides what is under it;
+   the mark is drawn where the auth page's logo is, in that page's ink (#2f2f31). */
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: #f8f8f9;
+  opacity: 0;
+  transition: opacity .32s ease;
+}
+.root[data-phase="wait"] .backdrop { opacity: 1; }
+.root[data-phase="land"] .backdrop { opacity: 0; transition: opacity .6s ease .08s; }
+.root[data-phase="land"] { pointer-events: none; }
+
+.mark {
+  position: fixed;
+  color: #2f2f31;
+  line-height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+  transition: transform .72s cubic-bezier(.7, 0, .2, 1), color .72s ease, opacity .4s ease;
+}
+.mark[data-away] { opacity: 0; }
+/* Waiting: the logo glides to the middle and draws in, softly; the flight to the sidebar keeps the slower curve above. */
+.root[data-phase="wait"] .mark { transition: transform .65s cubic-bezier(.22, 1, .36, 1), color .72s ease, opacity .4s ease; }
+
+/* The bar, as the minimal splash's (splash.module.css): a visible two-pixel track, a fill running
+   along it with a soft highlight that keeps sliding. It goes as the logo leaves. */
+.bar {
+  position: fixed;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, #101010 16%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+.root[data-phase="wait"] .bar { opacity: 1; transition: opacity .3s ease .2s; }
+.root[data-phase="land"] .bar { opacity: 0; transition: opacity .25s ease; }
+.fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #f45300 0%, #f45300 55%, #ff9a5c 75%, #f45300 90%, #f45300 100%) 0 0 / 220% 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+  animation: sheen 1.3s linear infinite;
+}
+@keyframes sheen { from { background-position: 100% 0; } to { background-position: -120% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fill { animation: none; }
+  .backdrop, .root[data-phase="land"] .backdrop { transition-duration: .25s; transition-delay: 0s; }
+}

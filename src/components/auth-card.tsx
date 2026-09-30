@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { BrandLoader } from "@/components/brand-loader";
 import { BrandMark } from "@/components/brand-mark";
 import { setHomeLocale } from "@/app/home-locale-action";
 import { authApi } from "@/lib/api/auth";
+import { startEntering, useEntering } from "@/lib/enter-panel";
 import { languages, textFor, type LanguageCode } from "@/lib/auth-copy";
 import type { HomeLocale } from "@/lib/home-copy";
 import styles from "./auth-card.module.css";
@@ -24,6 +25,14 @@ const FLOW: Record<AuthMode, Step[]> = {
   register: ["choose", "email", "code", "newPassword"],
   forget: ["email", "code", "newPassword"],
 };
+
+// The first-step buttons don't call anything yet (the social ones are placeholders for the
+// redirect, the email one just moves on), so they show their loader for a beat, as the real
+// thing would: long enough to see the packet leave and reach a node or two.
+const SOCIAL_LOAD_MS = 1300;
+const EMAIL_LOAD_MS = 650;
+
+type Choice = "Google" | "GitHub" | "email";
 
 const errorMessage = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
 
@@ -44,11 +53,30 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
   const [inviteNote, setInviteNote] = useState("");
   const [countdown, setCountdown] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [pending, setPending] = useState<Choice | null>(null);
+  const pendingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
+  const logoRef = useRef<HTMLDivElement>(null);
+  const entering = useEntering();
+  const wasEntering = useRef(false);
+
+  useEffect(() => () => clearTimeout(pendingTimer.current), []);
+
+  // If the hand-over to the panel gives up, the page is ours again.
+  useEffect(() => {
+    if (wasEntering.current && !entering) setSubmitting(false);
+    wasEntering.current = entering !== null;
+  }, [entering]);
+
+  // The logo's place on screen: the hand-over to the panel starts from it.
+  const enterPanel = () => {
+    const box = logoRef.current?.getBoundingClientRect();
+    startEntering("/dashboard", box ? { left: box.left, top: box.top, width: box.width, height: box.height } : { left: window.innerWidth / 2 - 24, top: window.innerHeight / 3, width: 48, height: 48 });
+  };
 
   const go = useCallback((index: number) => {
     setStepIndex(index);
@@ -151,10 +179,10 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
     try {
       if (mode === "login") {
         await authApi.login({ email: email.trim(), password });
-        router.push("/dashboard");
+        enterPanel();
       } else if (mode === "register") {
         await authApi.register({ email: email.trim(), password, password_confirmation: rePassword, email_code: emailCode, invite_code: inviteCode || undefined });
-        router.push("/dashboard");
+        enterPanel();
       } else {
         await authApi.forget({ email: email.trim(), email_code: emailCode, password, password_confirmation: rePassword });
         setNotice(text.errors.resetDone);
@@ -165,11 +193,20 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
       setSubmitting(false);
       return;
     }
-    // Sign-in and sign-up leave the page; keep the spinner until they do.
+    // Sign-in and sign-up hand over to the panel behind the splash (enter-splash.tsx); keep the loader until the page goes.
     if (mode === "forget") setSubmitting(false);
   };
 
   const social = (provider: "Google" | "GitHub") => setToast(text.social(provider));
+  const choose = (choice: Choice) => {
+    if (pending) return;
+    setPending(choice);
+    pendingTimer.current = setTimeout(() => {
+      setPending(null);
+      if (choice === "email") go(1);
+      else social(choice);
+    }, choice === "email" ? EMAIL_LOAD_MS : SOCIAL_LOAD_MS);
+  };
   const chooseLanguage = (code: LanguageCode) => {
     setLang(code);
     setLangOpen(false);
@@ -189,7 +226,7 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
   return (
     <main className={styles.page}>
       <div className={styles.column}>
-        <div className={styles.logo} data-busy={submitting || undefined}>
+        <div ref={logoRef} className={styles.logo} data-busy={submitting || pending !== null || undefined}>
           <span className={styles.pulse} aria-hidden="true" />
           <BrandMark size={48} />
         </div>
@@ -200,9 +237,15 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
           {step === "choose" ? (
             <>
               <div className={styles.stack}>
-                <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => social("Google")}>{text.google}</button>
-                <button type="button" className={`${styles.button} ${styles.secondary}`} onClick={() => social("GitHub")}>{text.github}</button>
-                <button type="button" className={`${styles.button} ${styles.secondary}`} onClick={() => go(1)}>{text.email}</button>
+                <button type="button" className={`${styles.button} ${styles.primary}`} disabled={pending !== null} data-loading={pending === "Google" || undefined} onClick={() => choose("Google")}>
+                  {pending === "Google" ? <BrandLoader accent="#ffffff" accentAlt="#101010" label={text.loading} size={20} /> : text.google}
+                </button>
+                <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={pending !== null} data-loading={pending === "GitHub" || undefined} onClick={() => choose("GitHub")}>
+                  {pending === "GitHub" ? <BrandLoader label={text.loading} size={20} /> : text.github}
+                </button>
+                <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={pending !== null} data-loading={pending === "email" || undefined} onClick={() => choose("email")}>
+                  {pending === "email" ? <BrandLoader label={text.loading} size={20} /> : text.email}
+                </button>
               </div>
               {mode === "login" ? (
                 <p className={`${styles.footer} ${styles.footerLogin}`}>{text.footer.noAccount} <Link href="/register">{text.footer.signUp}</Link></p>
@@ -249,8 +292,8 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
               {error && <p className={styles.error} role="alert">{error}</p>}
               {!error && notice && <p className={styles.note} role="status">{notice}</p>}
 
-              <button type="submit" className={`${styles.button} ${styles.secondary}`} disabled={submitting}>
-                {submitting ? <Loader2 size={16} className={styles.spinner} aria-hidden="true" /> : buttonLabel}
+              <button type="submit" className={`${styles.button} ${styles.secondary}`} disabled={submitting} data-loading={submitting || undefined}>
+                {submitting ? <BrandLoader label={text.loading} size={20} /> : buttonLabel}
               </button>
 
               {step === "code" && (

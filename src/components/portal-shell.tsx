@@ -148,7 +148,9 @@ export function PortalShell({
       {/* 左侧经典边栏 */}
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
         <Link className="brand" href="/dashboard" onClick={() => setOpen(false)}>
-          <BrandMark />
+          <span className="brand-mark" data-enter-target="">
+            <BrandMark />
+          </span>
           AeraNexa
         </Link>
 
