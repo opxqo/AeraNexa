@@ -15,3 +15,12 @@ coverage/
 
 # WorkBuddy AI 会话与项目记忆数据
 .workbuddy-ai/
+
+# Design reference screenshots (Mobbin). Third-party material: local only, never committed.
+/design-refs/
+
+# The static demo site (demo-site/): its public/ is copied from the app's by scripts/build-demo.mjs.
+/demo-site/public/
+/demo-site/out/
+/demo-site/.next/
+/demo-site/next-env.d.ts

@@ -1,0 +1,17 @@
+{
+  "installCommand": "npx --yes pnpm@10 install --frozen-lockfile --config.manage-package-manager-versions=false",
+  "buildCommand": "node scripts/build-demo.mjs",
+  "outputDirectory": "./demo-site/out",
+  "nodeVersion": "22.11.0",
+  "headers": [
+    {
+      "source": "/_next/static/*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

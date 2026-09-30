@@ -57,3 +57,22 @@ pnpm worker
 3x-ui 面板地址与 API Token 在后台「系统设置 → 节点」中填写（可点「测试 3x-ui 连接」验证），设计与进度见 [`docs/node-domain-design.md`](docs/node-domain-design.md)。
 
 迁移范围和旧页面映射见 [`docs/frontend-migration.md`](docs/frontend-migration.md)。
+
+## 演示站
+
+`demo-site/` 是一个纯前端的静态站：门户网页加客户面板的全流程演示，没有后端、没有管理端，数据只存在访客浏览器里，用于部署到腾讯 EdgeOne Pages 等静态托管。
+
+```bash
+pnpm dev:demo      # http://localhost:3100
+pnpm build:demo    # 产物在 demo-site/out
+```
+
+演示账号、部署步骤和实现方式见 [`docs/demo-site.md`](docs/demo-site.md)，仓库根的 [`edgeone.json`](edgeone.json) 是 EdgeOne Pages 的构建配置。
+
+## 致谢
+
+用户面板的活动热力图（`src/components/ui/github-activity.tsx`）和使用文档页的分类文件夹（`src/components/ui/folder-component.tsx`）来自 [Rare UI](https://www.rareui.com)（MIT + Commons Clause，要求署名），按本项目的令牌做了少量改动；请保留此致谢与源码头部的版权说明。
+
+用户面板顶部公告横幅的翻板组件（`src/components/ui/split-flap-display.tsx`）改自 [Componentry 的 Split Flap Display](https://21st.dev/@componentry/components/split-flap-display)（MIT），为支持中文和本项目样式做了重写；请保留源码头部的来源说明。
+
+购买订阅页价格牌里的 Disney+、Prime Video 图标来自 [Streamline Logos](https://www.streamlinehq.com)（CC BY 4.0，需署名）；其余品牌图标来自 simple-icons（CC0）和 Remix Icon / Boxicons（Apache-2.0 / MIT），详见 `src/lib/brand-icons.ts`。

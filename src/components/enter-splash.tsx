@@ -12,7 +12,7 @@ import styles from "./enter-splash.module.css";
 //           is, stays put and comes alive (BrandLoader, starting as the plain logo)
 //   wait    the logo glides to the middle of the screen, drawing in as it goes, and a bar appears
 //           under it; the packet hops round the logo and the bar creeps along while the panel loads
-//   land    with the panel there and the bar full, the logo settles into the plain mark and flies to the sidebar's,
+//   land    with the panel there and the bar full, the logo settles into the plain mark and flies to the panel's,
 //           shrinking and taking its colour; the page colour fades away and the panel comes in
 //   done    the sidebar's own logo takes over
 // It lives in the root layout because the auth page is gone the moment the route changes.
@@ -102,7 +102,8 @@ function Entering({ request }: { request: EnterRequest }) {
 
     const land = () => {
       // Measure before the panel starts to move: this is where the sidebar's logo will rest.
-      const box = document.querySelector("[data-enter-target]")?.getBoundingClientRect();
+      const target = document.querySelector("[data-enter-target]");
+      const box = target?.getBoundingClientRect();
       const fits = box && box.width > 0 && box.left >= 0 && box.left < window.innerWidth && box.top >= 0;
       root.dataset.phase = "land";
       setSettled(true);
@@ -113,7 +114,7 @@ function Entering({ request }: { request: EnterRequest }) {
       html.dataset.enter = "land";
       if (fits && !reduced) {
         mark.style.transform = `translate(${box.left - from.left}px, ${box.top - from.top}px) scale(${box.width / from.width})`;
-        mark.style.color = "rgba(255, 255, 255, .68)"; // the brand bar's own colour (globals.css .brand)
+        if (target) mark.style.color = getComputedStyle(target).color; // the colour the target's own logo is drawn in
         finish(FLIGHT_MS + 60);
       } else {
         mark.dataset.away = ""; // no sidebar to land in (narrow screens, reduced motion): just let go

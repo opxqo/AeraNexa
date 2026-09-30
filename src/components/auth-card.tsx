@@ -7,6 +7,8 @@ import { BrandLoader } from "@/components/brand-loader";
 import { BrandMark } from "@/components/brand-mark";
 import { setHomeLocale } from "@/app/home-locale-action";
 import { authApi } from "@/lib/api/auth";
+import { DEMO_SITE } from "@/lib/demo-site/flag";
+import { demoHints } from "@/lib/demo-site/hints";
 import { startEntering, useEntering } from "@/lib/enter-panel";
 import { languages, textFor, type LanguageCode } from "@/lib/auth-copy";
 import type { HomeLocale } from "@/lib/home-copy";
@@ -50,7 +52,8 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
   const [rePassword, setRePassword] = useState("");
   const [emailCode, setEmailCode] = useState("");
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
-  const [inviteNote, setInviteNote] = useState("");
+  // The demo site has no server to ask, so every invite link is fine from the start.
+  const [inviteNote, setInviteNote] = useState(() => (DEMO_SITE && mode === "register" && initialInviteCode.trim() ? textFor(lang).invite.valid : ""));
   const [countdown, setCountdown] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [pending, setPending] = useState<Choice | null>(null);
@@ -119,7 +122,7 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
   useEffect(() => {
     if (mode !== "register") return;
     const code = initialInviteCode.trim();
-    if (!code) return;
+    if (!code || DEMO_SITE) return;
     const controller = new AbortController();
     fetch(`/api/auth/invite?code=${encodeURIComponent(code)}`, { signal: controller.signal })
       .then(async (response) => {
@@ -139,13 +142,16 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialInviteCode, mode]);
 
-  const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
+  // The demo site signs in with "admin", which is not an address.
+  const validEmail = DEMO_SITE && mode === "login" ? email.trim().length > 0 : /^\S+@\S+\.\S+$/.test(email.trim());
+  const hint = demoHints[lang.startsWith("zh") ? "zh" : "en"];
 
   const sendCode = async () => {
     try {
       const result = await authApi.sendEmailVerify(email.trim(), mode === "forget" ? "reset-password" : "register");
       setCountdown(60);
-      setNotice(result.message || text.codeSent);
+      // The demo site says what the code is on the code step itself.
+      setNotice(DEMO_SITE ? "" : result.message || text.codeSent);
       return true;
     } catch (failure) {
       setError(errorMessage(failure, text.errors.sendFailed));
@@ -263,12 +269,13 @@ export function AuthCard({ mode, initialInviteCode = "", initialLocale = "zh" }:
               {step === "email" && (
                 <>
                   <label className={styles.sr} htmlFor="auth-email">{text.labels.email}</label>
-                  <input id="auth-email" className={styles.input} type="email" name="email" autoComplete="email" autoFocus placeholder={text.emailPlaceholder} value={email} onChange={(event) => setEmail(event.target.value)} />
+                  <input id="auth-email" className={styles.input} type={DEMO_SITE && mode === "login" ? "text" : "email"} name="email" autoComplete="email" autoFocus placeholder={text.emailPlaceholder} value={email} onChange={(event) => setEmail(event.target.value)} />
+                  {DEMO_SITE && mode === "login" && <p className={styles.note}>{hint.login}</p>}
                 </>
               )}
               {step === "code" && (
                 <>
-                  <p className={styles.note}>{text.codeHint(email.trim())}</p>
+                  <p className={styles.note}>{DEMO_SITE ? hint.code : text.codeHint(email.trim())}</p>
                   <label className={styles.sr} htmlFor="auth-code">{text.labels.code}</label>
                   <input id="auth-code" className={styles.input} type="text" name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder={text.codePlaceholder} value={emailCode} onChange={(event) => setEmailCode(event.target.value)} />
                 </>
