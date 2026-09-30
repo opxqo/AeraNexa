@@ -1,6 +1,6 @@
 {
   "installCommand": "npx --yes pnpm@10 install --frozen-lockfile --config.manage-package-manager-versions=false",
-  "buildCommand": "node scripts/build-demo.mjs",
+  "buildCommand": "node scripts/build-demo.mjs --edgeone",
   "outputDirectory": "./demo-site/out",
   "nodeVersion": "22.11.0",
   "headers": [

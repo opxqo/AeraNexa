@@ -57,11 +57,14 @@ pnpm build:demo    # 构建，产物在 demo-site/out（纯静态）
 仓库根的 [`edgeone.json`](../edgeone.json) 已写好构建配置，在 EdgeOne Pages 里**导入这个 Git 仓库、选对分支**即可，不需要在控制台再填构建命令：
 
 - 安装：`npx --yes pnpm@10 install --frozen-lockfile --config.manage-package-manager-versions=false`
-- 构建：`node scripts/build-demo.mjs`
+- 构建：`node scripts/build-demo.mjs --edgeone`
 - 输出目录：`./demo-site/out`
+- 框架预设：控制台里保持自动识别的「Next」即可（见下面「为什么构建命令带 `--edgeone`」）
 - Node：`22.11.0`（EdgeOne 可选版本里最高的一档）；`/_next/static/*` 加了长期缓存头。
 
-**为什么安装用 pnpm 10，而不是项目声明的 `pnpm@11.25.0`**：pnpm 11 要求 Node ≥ 22.13，EdgeOne 最高只提供 22.11，跑起来会直接报 `requires at least Node.js v22.13`。pnpm 10 能读同一份 `pnpm-lock.yaml`（lockfileVersion 9.0），`--config.manage-package-manager-versions=false` 是为了让它不要按 `package.json` 的 `packageManager` 字段自动切回 pnpm 11。构建这一步不再经过 pnpm，直接用 `node` 跑脚本。这套命令已在干净拷贝里用 Node 22.11.0 完整跑通（安装 34 秒、构建 17 秒、18 个静态页面）；EdgeOne 构建机本身没有实测过，第一次部署请留意构建日志。
+**为什么安装用 pnpm 10，而不是项目声明的 `pnpm@11.25.0`**：pnpm 11 要求 Node ≥ 22.13，EdgeOne 最高只提供 22.11，跑起来会直接报 `requires at least Node.js v22.13`。pnpm 10 能读同一份 `pnpm-lock.yaml`（lockfileVersion 9.0），`--config.manage-package-manager-versions=false` 是为了让它不要按 `package.json` 的 `packageManager` 字段自动切回 pnpm 11。构建这一步不再经过 pnpm，直接用 `node` 跑脚本。这套命令已在干净拷贝里用 Node 22.11.0 完整跑通（安装 34 秒、构建 17 秒、18 个静态页面）。
+
+**为什么构建命令带 `--edgeone`**：EdgeOne 是否加载它的 Next.js 插件，看的是仓库根有没有 `next.config.ts`（与控制台选的框架预设无关）。插件在构建后会去仓库根的 `.next/` 找 `BUILD_ID` 和 `required-server-files.json`，而演示站是在 `demo-site/` 里构建的，根目录没有 `.next`，第一次部署就是因此报 `ENOENT … .next/required-server-files.json`。`--edgeone` 让构建脚本把这两个文件从 `demo-site/.next` 复制到仓库根的 `.next/`，插件识别到 `output: "export"` 后原样发布 `demo-site/out`。本地开发不要加这个开关，它会覆盖根目录 `.next` 里的这两个文件。本地已用插件自己的 `onPreBuild` / `onBuild` / `onPostBuild` 钩子验证过，产物与 `demo-site/out` 逐文件一致（449 个）；EdgeOne 构建机上的完整流程仍以实际部署为准。
 
 要点：
 

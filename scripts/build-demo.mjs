@@ -21,4 +21,12 @@ mkdirSync(path.join(site, "public"), { recursive: true });
 rmSync(path.join(site, "out"), { recursive: true, force: true });
 const result = spawnSync("npx", ["next", "build"], { cwd: site, stdio: "inherit", shell: process.platform === "win32" });
 if (result.status !== 0) process.exit(result.status ?? 1);
+
+// EdgeOne Pages loads its Next.js plugin whenever the repo root has a next.config.ts (whatever framework is picked in
+// the console), and that plugin reads the build's manifest from the root's .next. This build ran in demo-site/, so
+// with --edgeone the two files it looks for are left there; it then publishes demo-site/out as it is.
+if (process.argv.includes("--edgeone")) {
+  mkdirSync(path.join(root, ".next"), { recursive: true });
+  for (const file of ["BUILD_ID", "required-server-files.json"]) cpSync(path.join(site, ".next", file), path.join(root, ".next", file));
+}
 console.log("\nDemo site built: demo-site/out");
