@@ -193,18 +193,20 @@ export function WorldMapCap({
           if (graticule && curl > 0) drawGraticule(context, seam);
           if (curl < 1) drawRim(context, seam, params.coastRadius, 0.55 * (1 - curl));
           const layers = [
-            [COLOR, land, params.landRadius, 0.72],
-            [COLOR, coast, params.coastRadius, 0.95],
-            [CHINA_COLOR, chinaLand, params.landRadius, 0.72],
-            [CHINA_COLOR, chinaCoast.concat(border), params.coastRadius, 0.95],
+            [COLOR, [land], params.landRadius, 0.72],
+            [COLOR, [coast], params.coastRadius, 0.95],
+            [CHINA_COLOR, [chinaLand], params.landRadius, 0.72],
+            [CHINA_COLOR, [chinaCoast, border], params.coastRadius, 0.95],
           ] as const;
-          for (const [color, points, radius, alpha] of layers) {
+          for (const [color, groups, radius, alpha] of layers) {
             context.fillStyle = color;
             context.globalAlpha = alpha;
             context.beginPath();
-            for (let index = 0; index < points.length; index += 2) {
-              context.moveTo(points[index] + radius, points[index + 1]);
-              context.arc(points[index], points[index + 1], radius, 0, Math.PI * 2);
+            for (const points of groups) {
+              for (let index = 0; index < points.length; index += 2) {
+                context.moveTo(points[index] + radius, points[index + 1]);
+                context.arc(points[index], points[index + 1], radius, 0, Math.PI * 2);
+              }
             }
             context.fill();
           }

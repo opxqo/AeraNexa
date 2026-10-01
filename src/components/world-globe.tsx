@@ -302,6 +302,9 @@ export function WorldGlobe({
             lastFrame = null;
             return;
           }
+          // Opacity alone does not stop the city/comet pass. The relay keeps
+          // this globe mounted behind the hero until its crossfade starts.
+          if (activeRef?.current === false) return;
           frame(now);
         }
 

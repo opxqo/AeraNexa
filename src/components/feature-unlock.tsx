@@ -220,7 +220,7 @@ type Job = { slot: number; node: number; city: string; ms: number; done: boolean
  *  map itself, or an empty slot the home hero's map lands in. `mapHostRef`
  *  points at whatever holds the map: its city tags are looked up there, and
  *  the globe's outline is measured from it (defaults to the box). */
-export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = "" }: { locale: HomeLocale; link: GlobeLink; map: ReactNode; mapHostRef?: RefObject<HTMLElement | null>; boxClassName?: string }) {
+export function UnlockContent({ locale, link, map, mapHostRef, visibleRef, boxClassName = "" }: { locale: HomeLocale; link: GlobeLink; map: ReactNode; mapHostRef?: RefObject<HTMLElement | null>; visibleRef?: RefObject<boolean>; boxClassName?: string }) {
   const copy = featureCopy[locale].unlock;
   const boxRef = useRef<HTMLDivElement>(null);
   const beamRef = useRef<HTMLCanvasElement>(null);
@@ -267,6 +267,9 @@ export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = ""
     let scene = 0;
     let disposed = false;
     let hub: HTMLElement | null = null;
+    let inView = false;
+    const visibilityObserver = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; });
+    visibilityObserver.observe(box);
 
     const later = (fn: () => void, ms: number) => {
       const id = window.setTimeout(() => {
@@ -280,7 +283,7 @@ export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = ""
       const b = box.getBoundingClientRect();
       return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height };
     };
-    const shown = () => Number(getComputedStyle(box).getPropertyValue("--q") || 1) >= SHOWN;
+    const shown = () => inView && visibleRef?.current !== false && Number(getComputedStyle(box).getPropertyValue("--q") || 1) >= SHOWN;
     // China's marker on the globe (the city layer's <li>, by its hidden text).
     const hubElement = () => {
       hub ??= [...(mapHostRef?.current ?? box).querySelectorAll<HTMLLIElement>("ul[aria-label='Cities'] li")].find((li) => li.textContent?.trim() === "China") ?? null;
@@ -596,6 +599,13 @@ export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = ""
     let signature = "";
     const draw = (now: number) => {
       frame = requestAnimationFrame(draw);
+      // The relay keeps this scene mounted while the hero is visible. Read
+      // its scroll ref before measuring DOM geometry or drawing transparent
+      // packets; layout catches up on the first visible frame.
+      if (!inView || document.hidden || visibleRef?.current === false) {
+        steerRef.current = null;
+        return;
+      }
       // Look at the current scene, swaying a little; released when hidden.
       steerRef.current = shown() ? SCENES[scene].center + 8 * Math.sin(((now / 1000) * Math.PI * 2) / 20) : null;
 
@@ -644,6 +654,7 @@ export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = ""
 
     return () => {
       disposed = true;
+      visibilityObserver.disconnect();
       timers.forEach((id) => clearTimeout(id));
       cancelAnimationFrame(frame);
       steerRef.current = null;
@@ -659,7 +670,7 @@ export function UnlockContent({ locale, link, map, mapHostRef, boxClassName = ""
       });
       pulses.replaceChildren();
     };
-  }, [copy, mapHostRef, steerRef, tripRef]);
+  }, [copy, mapHostRef, steerRef, tripRef, visibleRef]);
 
   return (
     <>

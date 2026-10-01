@@ -6,7 +6,7 @@
 // border dots, with China sorted out for the accent colour. It writes them to
 // public/demo/world-cap-land.json; this module only projects them each frame.
 
-import { CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capFacing, capLatRange, getCapCurl, sphereAngles, toView } from "@/lib/demo/cap-projection";
+import { CAP_VIEW_HEIGHT, CAP_VIEW_WIDTH, capProjectionParameters, getCapCurl } from "@/lib/demo/cap-projection";
 
 /** One parameter set (desktop or mobile) from the generator. */
 export type CapDotSet = {
@@ -70,13 +70,68 @@ export function createCapDots(set: CapDotSet) {
   const chinaCoast = hundredths(set.chinaCoast);
   const border = hundredths(set.border);
 
-  const lonStep = 360 / set.cols;
-  const latStep = 180 / set.rows;
-  const inside = (x: number, y: number) => x >= -4 && x <= CAP_VIEW_WIDTH + 4 && y >= -4 && y <= CAP_VIEW_HEIGHT + 4;
+  // Lattice points share longitudes and latitudes. Index them once instead
+  // of calculating the same trigonometry for every dot on every frame.
+  const longitudes: number[] = [];
+  const latitudes: number[] = [];
+  const longitudeIndex = new Map<number, number>();
+  const latitudeIndex = new Map<number, number>();
+  const coordinateIndex = (value: number, values: number[], indices: Map<number, number>) => {
+    let index = indices.get(value);
+    if (index === undefined) {
+      index = values.length;
+      values.push(value);
+      indices.set(value, index);
+    }
+    return index;
+  };
+  const prepare = (points: number[], stride: number) => {
+    const count = points.length / stride;
+    const lon = new Uint32Array(count);
+    const lat = new Uint32Array(count);
+    const columns = stride === 3 ? new Uint32Array(count) : null;
+    for (let index = 0; index < count; index += 1) {
+      lon[index] = coordinateIndex(points[index * stride], longitudes, longitudeIndex);
+      lat[index] = coordinateIndex(points[index * stride + 1], latitudes, latitudeIndex);
+      if (columns) columns[index] = points[index * stride + 2];
+    }
+    return { lon, lat, columns, placed: new Array<number>(count * 2) };
+  };
+  const groups = {
+    land: prepare(land, 3),
+    chinaLand: prepare(chinaLand, 3),
+    coast: prepare(coast, 2),
+    chinaCoast: prepare(chinaCoast, 2),
+    border: prepare(border, 2),
+  };
+  const sinTheta = new Float64Array(longitudes.length);
+  const cosTheta = new Float64Array(longitudes.length);
+  const sinPhi = new Float64Array(latitudes.length);
+  const cosPhi = new Float64Array(latitudes.length);
+  const shares = new Float64Array(latitudes.length);
+  const evenShares = latitudes.map((latitude) => Math.min(1, ((360 / set.cols) * Math.cos((latitude * Math.PI) / 180)) / (180 / set.rows)));
+  let cachedCurl = -1;
 
   function frame(seam: number): CapDotFrame {
     const curl = getCapCurl();
-    const { north, south } = capLatRange();
+    const { north, south, spanLon, spanLat, latCenter, tilt, camera, scale, offsetX, offsetY } = capProjectionParameters();
+    const sinTilt = Math.sin((tilt * Math.PI) / 180);
+    const cosTilt = Math.cos((tilt * Math.PI) / 180);
+    if (curl !== cachedCurl) {
+      cachedCurl = curl;
+      for (let index = 0; index < latitudes.length; index += 1) {
+        const phi = ((latitudes[index] - latCenter) * spanLat * Math.PI) / 180;
+        sinPhi[index] = Math.sin(phi);
+        cosPhi[index] = Math.cos(phi);
+        shares[index] = 1 + (evenShares[index] - 1) * curl;
+      }
+    }
+    for (let index = 0; index < longitudes.length; index += 1) {
+      const norm = (((longitudes[index] - seam) % 360) + 360) % 360;
+      const theta = ((norm - 180) * spanLon * Math.PI) / 180;
+      sinTheta[index] = Math.sin(theta);
+      cosTheta[index] = Math.cos(theta);
+    }
 
     // Project lon/lat dots (`stride` values each) to the view, leaving out
     // latitudes the shape crops, the far side once curled, and anything off
@@ -85,34 +140,45 @@ export function createCapDots(set: CapDotSet) {
     // lines. So as the map curls, each row keeps an evenly spread share of
     // its dots, easing toward the share that makes the gap along the row
     // match the gap between rows.
-    function place(points: number[], stride: number, thin: boolean) {
-      const placed: number[] = [];
-      for (let index = 0; index < points.length; index += stride) {
-        const longitude = points[index];
-        const latitude = points[index + 1];
+    function place({ lon, lat, columns, placed }: ReturnType<typeof prepare>) {
+      let count = 0;
+      for (let index = 0; index < lon.length; index += 1) {
+        const latitude = latitudes[lat[index]];
         if (latitude < south || latitude > north) continue;
-        if (thin && curl > 0) {
-          const even = Math.min(1, (lonStep * Math.cos((latitude * Math.PI) / 180)) / latStep);
-          const share = 1 + (even - 1) * curl;
-          const col = points[index + 2];
+        if (columns && curl > 0) {
+          const share = shares[lat[index]];
+          const col = columns[index];
           if (Math.floor((col + 1) * share) === Math.floor(col * share)) continue;
         }
-        const angles = sphereAngles(longitude, latitude, seam);
-        if (curl > 0 && capFacing(angles) <= 0) continue;
-        const point = toView(angles);
-        if (inside(point.x, point.y)) placed.push(point.x, point.y);
+        // Same perspective math as toView/capFacing, sharing one projection
+        // for culling and placement, without intermediate point objects.
+        const x0 = cosPhi[lat[index]] * sinTheta[lon[index]];
+        const y0 = sinPhi[lat[index]];
+        const z0 = cosPhi[lat[index]] * cosTheta[lon[index]];
+        const y = y0 * cosTilt + z0 * sinTilt;
+        const z = -y0 * sinTilt + z0 * cosTilt;
+        if (curl > 0 && z - 1 / camera <= 0) continue;
+        const depth = camera - z;
+        const px = (x0 / depth) * scale + offsetX;
+        const py = (-y / depth) * scale + offsetY;
+        if (px >= -4 && px <= CAP_VIEW_WIDTH + 4 && py >= -4 && py <= CAP_VIEW_HEIGHT + 4) {
+          placed[count++] = px;
+          placed[count++] = py;
+        }
       }
+      placed.length = count;
       return placed;
     }
 
     return {
-      land: place(land, 3, true),
-      chinaLand: place(chinaLand, 3, true),
-      coast: place(coast, 2, false),
-      chinaCoast: place(chinaCoast, 2, false),
-      border: place(border, 2, false),
+      land: place(groups.land),
+      chinaLand: place(groups.chinaLand),
+      coast: place(groups.coast),
+      chinaCoast: place(groups.chinaCoast),
+      border: place(groups.border),
     };
   }
 
+  // Output arrays belong to this renderer and are reused by the next frame.
   return { frame };
 }

@@ -142,6 +142,11 @@ export function getCapCurl() {
   return curl;
 }
 
+/** Read-only parameters for bulk dot projection, captured once per frame. */
+export function capProjectionParameters(): Readonly<Shape> {
+  return shape;
+}
+
 /** The sphere's outline on screen (view units): centre and radius. */
 export function capSilhouette() {
   return { x: shape.offsetX, y: shape.offsetY, radius: shape.scale / Math.sqrt(shape.camera * shape.camera - 1) };

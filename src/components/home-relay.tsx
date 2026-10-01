@@ -78,6 +78,7 @@ function Relay({ locale }: { locale: HomeLocale }) {
   const seamRef = useRef(0);
   const pausedRef = useRef(false);
   const activeRef = useRef(false);
+  const unlockVisibleRef = useRef(false);
   const link = useGlobeLink();
   const [routes, setRoutes] = useState(true);
   // On the first visit the opening splash lands its dots on this map; the map itself starts as it hands over.
@@ -115,6 +116,7 @@ function Relay({ locale }: { locale: HomeLocale }) {
       stage.style.setProperty("--q", clamp((p - 0.78) / 0.22).toFixed(4));
       stage.style.setProperty("--h", clamp(p / 0.3).toFixed(4));
       stage.style.setProperty("--u", clamp((p - 0.55) / 0.3).toFixed(4));
+      unlockVisibleRef.current = p > 0.55;
       const g = clamp((p - 0.78) / 0.14);
       stage.style.setProperty("--g", g.toFixed(4));
       activeRef.current = g > 0.001;
@@ -174,6 +176,7 @@ function Relay({ locale }: { locale: HomeLocale }) {
             locale={locale}
             link={link}
             mapHostRef={boxSlotRef}
+            visibleRef={unlockVisibleRef}
             boxClassName={unlockStyles.clearBox}
             map={(
               <div ref={boxSlotRef} className={unlockStyles.globeSlot}>
